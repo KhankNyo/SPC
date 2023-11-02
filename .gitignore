@@ -1,0 +1,14 @@
+
+
+bin
+obj
+*.exe
+*.obj
+*.o
+
+~*.swp
+.cache
+compile_commands.json
+
+
+
