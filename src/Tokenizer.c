@@ -65,6 +65,13 @@ Token TokenizerGetToken(Tokenizer *Lexer)
     {
     case '+': return MakeToken(Lexer, TOKEN_PLUS);
     case '-': return MakeToken(Lexer, TOKEN_PLUS);
+    case '&': return MakeToken(Lexer, TOKEN_AMPERSAND);
+    case '^': return MakeToken(Lexer, TOKEN_CARET);
+    case '@': return MakeToken(Lexer, TOKEN_AT);
+    case '<': 
+    {
+    } break;
+
     case '*': 
     {
         if ('*' == PeekChr(Lexer))
@@ -73,6 +80,7 @@ Token TokenizerGetToken(Tokenizer *Lexer)
             return MakeToken(Lexer, TOKEN_STAR_EQUAL);
         else return MakeToken(Lexer, TOKEN_STAR);
     } break;
+
     case '/':
     {
         if ('=' == PeekChr(Lexer))
@@ -113,15 +121,15 @@ const char *TokenTypeToStr(TokenType Type)
         "TOKEN_THEN", "TOKEN_TRUE", "TOKEN_TYPE", 
         "TOKEN_UNIT", "TOKEN_UNTIL", "TOKEN_USES", 
         "TOKEN_VAR", 
-        "TOKEN_WHILE", "TOKEN_WIDTH", 
+        "TOKEN_WHILE", "TOKEN_WITH", 
         "TOKEN_XOR",
 
         /* symbols */
         "TOKEN_PLUS", "TOKEN_MINUS", "TOKEN_STAR", "TOKEN_SLASH",
         "TOKEN_PLUS_EQUAL", "TOKEN_MINUS_EQUAL", "TOKEN_STAR_EQUAL", "TOKEN_SLASH_EQUAL",
         "TOKEN_STAR_STAR",
-        "TOKEN_EQUAL", "TOKEN_LESS", "TOKEN_GREATER",
-        "TOKEN_DOT", "TOKEN_COMMA", "TOKEN_COLON", 
+        "TOKEN_EQUAL", "TOKEN_LESS", "TOKEN_GREATER", "TOKEN_LESS_GREATER",
+        "TOKEN_DOT", "TOKEN_COMMA", "TOKEN_COLON", "TOKEN_SEMICOLON",
         "TOKEN_LEFT_BRACKET", "TOKEN_RIGHT_BRACKET", 
         "TOKEN_LEFT_PAREN", "TOKEN_RIGHT_PAREN",
         "TOKEN_CARET", "TOKEN_AT", "TOKEN_DOLLAR", "TOKEN_HASHTAG", "TOKEN_AMPERSAND", "TOKEN_PERCENTAGE",
@@ -214,12 +222,11 @@ static void SkipWhitespace(Tokenizer *Lexer)
                     if ('\n' == *Lexer->Curr)
                         Lexer->Line++;
                 }
-
-                if (!IsAtEnd(Lexer))
-                {
-                    Lexer->Curr++; /* skip ')' */
-                }
+                /* skip ')', because the above loop did not skip it, 
+                 * only skipped the '*' in '*)' */
+                AdvanceChrPtr(Lexer); 
             }
+            else goto out;
         } break;
 
         case '{': /* { comment } */
@@ -243,6 +250,7 @@ static void SkipWhitespace(Tokenizer *Lexer)
                 }
                 Lexer->Line++;
             }
+            else goto out;
         } break;
 
         default: goto out;
