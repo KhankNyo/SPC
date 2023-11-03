@@ -17,8 +17,8 @@ set "OUTPUT=bin\pascal.exe"
 
 
 if "%ARG1%"=="clean" (
-    rmdir /q /s bin
-    rmdir /q /s obj
+    if exist bin\ rmdir /q /s bin
+    if exist obj\ rmdir /q /s obj
 
     set "MSG=Removed build artifacts."
 ) else (
