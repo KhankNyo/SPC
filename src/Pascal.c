@@ -28,7 +28,8 @@ int PascalMain(int argc, const char *const *argv)
     Token Current;
     do {
         Current = TokenizerGetToken(&Lexer);
-        fprintf(stdout, "Type %s: \"%.*s\"\n", 
+        fprintf(stdout, "Line %u: Type %s: \"%.*s\"\n", 
+                Current.Line,
                 TokenTypeToStr(Current.Type),
                 Current.Len, Current.Str
         );
