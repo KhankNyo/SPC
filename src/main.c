@@ -1,8 +1,9 @@
 
-#include <stdio.h>
+#include "Include/Pascal.h"
 
-int main(void)
+
+int main(int argc, char **argv)
 {
-    printf("Hello, world\n");
-    return 0;
+    return PascalMain(argc, (const char *const *)argv);
 }
+
