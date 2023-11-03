@@ -44,14 +44,6 @@ static Token ConsumeWord(Tokenizer *Lexer);
 /* return the type of the current lexeme */
 static TokenType GetLexemeType(Tokenizer *Lexer);
 
-/* returns ExpectedType if the lexeme from Start to Curr is equal to the Rest string,
- * else return TOKEN_IDENTIFIER */
-static TokenType IdentifierOrKeyword(Tokenizer *Lexer, 
-        UInt StartIdx, 
-        UInt RestLen, const char *Rest, 
-        TokenType ExpectedType
-);
-
 
 
 #define CHR_TO_UPPER(Chr) ((Chr) & ~((U8)1 << 5)) 
@@ -428,254 +420,140 @@ static Token ConsumeWord(Tokenizer *Lexer)
     return MakeToken(Lexer, GetLexemeType(Lexer));
 }
 
+
 static TokenType GetLexemeType(Tokenizer *Lexer)
 {
-    UInt LexemeLen = Lexer->Curr - Lexer->Start;
-    if (LexemeLen < 2)
+    typedef struct Keyword {
+        const char *Str;
+        UInt Len;
+        UInt Type;
+    } Keyword;
+
+    Keyword KeywordLut[][5] = 
+    {
+        ['A'] = {
+            {.Str = "ND",   .Len = 2, .Type = TOKEN_AND}, 
+            {.Str = "RRAY", .Len = 4, .Type = TOKEN_ARRAY}, 
+            {.Str = "SM",   .Len = 2, .Type = TOKEN_ASM}
+        },
+        ['B'] = {
+            {.Str = "EGIN", .Len = 4, .Type = TOKEN_BEGIN},
+            {.Str = "REAK", .Len = 4, .Type = TOKEN_BREAK}
+        },
+        ['C'] = {
+            {.Str = "ASE", .Len = 3, .Type = TOKEN_CASE},
+            {.Str = "ONST", .Len = 4, .Type = TOKEN_CONST},
+            {.Str = "ONTINUE", .Len = 7, .Type = TOKEN_CONTINUE},
+            {.Str = "ONSTRUCTOR", .Len = 10, .Type = TOKEN_CONSTRUCTOR},
+        },
+        ['D'] = {
+            {.Str = "O", .Len = 1, .Type = TOKEN_DO},
+            {.Str = "IV", .Len = 2, .Type = TOKEN_DIV},
+            {.Str = "OWNTO", .Len = 5, .Type = TOKEN_DOWNTO},
+            {.Str = "ESTRUCTOR", .Len = 9, .Type = TOKEN_DESTRUCTOR},
+        },
+        ['E'] = {
+            {.Str = "ND", .Len = 2, .Type = TOKEN_END},
+            {.Str = "LSE", .Len = 3, .Type = TOKEN_ELSE},
+        },
+        ['F'] = {
+            {.Str = "OR", .Len = 2, .Type = TOKEN_FOR},
+            {.Str = "ILE", .Len = 3, .Type = TOKEN_FILE},
+            {.Str = "ALSE", .Len = 4, .Type = TOKEN_FALSE},
+            {.Str = "UNCTION", .Len = 7, .Type = TOKEN_FUNCTION},
+        },
+        ['G'] = {
+            {.Str = "OTO", .Len = 3, .Type = TOKEN_GOTO},
+        },
+        ['H'] = { {0} },
+        ['I'] = {
+            {.Str = "F", .Len = 1, .Type = TOKEN_IF},
+            {.Str = "N", .Len = 1, .Type = TOKEN_IN},
+            {.Str = "NLINE", .Len = 5, .Type = TOKEN_INLINE},
+            {.Str = "NTERFACE", .Len = 8, .Type = TOKEN_INTERFACE},
+            {.Str = "MPLEMENTATION", .Len = 13, .Type = TOKEN_IMPLEMENTATION},
+        },
+        ['J'] = { {0} },
+        ['K'] = { {0} },
+        ['L'] = {
+            {.Str = "ABEL", .Len = 4, .Type = TOKEN_LABEL},
+        },
+        ['M'] = {
+            {.Str = "ODE", .Len = 3, .Type = TOKEN_MODE},
+        },
+        ['N'] = {
+            {.Str = "IL", .Len = 2, .Type = TOKEN_NIL},
+            {.Str = "OT", .Len = 2, .Type = TOKEN_NOT},
+        },
+        ['O'] = {
+            {.Str = "F", .Len = 1, .Type = TOKEN_OF},
+            {.Str = "N", .Len = 1, .Type = TOKEN_ON},
+            {.Str = "R", .Len = 1, .Type = TOKEN_OR},
+            {.Str = "BJECT", .Len = 5, .Type = TOKEN_OBJECT},
+            {.Str = "NLINE", .Len = 5, .Type = TOKEN_INLINE},
+        },
+        ['P'] = {
+            {.Str = "ACKED", .Len = 5, .Type = TOKEN_PACKED},
+            {.Str = "ROGRAM", .Len = 6, .Type = TOKEN_PROGRAM},
+            {.Str = "ROCEDURE", .Len = 8, .Type = TOKEN_PROCEDURE},
+        },
+        ['Q'] = { {0} },
+        ['R'] = {
+            {.Str = "EPEAT", .Len = 5, .Type = TOKEN_RECORD},
+            {.Str = "ECORD", .Len = 5, .Type = TOKEN_REPEAT},
+        },
+        ['S'] = {
+            {.Str = "ET", .Len = 2, .Type = TOKEN_SET},
+            {.Str = "HR", .Len = 2, .Type = TOKEN_SHR},
+            {.Str = "HL", .Len = 2, .Type = TOKEN_SHL},
+            {.Str = "RING", .Len = 4, .Type = TOKEN_STRING},
+        },
+        ['T'] = {
+            {.Str = "HEN", .Len = 3, .Type = TOKEN_THEN},
+            {.Str = "RUE", .Len = 3, .Type = TOKEN_TRUE},
+            {.Str = "YPE", .Len = 3, .Type = TOKEN_TYPE},
+        },
+        ['U'] = {
+            {.Str = "SES", .Len = 3, .Type = TOKEN_USES},
+            {.Str = "NIT", .Len = 3, .Type = TOKEN_UNIT},
+            {.Str = "NTIL", .Len = 4, .Type = TOKEN_UNTIL},
+        },
+        ['V'] = {
+            {.Str = "AR", .Len = 2, .Type = TOKEN_VAR},
+        },
+        ['W'] = {
+            {.Str = "ITH", .Len = 3, .Type = TOKEN_WITH},
+            {.Str = "HILE", .Len = 4, .Type = TOKEN_WHILE},
+        },
+        ['X'] = {
+            {.Str = "OR", .Len = 2, .Type = TOKEN_XOR},
+        },
+        ['Y'] = { {0} },
+        ['Z'] = { {0} },
+    };
+
+    if ('_' == *Lexer->Start)
     {
         return TOKEN_IDENTIFIER;
     }
 
-#define LETTER(Index) CHR_TO_UPPER(Lexer->Start[Index])
-    switch (CHR_TO_UPPER(Lexer->Start[0]))
-    {
-
-    case 'A':
-    {
-        switch (LETTER(1))
-        {
-        case 'N': return IdentifierOrKeyword(Lexer, 2, 1, "D", TOKEN_AND);
-        case 'R': return IdentifierOrKeyword(Lexer, 2, 3, "RAY", TOKEN_ARRAY);
-        case 'S': return IdentifierOrKeyword(Lexer, 2, 1, "M", TOKEN_ASM);
-        default: break;
-        }
-    } break;
-    
-
-    case 'B':
-    {
-        if ('E' == LETTER(1))
-            return IdentifierOrKeyword(Lexer, 2, 3, "GIN", TOKEN_BEGIN);
-        else return IdentifierOrKeyword(Lexer, 1, 4, "REAK", TOKEN_BREAK);
-    } break;
-
-
-    case 'C':
-    {
-        if ('A' == LETTER(1))
-            return IdentifierOrKeyword(Lexer, 2, 2, "SE", TOKEN_CASE);
-
-        if ((LexemeLen >= sizeof("CONST") - 1)
-        && LETTER(1) == 'O' && LETTER(2) == 'N')
-        {
-            TokenType Type = IdentifierOrKeyword(Lexer, 3, 2, "ST", TOKEN_CONST);
-            if (TOKEN_IDENTIFIER != Type)
-                return Type;
-
-            Type = IdentifierOrKeyword(Lexer, 3, 5, "TINUE", TOKEN_CONTINUE);
-            if (TOKEN_IDENTIFIER != Type)
-                return Type;
-
-            return IdentifierOrKeyword(Lexer, 3, 8, "STRUCTOR", TOKEN_CONSTRUCTOR);
-        }
-    } break;
-
-
-    case 'D':
-    {
-        switch (LETTER(1))
-        {
-        case 'E': return IdentifierOrKeyword(Lexer, 2, 8, "STRUCTOR", TOKEN_DESTRUCTOR);
-        case 'I': return IdentifierOrKeyword(Lexer, 2, 1, "V", TOKEN_DIV);
-        case 'O': 
-        {
-            if (LexemeLen == 2) 
-                return TOKEN_DO;
-            return IdentifierOrKeyword(Lexer, 2, 4, "WNTO", TOKEN_DOWNTO);
-        } break;
-        default: break;
-        }
-    } break;
-
-
-    case 'E': 
-    {
-        if ('L' == LETTER(1))
-            return IdentifierOrKeyword(Lexer, 2, 2, "SE", TOKEN_ELSE);
-        else return IdentifierOrKeyword(Lexer, 1, 2, "ND", TOKEN_END);
-    } break;
-
-
-    case 'F':
-    {
-        switch (LETTER(1))
-        {
-        case 'A': return IdentifierOrKeyword(Lexer, 2, 3, "LSE", TOKEN_FALSE);
-        case 'I': return IdentifierOrKeyword(Lexer, 2, 2, "LE", TOKEN_FILE);
-        case 'O': return IdentifierOrKeyword(Lexer, 2, 1, "R", TOKEN_FOR);
-        case 'U': return IdentifierOrKeyword(Lexer, 2, 6, "NCTION", TOKEN_FUNCTION);
-        default: break;
-        }
-    } break;
-
-
-    case 'G': return IdentifierOrKeyword(Lexer, 1, 3, "OTO", TOKEN_GOTO);
-
-
-    case 'I':
-    {
-        switch (LETTER(1))
-        {
-        case 'F': return LexemeLen == 2 ? TOKEN_IF : TOKEN_IDENTIFIER;
-        case 'M': return IdentifierOrKeyword(Lexer, 2, 12, "PLEMENTATION", TOKEN_IMPLEMENTATION);
-        case 'N':
-        {
-            if (LexemeLen == 2)
-                return TOKEN_IN;
-            else if ('L' == LETTER(2))
-                return IdentifierOrKeyword(Lexer, 3, 3, "INE", TOKEN_INLINE);
-            else return IdentifierOrKeyword(Lexer, 2, 7, "TERFACE", TOKEN_INTERFACE);
-        } break;
-        default: break;
-        }
-    } break;
-
-
-    case 'L': return IdentifierOrKeyword(Lexer, 1, 4, "ABEL", TOKEN_LABEL);
-    case 'M': return IdentifierOrKeyword(Lexer, 1, 3, "ODE", TOKEN_MODE);
-
-    case 'N': 
-    {
-        if ('I' == LETTER(1))
-            return IdentifierOrKeyword(Lexer, 2, 1, "L", TOKEN_NIL);
-        else return IdentifierOrKeyword(Lexer, 1, 2, "OT", TOKEN_NOT);
-    } break;
-
-
-    case 'O':
-    {
-        switch (LETTER(1))
-        {
-        case 'R': return LexemeLen == 2 ? TOKEN_OR : TOKEN_IDENTIFIER;
-        case 'F': return LexemeLen == 2 ? TOKEN_OF : TOKEN_IDENTIFIER;
-        case 'N': return LexemeLen == 2 ? TOKEN_ON : TOKEN_IDENTIFIER;
-        case 'B': return IdentifierOrKeyword(Lexer, 2, 4, "JECT", TOKEN_OBJECT);
-        case 'P': return IdentifierOrKeyword(Lexer, 2, 6, "ERATOR", TOKEN_OPERATOR);
-        default: break;
-        }
-    } break;
-
-
-    case 'P': 
-    {
-        if ('A' == LETTER(1))
-            return IdentifierOrKeyword(Lexer, 2, 4, "CKED", TOKEN_PACKED);
-
-        if ((LexemeLen >= sizeof("PROGRAM") - 1)
-        && ('R' == LETTER(1) && 'O' == LETTER(2)))
-        {
-            if ('G' == LETTER(3))
-                return IdentifierOrKeyword(Lexer, 4, 3, "RAM", TOKEN_PROGRAM);
-            else return IdentifierOrKeyword(Lexer, 3, 6, "CEDURE", TOKEN_PROCEDURE);
-        }
-    } break;
-
-
-    case 'R':
-    {
-        if ((LexemeLen == (sizeof("RECORD") - 1))
-        && 'E' == LETTER(1))
-        {
-            if ('C' == LETTER(2))
-                return IdentifierOrKeyword(Lexer, 3, 3, "ORD", TOKEN_RECORD);
-            else return IdentifierOrKeyword(Lexer, 2, 4, "PEAT", TOKEN_REPEAT);
-        }
-    } break;
-
-
-    case 'S':
-    {
-        switch (LETTER(1))
-        {
-        case 'E': return IdentifierOrKeyword(Lexer, 2, 1, "T", TOKEN_SET);
-        case 'T': return IdentifierOrKeyword(Lexer, 2, 4, "RING", TOKEN_STRING);
-        case 'H': 
-        {
-            if (LexemeLen == sizeof("SHL") - 1)
-            {
-                if ('L' == LETTER(2))
-                    return TOKEN_SHL;
-                if ('R' == LETTER(2))
-                    return TOKEN_SHR;
-            }
-        } break;
-        default: break;
-        }
-    } break;
-
-
-    case 'T': 
-    {
-        switch (LETTER(1))
-        {
-        case 'R': return IdentifierOrKeyword(Lexer, 2, 2, "UE", TOKEN_TRUE);
-        case 'H': return IdentifierOrKeyword(Lexer, 2, 2, "EN", TOKEN_THEN);
-        case 'Y': return IdentifierOrKeyword(Lexer, 2, 2, "PE", TOKEN_TYPE);
-        default: break;
-        }
-    } break;
-
-
-    case 'U':
-    {
-        if ('S' == LETTER(1))
-            return IdentifierOrKeyword(Lexer, 2, 2, "ES", TOKEN_USES);
-
-        if (LexemeLen >= sizeof("UNIT") - 1
-        && 'N' == LETTER(1))
-        {
-            if ('I' == LETTER(2))
-                return IdentifierOrKeyword(Lexer, 3, 1, "T", TOKEN_UNIT);
-            else return IdentifierOrKeyword(Lexer, 2, 3, "TIL", TOKEN_UNTIL);
-        }
-    } break;
-
-
-    case 'V': return IdentifierOrKeyword(Lexer, 1, 2, "AR", TOKEN_VAR);
-
-
-    case 'W': 
-    {
-        if ('H' == LETTER(1))
-            return IdentifierOrKeyword(Lexer, 2, 3, "ILE", TOKEN_WHILE);
-        else return IdentifierOrKeyword(Lexer, 1, 3, "ITH", TOKEN_WITH);
-    } break;
-
-
-    case 'X': return IdentifierOrKeyword(Lexer, 1, 2, "OR", TOKEN_XOR);
-
-        
-    default: break;
-    }
-#undef LETTER
-
-    return TOKEN_IDENTIFIER;
-}
-
-
-static TokenType IdentifierOrKeyword(Tokenizer *Lexer, UInt StartIdx, UInt RestLen, const char *Rest, TokenType ExpectedType)
-{
-    UInt ExpectedLen = StartIdx + RestLen;
+    U8 Key = CHR_TO_UPPER(*Lexer->Start);
     UInt LexemeLen = Lexer->Curr - Lexer->Start;
-
-    if (ExpectedLen == LexemeLen
-    && AlphaArrayEquNoCase(Lexer->Start + StartIdx, Rest, RestLen))
+    for (UInt i = 0; i < STATIC_ARRAY_SIZE(KeywordLut[Key]); i++)
     {
-        return ExpectedType;
-    }
+        Keyword *KeywordSlot = &KeywordLut[Key][i];
 
+        if (LexemeLen - 1 == KeywordSlot->Len
+        && AlphaArrayEquNoCase(Lexer->Start + 1, KeywordSlot->Str, KeywordSlot->Len))
+        {
+            return KeywordSlot->Type;
+        }
+    }
     return TOKEN_IDENTIFIER;
 }
+
+
+
 
 static bool AlphaArrayEquNoCase(const char *Str1, const char *UpperStr2, UInt Len)
 {
