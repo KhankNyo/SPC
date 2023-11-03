@@ -6,13 +6,30 @@
 
 
 
-static bool IsAtEnd(Tokenizer *Lexer);
+static bool IsAtEnd(const Tokenizer *Lexer);
 static bool IsNumber(char ch);
 static bool IsAlpha(char ch);
 static bool IsHex(char ch);
 
+/* returns the token that Curr is pointing at,
+ * then increment curr if curr is not pointing at the null terminator */
+static char AdvanceChrPtr(Tokenizer *Lexer);
+
+/* if curr is at end, returns 0,
+ * else return the char ahead of curr */
+static char PeekChr(const Tokenizer *Lexer);
+
+/* skips whitespace, newline, comments */
+static void SkipWhitespace(Tokenizer *Lexer);
+
+/* creates a token with the given type */
 static Token MakeToken(Tokenizer *Lexer, TokenType Type);
+
+/* consumes a numeric literal and return its token */
 static Token ConsumeNumber(Tokenizer *Lexer);
+
+/* consumes an identifier or a keyword */
+static Token ConsumeWord(Tokenizer *Lexer);
 
 
 
@@ -30,15 +47,43 @@ Tokenizer TokenizerInit(const char *Source)
 
 Token TokenizerGetToken(Tokenizer *Lexer)
 {
+    SkipWhitespace(Lexer);
     if (IsAtEnd(Lexer))
         return MakeToken(Lexer, TOKEN_EOF);
 
-    if (IsNumber(*Lexer->Curr))
+    char CurrChr = *Lexer->Curr;
+    if (IsNumber(CurrChr))
     {
         return ConsumeNumber(Lexer);
     }
+    if (IsAlpha(CurrChr))
+    {
+        return ConsumeWord(Lexer);
+    }
 
-    return (Token){0};
+    switch (CurrChr)
+    {
+    case '+': return MakeToken(Lexer, TOKEN_PLUS);
+    case '-': return MakeToken(Lexer, TOKEN_PLUS);
+    case '*': 
+    {
+        if ('*' == PeekChr(Lexer))
+            return MakeToken(Lexer, TOKEN_STAR_STAR);
+        if ('=' == PeekChr(Lexer))
+            return MakeToken(Lexer, TOKEN_STAR_EQUAL);
+        else return MakeToken(Lexer, TOKEN_STAR);
+    } break;
+    case '/':
+    {
+        if ('=' == PeekChr(Lexer))
+            return MakeToken(Lexer, TOKEN_SLASH_EQUAL);
+        else return MakeToken(Lexer, TOKEN_SLASH);
+    } break;
+
+    default: break;
+    }
+
+    return MakeToken(Lexer, TOKEN_ERROR);
 }
 
 
@@ -73,11 +118,17 @@ const char *TokenTypeToStr(TokenType Type)
 
         /* symbols */
         "TOKEN_PLUS", "TOKEN_MINUS", "TOKEN_STAR", "TOKEN_SLASH",
+        "TOKEN_PLUS_EQUAL", "TOKEN_MINUS_EQUAL", "TOKEN_STAR_EQUAL", "TOKEN_SLASH_EQUAL",
+        "TOKEN_STAR_STAR",
         "TOKEN_EQUAL", "TOKEN_LESS", "TOKEN_GREATER",
         "TOKEN_DOT", "TOKEN_COMMA", "TOKEN_COLON", 
         "TOKEN_LEFT_BRACKET", "TOKEN_RIGHT_BRACKET", 
         "TOKEN_LEFT_PAREN", "TOKEN_RIGHT_PAREN",
         "TOKEN_CARET", "TOKEN_AT", "TOKEN_DOLLAR", "TOKEN_HASHTAG", "TOKEN_AMPERSAND", "TOKEN_PERCENTAGE",
+
+        "TOKEN_NUMBER_LITERAL", "TOKEN_HEX_LITERAL", "TOKEN_INTEGER_LITERAL", 
+        "TOKEN_STRING_LITERAL", 
+        "TOKEN_IDENTIFIER"
     };
     PASCAL_ASSERT(Type < STATIC_ARRAY_SIZE(TokenNameLut), "Invalid token type: %d\n", Type);
     return TokenNameLut[Type];
@@ -96,13 +147,13 @@ static bool IsAtEnd(const Tokenizer *Lexer)
 
 static bool IsNumber(char ch)
 {
-    return ('0' <= ch) || (ch <= '9');
+    return ('0' <= ch) && (ch <= '9');
 }
 
 static bool IsAlpha(char ch)
 {
     return (('A' <= ch) && (ch <= 'Z'))
-        || (('a' <= ch) || (ch <= 'z'));
+        || (('a' <= ch) && (ch <= 'z'));
 }
 
 static bool IsHex(char ch)
@@ -114,12 +165,106 @@ static bool IsHex(char ch)
 
 
 
+static char AdvanceChrPtr(Tokenizer *Lexer)
+{
+    char ret = *Lexer->Curr;
+    if (!IsAtEnd(Lexer))
+    {
+        Lexer->Curr++;
+    }
+    return ret;
+}
+
+
+static char PeekChr(const Tokenizer *Lexer)
+{
+    if (IsAtEnd(Lexer)) 
+        return '\0';
+    return Lexer->Curr[1];
+}
+
+
+static void SkipWhitespace(Tokenizer *Lexer)
+{
+    while (1)
+    {
+        switch (*Lexer->Curr)
+        {
+        case ' ':
+        case '\r':
+        case '\t':
+        {
+            AdvanceChrPtr(Lexer);
+        } break;
+
+        case '\n':
+        {
+            Lexer->Line++;
+            AdvanceChrPtr(Lexer);
+        } break;
+
+        case '(': /* (* comment *) */
+        {
+            if ('*' == PeekChr(Lexer))
+            {
+                Lexer->Curr += 2; /* skip '(*' */
+                while (!IsAtEnd(Lexer) 
+                && !('*' == AdvanceChrPtr(Lexer) && ')' != *Lexer->Curr))
+                {
+                    if ('\n' == *Lexer->Curr)
+                        Lexer->Line++;
+                }
+
+                if (!IsAtEnd(Lexer))
+                {
+                    Lexer->Curr++; /* skip ')' */
+                }
+            }
+        } break;
+
+        case '{': /* { comment } */
+        {
+            Lexer->Curr++; /* skip '}' */
+            do {
+                if ('\n' == *Lexer->Curr)
+                    Lexer->Line++;
+            } while (!IsAtEnd(Lexer) && ('}' != AdvanceChrPtr(Lexer)));
+            /* pointing at EOF or next char */
+        } break;
+
+        case '/': // comment 
+        {
+            if ('/' == PeekChr(Lexer))
+            {
+                Lexer->Curr += 2; /* skip '//' */
+                while (!IsAtEnd(Lexer) && ('\n' != *Lexer->Curr))
+                {
+                    AdvanceChrPtr(Lexer);
+                }
+                Lexer->Line++;
+            }
+        } break;
+
+        default: goto out;
+        }
+    }
+
+out:
+    Lexer->Start = Lexer->Curr;
+}
+
+
+
+
+
+
+
 static Token MakeToken(Tokenizer *Lexer, TokenType Type)
 {
     Token Tok = {
         .Type = Type,
         .Str = Lexer->Start,
-        .Len = Lexer->Curr - Lexer->Start
+        .Len = Lexer->Curr - Lexer->Start,
         .Line = Lexer->Line,
     };
     Lexer->Start = Lexer->Curr;
@@ -163,4 +308,11 @@ static Token ConsumeNumber(Tokenizer *Lexer)
     }
     return MakeToken(Lexer, Type);
 }
+
+
+static Token ConsumeWord(Tokenizer *Lexer)
+{
+    return MakeToken(Lexer, TOKEN_EOF);
+}
+
 

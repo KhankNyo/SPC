@@ -6,12 +6,12 @@ set "ARG1=%1"
 set "OUTDIRS=bin obj"
 
 set "CC=gcc"
-set "CCF=-Og -DDEBUG -Wall -Wextra -Wpedantic"
+set "CCF=-g -Og -DDEBUG -Wall -Wextra -Wpedantic"
 set "LDF="
 set "LIBS="
 
 set "MSG="
-set "SRCS=src\main.c src\Pascal.c src\Memory.c"
+set "SRCS=src\main.c src\Pascal.c src\Memory.c src\Tokenizer.c"
 set "OUTPUT=bin\pascal.exe"
 
 
