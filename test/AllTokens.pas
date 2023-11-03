@@ -70,6 +70,7 @@ xor
 += -= *= /=
 **
 = < > <>
+<< >>
 . , : ;
 [ ] ( ) 
 ^ @ $ # & %
@@ -79,6 +80,7 @@ xor
 123 
 'this is a string literal'
 'this is a string literal with a newline'#10
+'this is an extended string literal with '#10#13' multiple escape codes'
 ThisIsAnIdentifier
 
 

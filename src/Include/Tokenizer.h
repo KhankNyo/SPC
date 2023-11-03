@@ -3,6 +3,7 @@
 
 
 #include "Common.h"
+#include "PascalString.h"
 
 typedef struct Tokenizer 
 {
@@ -61,6 +62,11 @@ typedef struct Token
 {
     TokenType Type;
     const char *Str;
+    union {
+        U64 Int;
+        F64 Real;
+        PascalStr PStr;
+    } ValueAs;
     UInt Len;
     UInt Line;
 } Token;

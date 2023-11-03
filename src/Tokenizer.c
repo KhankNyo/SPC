@@ -397,14 +397,40 @@ static Token ConsumeNumber(Tokenizer *Lexer)
 
 static Token ConsumeString(Tokenizer *Lexer)
 {
-    /* TODO: escape codes */
-    while ('\'' != AdvanceChrPtr(Lexer))
-    {}
+    Lexer->Curr = Lexer->Start;
+    UInt Trim;
+    do {
+        Trim = 2; /* trim both the opening and closing quotes */
+
+        /* skip beginning "'" */
+        AdvanceChrPtr(Lexer);
+
+        /* consume string literal */
+        while (!IsAtEnd(Lexer) && '\'' != AdvanceChrPtr(Lexer))
+        {}
+
+        /* consumes escape codes */
+        while (!IsAtEnd(Lexer) && '#' == *Lexer->Curr)
+        {
+            /* consume number */
+            U8 Code = 0;
+            do {
+                Code += AdvanceChrPtr(Lexer);
+                Code *= 10;
+            } while (!IsAtEnd(Lexer) && IsNumber(*Lexer->Curr));
+            Trim = 1; /* don't want to trim the last character of the number */
+        }
+    } while (!IsAtEnd(Lexer) && ('\'' == *Lexer->Curr));
+
+
+    if (IsAtEnd(Lexer))
+        return MakeToken(Lexer, TOKEN_ERROR);
+
     Token StringToken = MakeToken(Lexer, TOKEN_STRING_LITERAL);
 
     /* consume opening and closing quotes */
-    StringToken.Str++; 
-    StringToken.Len -= 2;
+    StringToken.Str++;
+    StringToken.Len -= Trim;
     return StringToken;
 }
 
@@ -490,7 +516,7 @@ static TokenType GetLexemeType(Tokenizer *Lexer)
             {.Str = "N", .Len = 1, .Type = TOKEN_ON},
             {.Str = "R", .Len = 1, .Type = TOKEN_OR},
             {.Str = "BJECT", .Len = 5, .Type = TOKEN_OBJECT},
-            {.Str = "NLINE", .Len = 5, .Type = TOKEN_INLINE},
+            {.Str = "PERATOR", .Len = 7, .Type = TOKEN_OPERATOR},
         },
         ['P'] = {
             {.Str = "ACKED", .Len = 5, .Type = TOKEN_PACKED},
@@ -506,7 +532,7 @@ static TokenType GetLexemeType(Tokenizer *Lexer)
             {.Str = "ET", .Len = 2, .Type = TOKEN_SET},
             {.Str = "HR", .Len = 2, .Type = TOKEN_SHR},
             {.Str = "HL", .Len = 2, .Type = TOKEN_SHL},
-            {.Str = "RING", .Len = 4, .Type = TOKEN_STRING},
+            {.Str = "TRING", .Len = 5, .Type = TOKEN_STRING},
         },
         ['T'] = {
             {.Str = "HEN", .Len = 3, .Type = TOKEN_THEN},

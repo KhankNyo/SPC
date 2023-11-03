@@ -28,15 +28,19 @@
 
 
 #define STATIC_ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
+
 #define DIE() ((*(volatile char *)NULL) = 0)
+
 #define PASCAL_UNREACHABLE(...) \
-do {\
-    fprintf(stderr, "Invalid code path reached on line "\
-            STRFY(__LINE__)" in "__FILE__":\n    "\
-            __VA_ARGS__\
-    );\
-    DIE();\
-}while(0)
+    do {\
+        fprintf(stderr, "Invalid code path reached on line "\
+                STRFY(__LINE__)" in "__FILE__":\n    "\
+                __VA_ARGS__\
+                );\
+        DIE();\
+    }while(0)
+
+#define PASCAL_STATIC_ASSERT(COND, MSG) static int static_assertion[(COND)?1:-1]
 
 
 #ifdef DEBUG
@@ -46,7 +50,7 @@ do {\
                 STRFY(__LINE__)" in "__FILE__": "\
                 STRFY(expr)":\n    "\
                 __VA_ARGS__\
-        );\
+                );\
         DIE();\
     }\
 }while(0)
@@ -71,6 +75,35 @@ typedef int32_t I32;
 typedef int64_t I64;
 typedef intptr_t ISize;
 
+
+
+PASCAL_STATIC_ASSERT(sizeof(double) == sizeof(U64), "Unsupported double size");
+typedef double F64;
+
+#if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || \
+    defined(__BIG_ENDIAN__) || \
+    defined(__ARMEB__) || \
+    defined(__THUMBEB__) || \
+    defined(__AARCH64EB__) || \
+    defined(_MIBSEB) || defined(__MIBSEB) || defined(__MIBSEB__)
+#  define PASCAL_BIG_ENDIAN 1
+
+#elif defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN || \
+    defined(__LITTLE_ENDIAN__) || \
+    defined(__ARMEL__) || \
+    defined(__THUMBEL__) || \
+    defined(__AARCH64EL__) || \
+    defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__)
+#  define PASCAL_LITTLE_ENDIAN 1
+
+#else
+#  error "Endianness cannot be determine at compile time, use IsLittleEndian() to find out"
+static bool IsLittleEndian(void)
+{
+    U64 Test = 1;
+    return *(U8*)&Test == 1;
+}
+#endif
 
 
 
