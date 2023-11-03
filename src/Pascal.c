@@ -2,6 +2,7 @@
 #include "Include/Common.h"
 #include "Include/Pascal.h"
 #include "Include/Memory.h"
+#include "Include/Tokenizer.h"
 
 
 static char *LoadFile(const char *FileName);
@@ -22,9 +23,17 @@ int PascalMain(int argc, const char *const *argv)
 
     const char *InFileName = argv[1];
     char *Source = LoadFile(InFileName);
-    fprintf(stderr, "---------------------------\n");
-    fprintf(stderr, "\"%s\"\n", Source);
-    fprintf(stderr, "---------------------------\n");
+
+    Tokenizer Lexer = TokenizerInit(Source);
+    Token Current;
+    do {
+        Current = TokenizerGetToken(&Lexer);
+        fprintf(stdout, "Type %s: \"%.*s\"\n", 
+                TokenTypeToStr(Current.Type),
+                Current.Len, Current.Str
+        );
+    } while (Current.Type != TOKEN_EOF);
+
     UnloadFile(Source);
     return PASCAL_EXIT_SUCCESS;
 }
