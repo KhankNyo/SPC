@@ -8,10 +8,19 @@
 #include <stdio.h>
 
 
+/* this is a cry for help */
 #define _strfy(x) #x
 #define STRFY(x) _strfy(x)
 
-/* this is a cry for help */
+#define _glue1(x, y) x ## y
+#define _glue2(x, y) _glue1(x, y)
+#define _glue3(x, y) _glue2(x, y)
+#define _glue4(x, y) _glue3(x, y)
+#define _glue5(x, y) _glue4(x, y)
+#define _glue6(x, y) _glue5(x, y)
+#define _glue7(x, y) _glue6(x, y)
+#define GLUE(x, y) _glue7(x, y)
+
 #define _UNUSED1(a) (void)(a)
 #define _UNUSED2(a, b) ((void)(a), (void)(b))
 #define _UNUSED3(a, b, c) (_UNUSED2(a, b), (void)(c))
@@ -20,7 +29,7 @@
 
 #define _COUNT(_1, _2, _3, _4, _5, N, ...) N
 #define _VANARGS(...) _COUNT(__VA_ARGS__, 5, 4, 3, 2, 1)
-#define _UNUSED_N(N, ...) _UNUSED ## N (__VA_ARGS__)
+#define _UNUSED_N(N, ...) GLUE(_UNUSED, N) (__VA_ARGS__)
 #define UNUSED(...) _UNUSED_N(_VANARGS(__VA_ARGS__), __VA_ARGS__) 
 
 
@@ -40,7 +49,7 @@
         DIE();\
     }while(0)
 
-#define PASCAL_STATIC_ASSERT(COND, MSG) static int static_assertion[(COND)?1:-1]
+#define PASCAL_STATIC_ASSERT(COND, MSG) extern int static_assertion[(COND)?1:-1]
 
 
 #ifdef DEBUG
@@ -80,29 +89,34 @@ typedef intptr_t ISize;
 PASCAL_STATIC_ASSERT(sizeof(double) == sizeof(U64), "Unsupported double size");
 typedef double F64;
 
-#if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || \
+
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) || \
     defined(__BIG_ENDIAN__) || \
     defined(__ARMEB__) || \
     defined(__THUMBEB__) || \
     defined(__AARCH64EB__) || \
     defined(_MIBSEB) || defined(__MIBSEB) || defined(__MIBSEB__)
 #  define PASCAL_BIG_ENDIAN 1
+#  define PASCAL_LITTLE_ENDIAN 0
 
-#elif defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN || \
+#elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) || \
     defined(__LITTLE_ENDIAN__) || \
     defined(__ARMEL__) || \
     defined(__THUMBEL__) || \
     defined(__AARCH64EL__) || \
     defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__)
+#  define PASCAL_BIG_ENDIAN 0
 #  define PASCAL_LITTLE_ENDIAN 1
 
 #else
-#  error "Endianness cannot be determine at compile time, use IsLittleEndian() to find out"
 static bool IsLittleEndian(void)
 {
     U64 Test = 1;
     return *(U8*)&Test == 1;
 }
+#define PASCAL_BIG_ENDIAN IsLittleEndian()
+#define PASCAL_LITTLE_ENDIAN IsLittleEndian()
+
 #endif
 
 
