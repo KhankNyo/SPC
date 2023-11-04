@@ -32,6 +32,9 @@ static void SkipWhitespace(PascalTokenizer *Lexer);
 /* creates a token with the given type */
 static Token MakeToken(PascalTokenizer *Lexer, TokenType Type);
 
+/* creates an error token with the given info */
+static Token ErrorToken(PascalTokenizer *Lexer, TokenErrorInfo Info);
+
 /* consumes a numeric literal and return its token */
 static Token ConsumeNumber(PascalTokenizer *Lexer);
 
@@ -46,6 +49,8 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer);
 
 
 
+
+
 #define CHR_TO_UPPER(Chr) ((Chr) & ~((U8)1 << 5)) 
 
 
@@ -54,7 +59,7 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer);
 
 PascalTokenizer TokenizerInit(const U8 *Source)
 {
-    return (Tokenizer) {
+    return (PascalTokenizer) {
         .Start = Source,
         .Curr = Source,
         .Line = 1,
@@ -154,7 +159,7 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
     default: break;
     }
 
-    return MakeToken(Lexer, TOKEN_ERROR);
+    return ErrorToken(Lexer, TOKERR_UNKNOWN_TOKEN);
 }
 
 
@@ -356,6 +361,13 @@ static Token MakeToken(PascalTokenizer *Lexer, TokenType Type)
     return Tok;
 }
 
+static Token ErrorToken(PascalTokenizer *Lexer, TokenErrorInfo Info)
+{
+    Token Err = MakeToken(Lexer, TOKEN_ERROR);
+    Err.Literal.Err = Info;
+    return Err;
+}
+
 static Token ConsumeNumber(PascalTokenizer *Lexer)
 {
     TokenType Type = TOKEN_INTEGER_LITERAL;
@@ -363,35 +375,110 @@ static Token ConsumeNumber(PascalTokenizer *Lexer)
     if ('0' == Lexer->Start[0]
     && ('X' == CHR_TO_UPPER(Lexer->Start[1])))
     {
+        AdvanceChrPtr(Lexer); /* skip 'x' in 0x */
+
         Type = TOKEN_HEX_LITERAL;
-        do {
-            AdvanceChrPtr(Lexer);
-        } while (IsHex(*Lexer->Curr));
-        return MakeToken(Lexer, Type);
+        U64 Hex = 0;
+        while (IsHex(*Lexer->Curr))
+        {
+            UInt Hexit = AdvanceChrPtr(Lexer);
+            if (IsNumber(Hexit))
+                Hexit -= '0';
+            else 
+                Hexit = CHR_TO_UPPER(Hexit) - 'A' + 10;
+
+            Hex *= 16;
+            Hex += Hexit;
+        }
+
+        Token HexNumber = MakeToken(Lexer, Type);
+        HexNumber.Literal.Int = Hex;
+        return HexNumber;
     }
 
 
+    U64 Integer = 0;
     while (IsNumber(*Lexer->Curr))
     {
-        AdvanceChrPtr(Lexer);
+        Integer *= 10;
+        Integer += AdvanceChrPtr(Lexer) - '0';
     }
 
 
     /* decimal, or Real */
     if ('.' == *Lexer->Curr)
     {
-        Type = TOKEN_NUMBER_LITERAL;
-        do {
-            AdvanceChrPtr(Lexer);
-        } while (IsNumber(*Lexer->Curr));
+        AdvanceChrPtr(Lexer);
 
+        F64 Decimal = 0;
+        F64 Pow10 = 1.0;
+        Type = TOKEN_NUMBER_LITERAL;
+        /* consume decimal */
+        while (IsNumber(*Lexer->Curr))
+        {
+            Pow10 *= 10;
+            Decimal *= 10;
+            Decimal += AdvanceChrPtr(Lexer) - '0';
+        }
+        Decimal /= Pow10;
+        Decimal += Integer;
+
+        /* exponent form */
         if ('E' == CHR_TO_UPPER(*Lexer->Curr))
         {
-            PASCAL_UNREACHABLE("TODO: exponential notation");
-            DIE(); /* this function name is too good */
+            /* skip 'E' */
+            AdvanceChrPtr(Lexer);
+
+            AdvanceIfEqual(Lexer, '+');
+            bool Sign = AdvanceIfEqual(Lexer, '-');
+
+            /* consume exponent */
+            UInt Exponent = 0;
+            while (IsNumber(*Lexer->Curr))
+            {
+                Exponent *= 10;
+                Exponent += AdvanceChrPtr(Lexer) - '0';
+            }
+            static const U64 PowersOf10[] = {
+                1, 10, 100, 1000,
+                10000,
+                100000,
+                1000000,
+                10000000,
+                100000000,
+                1000000000,
+                10000000000,
+                100000000000,
+                1000000000000,
+                10000000000000,
+                100000000000000,
+                1000000000000000,
+                /* 
+                 * commented out because F64 precision is capped at 15 digit,
+                 * so there is no need for 10^16, 10^17 and 10^18,
+                 * while having 16 elements will make the modulo compile to an 
+                 * AND instruction
+                    10000000000000000,
+                    100000000000000000,
+                    1000000000000000000,
+                 */
+            };
+            U64 Pow10 = PowersOf10[Exponent % STATIC_ARRAY_SIZE(PowersOf10)];
+            Decimal = Sign 
+                ? Decimal / Pow10
+                : Decimal * Pow10;
         }
+
+        Token Number = MakeToken(Lexer, Type);
+        Number.Literal.Real = Decimal;
+        return Number;
     }
-    return MakeToken(Lexer, Type);
+    else 
+    {
+        Token Number = MakeToken(Lexer, Type);
+        Number.Literal.Int = Integer;
+        return Number;
+    }
 }
 
 
@@ -436,7 +523,7 @@ static Token ConsumeString(PascalTokenizer *Lexer)
 
 
     if (IsAtEnd(Lexer))
-        return MakeToken(Lexer, TOKEN_ERROR);
+        return ErrorToken(Lexer, TOKERR_STRLIT_UNTERMINATED);
 
     Token StringToken = MakeToken(Lexer, TOKEN_STRING_LITERAL);
 

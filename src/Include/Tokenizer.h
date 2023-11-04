@@ -58,6 +58,14 @@ typedef enum TokenType
 } TokenType;
 
 
+typedef enum TokenErrorInfo
+{
+    TOKERR_NONE = 0,
+    TOKERR_STRLIT_UNTERMINATED,
+    TOKERR_NUMBER_MALFORMED,
+} TokenErrorInfo;
+
+
 typedef struct Token 
 {
     TokenType Type;
@@ -66,6 +74,7 @@ typedef struct Token
         U64 Int;
         F64 Real;
         PascalStr Str;
+        TokenErrorInfo Err;
     } Literal;
     UInt Len;
     UInt Line;

@@ -33,7 +33,7 @@ int PascalRunFile(const U8 *InFileName, const U8 *OutFileName)
 {
     U8 *Source = LoadFile(InFileName);
     PascalTokenizer Lexer = TokenizerInit(Source);
-    PascalParser Parser;
+    PascalParser Parser = ParserInit(Lexer);
     UnloadFile(Source);
     return PASCAL_EXIT_SUCCESS;
 }
