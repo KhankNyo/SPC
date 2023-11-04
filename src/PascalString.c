@@ -5,7 +5,7 @@
 #include "Include/Memory.h"
 
 
-#ifdef PASCAL_LITTLE_ENDIAN
+#if PASCAL_LITTLE_ENDIAN
 
 
 
