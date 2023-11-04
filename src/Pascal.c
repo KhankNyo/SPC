@@ -22,27 +22,18 @@ int PascalMain(int argc, const U8 *const *argv)
     }
 
     const U8 *InFileName = argv[1];
+    const U8 *OutFileName = argv[2];
+    return PascalRunFile(InFileName, OutFileName);
+}
+
+
+
+
+int PascalRunFile(const U8 *InFileName, const U8 *OutFileName)
+{
     U8 *Source = LoadFile(InFileName);
-
-    Tokenizer Lexer = TokenizerInit(Source);
-    Token Current;
-    do {
-        Current = TokenizerGetToken(&Lexer);
-        fprintf(stdout, "Line %u: Type %s: ", 
-                Current.Line,
-                TokenTypeToStr(Current.Type)
-        );
-        if (Current.Type == TOKEN_STRING_LITERAL)
-        {
-            fprintf(stdout, "\"%s\"\n", PStrGetPtr(&Current.Literal.Str));
-            PStrDeinit(&Current.Literal.Str);
-        }
-        else
-        {
-            fprintf(stdout, "\"%.*s\"\n", Current.Len, Current.Str);
-        }
-    } while (Current.Type != TOKEN_EOF);
-
+    PascalTokenizer Lexer = TokenizerInit(Source);
+    PascalParser Parser;
     UnloadFile(Source);
     return PASCAL_EXIT_SUCCESS;
 }

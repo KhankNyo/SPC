@@ -11,7 +11,7 @@ set "LDF="
 set "LIBS="
 
 set "MSG="
-set "SRCS=src\main.c src\Pascal.c src\Memory.c src\Tokenizer.c"
+set "SRCS=src\main.c src\Pascal.c src\Memory.c src\Tokenizer.c, src\PascalString.c"
 set "OUTPUT=bin\pascal.exe"
 
 

@@ -5,11 +5,11 @@
 #include "Common.h"
 #include "PascalString.h"
 
-typedef struct Tokenizer 
+typedef struct PascalTokenizer 
 {
     const U8 *Start, *Curr;
     UInt Line;
-} Tokenizer;
+} PascalTokenizer;
 
 
 typedef enum TokenType 
@@ -72,12 +72,12 @@ typedef struct Token
 } Token;
 
 
-/* initializes Tokenizer struct with a Pascal source file */
-Tokenizer TokenizerInit(const U8 *Source);
+/* initializes PascalTokenizer struct with a Pascal source file */
+PascalTokenizer TokenizerInit(const U8 *Source);
 
 /* returns the consumed token in the source file, 
  * or TOKEN_EOF if there are none left */
-Token TokenizerGetToken(Tokenizer *Lexer);
+Token TokenizerGetToken(PascalTokenizer *Lexer);
 
 /* return the string of a token type */
 const U8 *TokenTypeToStr(TokenType Type);

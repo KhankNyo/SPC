@@ -6,7 +6,7 @@
 
 
 
-static bool IsAtEnd(const Tokenizer *Lexer);
+static bool IsAtEnd(const PascalTokenizer *Lexer);
 static bool IsNumber(U8 ch);
 static bool IsAlpha(U8 ch);
 static bool IsHex(U8 ch);
@@ -16,33 +16,33 @@ static bool AlphaArrayEquNoCase(const U8 *Str1, const U8 *UpperStr2, UInt Len);
 
 /* returns the token that Curr is pointing at,
  * then increment curr if curr is not pointing at the null terminator */
-static U8 AdvanceChrPtr(Tokenizer *Lexer);
+static U8 AdvanceChrPtr(PascalTokenizer *Lexer);
 
 /* return *Curr == Test, 
  * and if the condition was true, perform Curr++ */
-static bool AdvanceIfEqual(Tokenizer *Lexer, U8 Test);
+static bool AdvanceIfEqual(PascalTokenizer *Lexer, U8 Test);
 
 /* if curr is at end, returns 0,
  * else return the U8 ahead of curr */
-static U8 PeekChr(const Tokenizer *Lexer);
+static U8 PeekChr(const PascalTokenizer *Lexer);
 
 /* skips whitespace, newline, comments */
-static void SkipWhitespace(Tokenizer *Lexer);
+static void SkipWhitespace(PascalTokenizer *Lexer);
 
 /* creates a token with the given type */
-static Token MakeToken(Tokenizer *Lexer, TokenType Type);
+static Token MakeToken(PascalTokenizer *Lexer, TokenType Type);
 
 /* consumes a numeric literal and return its token */
-static Token ConsumeNumber(Tokenizer *Lexer);
+static Token ConsumeNumber(PascalTokenizer *Lexer);
 
 /* consumes a string, including escape codes */
-static Token ConsumeString(Tokenizer *Lexer);
+static Token ConsumeString(PascalTokenizer *Lexer);
 
 /* consumes an identifier or a keyword */
-static Token ConsumeWord(Tokenizer *Lexer);
+static Token ConsumeWord(PascalTokenizer *Lexer);
 
 /* return the type of the current lexeme */
-static TokenType GetLexemeType(Tokenizer *Lexer);
+static TokenType GetLexemeType(PascalTokenizer *Lexer);
 
 
 
@@ -52,7 +52,7 @@ static TokenType GetLexemeType(Tokenizer *Lexer);
 
 
 
-Tokenizer TokenizerInit(const U8 *Source)
+PascalTokenizer TokenizerInit(const U8 *Source)
 {
     return (Tokenizer) {
         .Start = Source,
@@ -62,7 +62,7 @@ Tokenizer TokenizerInit(const U8 *Source)
 }
 
 
-Token TokenizerGetToken(Tokenizer *Lexer)
+Token TokenizerGetToken(PascalTokenizer *Lexer)
 {
     SkipWhitespace(Lexer);
     if (IsAtEnd(Lexer))
@@ -213,7 +213,7 @@ const U8 *TokenTypeToStr(TokenType Type)
 
 
 
-static bool IsAtEnd(const Tokenizer *Lexer)
+static bool IsAtEnd(const PascalTokenizer *Lexer)
 {
     return ('\0' == *Lexer->Curr);
 }
@@ -238,7 +238,7 @@ static bool IsHex(U8 ch)
 
 
 
-static U8 AdvanceChrPtr(Tokenizer *Lexer)
+static U8 AdvanceChrPtr(PascalTokenizer *Lexer)
 {
     U8 Ret = *Lexer->Curr;
     if (!IsAtEnd(Lexer))
@@ -249,7 +249,7 @@ static U8 AdvanceChrPtr(Tokenizer *Lexer)
 }
 
 
-static bool AdvanceIfEqual(Tokenizer *Lexer, U8 Test)
+static bool AdvanceIfEqual(PascalTokenizer *Lexer, U8 Test)
 {
     bool Ret = *Lexer->Curr == Test;
     if (Ret)
@@ -261,7 +261,7 @@ static bool AdvanceIfEqual(Tokenizer *Lexer, U8 Test)
 
 
 
-static U8 PeekChr(const Tokenizer *Lexer)
+static U8 PeekChr(const PascalTokenizer *Lexer)
 {
     if (IsAtEnd(Lexer)) 
         return '\0';
@@ -269,7 +269,7 @@ static U8 PeekChr(const Tokenizer *Lexer)
 }
 
 
-static void SkipWhitespace(Tokenizer *Lexer)
+static void SkipWhitespace(PascalTokenizer *Lexer)
 {
     while (1)
     {
@@ -344,7 +344,7 @@ out:
 
 
 
-static Token MakeToken(Tokenizer *Lexer, TokenType Type)
+static Token MakeToken(PascalTokenizer *Lexer, TokenType Type)
 {
     Token Tok = {
         .Type = Type,
@@ -356,7 +356,7 @@ static Token MakeToken(Tokenizer *Lexer, TokenType Type)
     return Tok;
 }
 
-static Token ConsumeNumber(Tokenizer *Lexer)
+static Token ConsumeNumber(PascalTokenizer *Lexer)
 {
     TokenType Type = TOKEN_INTEGER_LITERAL;
 
@@ -395,7 +395,7 @@ static Token ConsumeNumber(Tokenizer *Lexer)
 }
 
 
-static Token ConsumeString(Tokenizer *Lexer)
+static Token ConsumeString(PascalTokenizer *Lexer)
 {
     Lexer->Curr = Lexer->Start;
     UInt Trim;
@@ -449,7 +449,7 @@ static Token ConsumeString(Tokenizer *Lexer)
 
 
 
-static Token ConsumeWord(Tokenizer *Lexer)
+static Token ConsumeWord(PascalTokenizer *Lexer)
 {
     while (IsNumber(*Lexer->Curr) || IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
     {
@@ -460,7 +460,7 @@ static Token ConsumeWord(Tokenizer *Lexer)
 }
 
 
-static TokenType GetLexemeType(Tokenizer *Lexer)
+static TokenType GetLexemeType(PascalTokenizer *Lexer)
 {
     typedef struct Keyword {
         const U8 *Str;
