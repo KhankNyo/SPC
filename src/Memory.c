@@ -45,3 +45,55 @@ void MemDeallocate(void *Pointer)
 }
 
 
+
+
+PascalArena ArenaInit(
+        UInt InitialCap, UInt SizeGrowFactor)
+{
+    PascalArena Arena = {
+        .Mem = {[0] = MemAllocate(InitialCap)},
+        .Used = {[0] = 0},
+        .Cap = {[0] = InitialCap},
+        .SizeGrowFactor = SizeGrowFactor,
+    };
+    return Arena;
+}
+
+void ArenaDeinit(PascalArena *Arena)
+{
+    for (UInt i = 0; i < PASCAL_ARENA_COUNT; i++)
+    {
+        MemDeallocate(Arena->Mem[i].Raw);
+    }
+    *Arena = (PascalArena){{0}};
+}
+
+
+void *ArenaAllocate(PascalArena *Arena, USize Bytes)
+{
+    UInt i = Arena->CurrentIdx;
+    /* start looking elsewhere */
+    if ((USize)Arena->Used[i] + Bytes > Arena->Cap[i])
+    {
+        for (i = 0; i < Arena->CurrentIdx; i++)
+        {
+            if ((USize)Arena->Used[i] + Bytes <= Arena->Cap[i])
+                goto Allocate;
+        }
+
+        /* have to allocate a brand new arena */
+        U32 NewCap = Arena->Cap[i] * Arena->SizeGrowFactor;
+        i += 1;
+        Arena->Cap[i] = NewCap;
+        Arena->Used[i] = 0;
+        Arena->CurrentIdx = i;
+        Arena->Mem[i].Raw = MemAllocate(NewCap);
+    }
+
+Allocate:
+    void *Ptr = &Arena->Mem[i].Bytes[Arena->Used[i]];
+    Arena->Used[i] += Bytes;
+    return Ptr;
+}
+
+

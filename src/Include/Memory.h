@@ -21,5 +21,35 @@ void *MemReallocate(void *Pointer, USize NewSize);
  */
 void MemDeallocate(void *Pointer);
 
+
+
+
+#define PASCAL_ARENA_COUNT 4
+
+typedef struct PascalArena
+{
+    union {
+        void *Raw;
+        U8 *Bytes;
+    } Mem[PASCAL_ARENA_COUNT];
+    U32 Used[PASCAL_ARENA_COUNT];
+    U32 Cap[PASCAL_ARENA_COUNT];
+    U32 CurrentIdx;
+    U32 SizeGrowFactor;
+} PascalArena;
+
+/* 
+ * InitialCap:  the capacity of the first arena,
+ *              consecutive arenas will have their size multiplied by SizeGrowFactor 
+ * SizeGrowFactor:  the factor to multiply with the current arena's capacity 
+ *                  the result of which will be the capacity of the next arena
+ */
+PascalArena ArenaInit(
+        UInt InitialCap, UInt SizeGrowFactor
+);
+void ArenaDeinit(PascalArena *Arena);
+void *ArenaAllocate(PascalArena *Allocator, USize Bytes);
+
+
 #endif /* PASCAL_MEMORY_H */
 
