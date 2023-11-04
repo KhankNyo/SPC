@@ -7,7 +7,7 @@
 
 typedef struct Tokenizer 
 {
-    const char *Start, *Curr;
+    const U8 *Start, *Curr;
     UInt Line;
 } Tokenizer;
 
@@ -61,26 +61,26 @@ typedef enum TokenType
 typedef struct Token 
 {
     TokenType Type;
-    const char *Str;
+    const U8 *Str;
     union {
         U64 Int;
         F64 Real;
-        PascalStr PStr;
-    } ValueAs;
+        PascalStr Str;
+    } Literal;
     UInt Len;
     UInt Line;
 } Token;
 
 
 /* initializes Tokenizer struct with a Pascal source file */
-Tokenizer TokenizerInit(const char *Source);
+Tokenizer TokenizerInit(const U8 *Source);
 
 /* returns the consumed token in the source file, 
  * or TOKEN_EOF if there are none left */
 Token TokenizerGetToken(Tokenizer *Lexer);
 
 /* return the string of a token type */
-const char *TokenTypeToStr(TokenType Type);
+const U8 *TokenTypeToStr(TokenType Type);
 
 
 #endif /* PASCAL_TOKENIZER_H */

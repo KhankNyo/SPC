@@ -7,24 +7,24 @@
 
 
 static bool IsAtEnd(const Tokenizer *Lexer);
-static bool IsNumber(char ch);
-static bool IsAlpha(char ch);
-static bool IsHex(char ch);
+static bool IsNumber(U8 ch);
+static bool IsAlpha(U8 ch);
+static bool IsHex(U8 ch);
 /* returns true if Str1 is equal to UpperStr2, 
  * case does not matter except for Str2 which has to be upper case */
-static bool AlphaArrayEquNoCase(const char *Str1, const char *UpperStr2, UInt Len);
+static bool AlphaArrayEquNoCase(const U8 *Str1, const U8 *UpperStr2, UInt Len);
 
 /* returns the token that Curr is pointing at,
  * then increment curr if curr is not pointing at the null terminator */
-static char AdvanceChrPtr(Tokenizer *Lexer);
+static U8 AdvanceChrPtr(Tokenizer *Lexer);
 
 /* return *Curr == Test, 
  * and if the condition was true, perform Curr++ */
-static bool AdvanceIfEqual(Tokenizer *Lexer, char Test);
+static bool AdvanceIfEqual(Tokenizer *Lexer, U8 Test);
 
 /* if curr is at end, returns 0,
- * else return the char ahead of curr */
-static char PeekChr(const Tokenizer *Lexer);
+ * else return the U8 ahead of curr */
+static U8 PeekChr(const Tokenizer *Lexer);
 
 /* skips whitespace, newline, comments */
 static void SkipWhitespace(Tokenizer *Lexer);
@@ -52,7 +52,7 @@ static TokenType GetLexemeType(Tokenizer *Lexer);
 
 
 
-Tokenizer TokenizerInit(const char *Source)
+Tokenizer TokenizerInit(const U8 *Source)
 {
     return (Tokenizer) {
         .Start = Source,
@@ -68,7 +68,7 @@ Token TokenizerGetToken(Tokenizer *Lexer)
     if (IsAtEnd(Lexer))
         return MakeToken(Lexer, TOKEN_EOF);
 
-    char PrevChr = AdvanceChrPtr(Lexer);
+    U8 PrevChr = AdvanceChrPtr(Lexer);
     if (IsNumber(PrevChr))
     {
         return ConsumeNumber(Lexer);
@@ -159,7 +159,7 @@ Token TokenizerGetToken(Tokenizer *Lexer)
 
 
 
-const char *TokenTypeToStr(TokenType Type)
+const U8 *TokenTypeToStr(TokenType Type)
 {
     static const char *TokenNameLut[] = {
         "TOKEN_EOF",
@@ -204,7 +204,7 @@ const char *TokenTypeToStr(TokenType Type)
         "TOKEN_IDENTIFIER"
     };
     PASCAL_ASSERT(Type < STATIC_ARRAY_SIZE(TokenNameLut), "Invalid token type: %d\n", Type);
-    return TokenNameLut[Type];
+    return (const U8*)TokenNameLut[Type];
 }
 
 
@@ -218,18 +218,18 @@ static bool IsAtEnd(const Tokenizer *Lexer)
     return ('\0' == *Lexer->Curr);
 }
 
-static bool IsNumber(char ch)
+static bool IsNumber(U8 ch)
 {
     return ('0' <= ch) && (ch <= '9');
 }
 
-static bool IsAlpha(char ch)
+static bool IsAlpha(U8 ch)
 {
     return (('A' <= ch) && (ch <= 'Z'))
         || (('a' <= ch) && (ch <= 'z'));
 }
 
-static bool IsHex(char ch)
+static bool IsHex(U8 ch)
 {
     return IsNumber(ch)
         || (('a' <= ch) && (ch <= 'f'))
@@ -238,9 +238,9 @@ static bool IsHex(char ch)
 
 
 
-static char AdvanceChrPtr(Tokenizer *Lexer)
+static U8 AdvanceChrPtr(Tokenizer *Lexer)
 {
-    char Ret = *Lexer->Curr;
+    U8 Ret = *Lexer->Curr;
     if (!IsAtEnd(Lexer))
     {
         Lexer->Curr++;
@@ -249,7 +249,7 @@ static char AdvanceChrPtr(Tokenizer *Lexer)
 }
 
 
-static bool AdvanceIfEqual(Tokenizer *Lexer, char Test)
+static bool AdvanceIfEqual(Tokenizer *Lexer, U8 Test)
 {
     bool Ret = *Lexer->Curr == Test;
     if (Ret)
@@ -261,7 +261,7 @@ static bool AdvanceIfEqual(Tokenizer *Lexer, char Test)
 
 
 
-static char PeekChr(const Tokenizer *Lexer)
+static U8 PeekChr(const Tokenizer *Lexer)
 {
     if (IsAtEnd(Lexer)) 
         return '\0';
@@ -313,7 +313,7 @@ static void SkipWhitespace(Tokenizer *Lexer)
                 if ('\n' == *Lexer->Curr)
                     Lexer->Line++;
             } while (!IsAtEnd(Lexer) && ('}' != AdvanceChrPtr(Lexer)));
-            /* pointing at EOF or next char */
+            /* pointing at EOF or next U8 */
         } break;
 
         case '/': // comment 
@@ -399,6 +399,7 @@ static Token ConsumeString(Tokenizer *Lexer)
 {
     Lexer->Curr = Lexer->Start;
     UInt Trim;
+    PascalStr Literal = PStrInit(0);
     do {
         Trim = 2; /* trim both the opening and closing quotes */
 
@@ -406,18 +407,29 @@ static Token ConsumeString(Tokenizer *Lexer)
         AdvanceChrPtr(Lexer);
 
         /* consume string literal */
+        const U8 *Slice = Lexer->Curr;
+        UInt Len = 0;
         while (!IsAtEnd(Lexer) && '\'' != AdvanceChrPtr(Lexer))
-        {}
+        {
+            Len++;
+        }
+        PStrAppendStr(&Literal, Slice, Len);
+
 
         /* consumes escape codes */
         while (!IsAtEnd(Lexer) && '#' == *Lexer->Curr)
         {
+            AdvanceChrPtr(Lexer); /* skip '#' */
+
             /* consume number */
-            U8 Code = 0;
-            do {
-                Code += AdvanceChrPtr(Lexer);
-                Code *= 10;
-            } while (!IsAtEnd(Lexer) && IsNumber(*Lexer->Curr));
+            U8 EscCode = 0;
+            while (!IsAtEnd(Lexer) && IsNumber(*Lexer->Curr))
+            {
+                EscCode *= 10;
+                EscCode += AdvanceChrPtr(Lexer) - '0';
+            }
+
+            PStrAppendChr(&Literal, EscCode);
             Trim = 1; /* don't want to trim the last character of the number */
         }
     } while (!IsAtEnd(Lexer) && ('\'' == *Lexer->Curr));
@@ -431,6 +443,7 @@ static Token ConsumeString(Tokenizer *Lexer)
     /* consume opening and closing quotes */
     StringToken.Str++;
     StringToken.Len -= Trim;
+    StringToken.Literal.Str = Literal;
     return StringToken;
 }
 
@@ -450,7 +463,7 @@ static Token ConsumeWord(Tokenizer *Lexer)
 static TokenType GetLexemeType(Tokenizer *Lexer)
 {
     typedef struct Keyword {
-        const char *Str;
+        const U8 *Str;
         UInt Len;
         UInt Type;
     } Keyword;
@@ -458,101 +471,101 @@ static TokenType GetLexemeType(Tokenizer *Lexer)
     Keyword KeywordLut[][5] = 
     {
         ['A'] = {
-            {.Str = "ND",   .Len = 2, .Type = TOKEN_AND}, 
-            {.Str = "RRAY", .Len = 4, .Type = TOKEN_ARRAY}, 
-            {.Str = "SM",   .Len = 2, .Type = TOKEN_ASM}
+            {.Str = (const U8 *)"ND",   .Len = 2, .Type = TOKEN_AND}, 
+            {.Str = (const U8 *)"RRAY", .Len = 4, .Type = TOKEN_ARRAY}, 
+            {.Str = (const U8 *)"SM",   .Len = 2, .Type = TOKEN_ASM}
         },
         ['B'] = {
-            {.Str = "EGIN", .Len = 4, .Type = TOKEN_BEGIN},
-            {.Str = "REAK", .Len = 4, .Type = TOKEN_BREAK}
+            {.Str = (const U8 *)"EGIN", .Len = 4, .Type = TOKEN_BEGIN},
+            {.Str = (const U8 *)"REAK", .Len = 4, .Type = TOKEN_BREAK}
         },
         ['C'] = {
-            {.Str = "ASE", .Len = 3, .Type = TOKEN_CASE},
-            {.Str = "ONST", .Len = 4, .Type = TOKEN_CONST},
-            {.Str = "ONTINUE", .Len = 7, .Type = TOKEN_CONTINUE},
-            {.Str = "ONSTRUCTOR", .Len = 10, .Type = TOKEN_CONSTRUCTOR},
+            {.Str = (const U8 *)"ASE", .Len = 3, .Type = TOKEN_CASE},
+            {.Str = (const U8 *)"ONST", .Len = 4, .Type = TOKEN_CONST},
+            {.Str = (const U8 *)"ONTINUE", .Len = 7, .Type = TOKEN_CONTINUE},
+            {.Str = (const U8 *)"ONSTRUCTOR", .Len = 10, .Type = TOKEN_CONSTRUCTOR},
         },
         ['D'] = {
-            {.Str = "O", .Len = 1, .Type = TOKEN_DO},
-            {.Str = "IV", .Len = 2, .Type = TOKEN_DIV},
-            {.Str = "OWNTO", .Len = 5, .Type = TOKEN_DOWNTO},
-            {.Str = "ESTRUCTOR", .Len = 9, .Type = TOKEN_DESTRUCTOR},
+            {.Str = (const U8 *)"O", .Len = 1, .Type = TOKEN_DO},
+            {.Str = (const U8 *)"IV", .Len = 2, .Type = TOKEN_DIV},
+            {.Str = (const U8 *)"OWNTO", .Len = 5, .Type = TOKEN_DOWNTO},
+            {.Str = (const U8 *)"ESTRUCTOR", .Len = 9, .Type = TOKEN_DESTRUCTOR},
         },
         ['E'] = {
-            {.Str = "ND", .Len = 2, .Type = TOKEN_END},
-            {.Str = "LSE", .Len = 3, .Type = TOKEN_ELSE},
+            {.Str = (const U8 *)"ND", .Len = 2, .Type = TOKEN_END},
+            {.Str = (const U8 *)"LSE", .Len = 3, .Type = TOKEN_ELSE},
         },
         ['F'] = {
-            {.Str = "OR", .Len = 2, .Type = TOKEN_FOR},
-            {.Str = "ILE", .Len = 3, .Type = TOKEN_FILE},
-            {.Str = "ALSE", .Len = 4, .Type = TOKEN_FALSE},
-            {.Str = "UNCTION", .Len = 7, .Type = TOKEN_FUNCTION},
+            {.Str = (const U8 *)"OR", .Len = 2, .Type = TOKEN_FOR},
+            {.Str = (const U8 *)"ILE", .Len = 3, .Type = TOKEN_FILE},
+            {.Str = (const U8 *)"ALSE", .Len = 4, .Type = TOKEN_FALSE},
+            {.Str = (const U8 *)"UNCTION", .Len = 7, .Type = TOKEN_FUNCTION},
         },
         ['G'] = {
-            {.Str = "OTO", .Len = 3, .Type = TOKEN_GOTO},
+            {.Str = (const U8 *)"OTO", .Len = 3, .Type = TOKEN_GOTO},
         },
         ['H'] = { {0} },
         ['I'] = {
-            {.Str = "F", .Len = 1, .Type = TOKEN_IF},
-            {.Str = "N", .Len = 1, .Type = TOKEN_IN},
-            {.Str = "NLINE", .Len = 5, .Type = TOKEN_INLINE},
-            {.Str = "NTERFACE", .Len = 8, .Type = TOKEN_INTERFACE},
-            {.Str = "MPLEMENTATION", .Len = 13, .Type = TOKEN_IMPLEMENTATION},
+            {.Str = (const U8 *)"F", .Len = 1, .Type = TOKEN_IF},
+            {.Str = (const U8 *)"N", .Len = 1, .Type = TOKEN_IN},
+            {.Str = (const U8 *)"NLINE", .Len = 5, .Type = TOKEN_INLINE},
+            {.Str = (const U8 *)"NTERFACE", .Len = 8, .Type = TOKEN_INTERFACE},
+            {.Str = (const U8 *)"MPLEMENTATION", .Len = 13, .Type = TOKEN_IMPLEMENTATION},
         },
         ['J'] = { {0} },
         ['K'] = { {0} },
         ['L'] = {
-            {.Str = "ABEL", .Len = 4, .Type = TOKEN_LABEL},
+            {.Str = (const U8 *)"ABEL", .Len = 4, .Type = TOKEN_LABEL},
         },
         ['M'] = {
-            {.Str = "ODE", .Len = 3, .Type = TOKEN_MODE},
+            {.Str = (const U8 *)"ODE", .Len = 3, .Type = TOKEN_MODE},
         },
         ['N'] = {
-            {.Str = "IL", .Len = 2, .Type = TOKEN_NIL},
-            {.Str = "OT", .Len = 2, .Type = TOKEN_NOT},
+            {.Str = (const U8 *)"IL", .Len = 2, .Type = TOKEN_NIL},
+            {.Str = (const U8 *)"OT", .Len = 2, .Type = TOKEN_NOT},
         },
         ['O'] = {
-            {.Str = "F", .Len = 1, .Type = TOKEN_OF},
-            {.Str = "N", .Len = 1, .Type = TOKEN_ON},
-            {.Str = "R", .Len = 1, .Type = TOKEN_OR},
-            {.Str = "BJECT", .Len = 5, .Type = TOKEN_OBJECT},
-            {.Str = "PERATOR", .Len = 7, .Type = TOKEN_OPERATOR},
+            {.Str = (const U8 *)"F", .Len = 1, .Type = TOKEN_OF},
+            {.Str = (const U8 *)"N", .Len = 1, .Type = TOKEN_ON},
+            {.Str = (const U8 *)"R", .Len = 1, .Type = TOKEN_OR},
+            {.Str = (const U8 *)"BJECT", .Len = 5, .Type = TOKEN_OBJECT},
+            {.Str = (const U8 *)"PERATOR", .Len = 7, .Type = TOKEN_OPERATOR},
         },
         ['P'] = {
-            {.Str = "ACKED", .Len = 5, .Type = TOKEN_PACKED},
-            {.Str = "ROGRAM", .Len = 6, .Type = TOKEN_PROGRAM},
-            {.Str = "ROCEDURE", .Len = 8, .Type = TOKEN_PROCEDURE},
+            {.Str = (const U8 *)"ACKED", .Len = 5, .Type = TOKEN_PACKED},
+            {.Str = (const U8 *)"ROGRAM", .Len = 6, .Type = TOKEN_PROGRAM},
+            {.Str = (const U8 *)"ROCEDURE", .Len = 8, .Type = TOKEN_PROCEDURE},
         },
         ['Q'] = { {0} },
         ['R'] = {
-            {.Str = "EPEAT", .Len = 5, .Type = TOKEN_RECORD},
-            {.Str = "ECORD", .Len = 5, .Type = TOKEN_REPEAT},
+            {.Str = (const U8 *)"EPEAT", .Len = 5, .Type = TOKEN_RECORD},
+            {.Str = (const U8 *)"ECORD", .Len = 5, .Type = TOKEN_REPEAT},
         },
         ['S'] = {
-            {.Str = "ET", .Len = 2, .Type = TOKEN_SET},
-            {.Str = "HR", .Len = 2, .Type = TOKEN_SHR},
-            {.Str = "HL", .Len = 2, .Type = TOKEN_SHL},
-            {.Str = "TRING", .Len = 5, .Type = TOKEN_STRING},
+            {.Str = (const U8 *)"ET", .Len = 2, .Type = TOKEN_SET},
+            {.Str = (const U8 *)"HR", .Len = 2, .Type = TOKEN_SHR},
+            {.Str = (const U8 *)"HL", .Len = 2, .Type = TOKEN_SHL},
+            {.Str = (const U8 *)"TRING", .Len = 5, .Type = TOKEN_STRING},
         },
         ['T'] = {
-            {.Str = "HEN", .Len = 3, .Type = TOKEN_THEN},
-            {.Str = "RUE", .Len = 3, .Type = TOKEN_TRUE},
-            {.Str = "YPE", .Len = 3, .Type = TOKEN_TYPE},
+            {.Str = (const U8 *)"HEN", .Len = 3, .Type = TOKEN_THEN},
+            {.Str = (const U8 *)"RUE", .Len = 3, .Type = TOKEN_TRUE},
+            {.Str = (const U8 *)"YPE", .Len = 3, .Type = TOKEN_TYPE},
         },
         ['U'] = {
-            {.Str = "SES", .Len = 3, .Type = TOKEN_USES},
-            {.Str = "NIT", .Len = 3, .Type = TOKEN_UNIT},
-            {.Str = "NTIL", .Len = 4, .Type = TOKEN_UNTIL},
+            {.Str = (const U8 *)"SES", .Len = 3, .Type = TOKEN_USES},
+            {.Str = (const U8 *)"NIT", .Len = 3, .Type = TOKEN_UNIT},
+            {.Str = (const U8 *)"NTIL", .Len = 4, .Type = TOKEN_UNTIL},
         },
         ['V'] = {
-            {.Str = "AR", .Len = 2, .Type = TOKEN_VAR},
+            {.Str = (const U8 *)"AR", .Len = 2, .Type = TOKEN_VAR},
         },
         ['W'] = {
-            {.Str = "ITH", .Len = 3, .Type = TOKEN_WITH},
-            {.Str = "HILE", .Len = 4, .Type = TOKEN_WHILE},
+            {.Str = (const U8 *)"ITH", .Len = 3, .Type = TOKEN_WITH},
+            {.Str = (const U8 *)"HILE", .Len = 4, .Type = TOKEN_WHILE},
         },
         ['X'] = {
-            {.Str = "OR", .Len = 2, .Type = TOKEN_XOR},
+            {.Str = (const U8 *)"OR", .Len = 2, .Type = TOKEN_XOR},
         },
         ['Y'] = { {0} },
         ['Z'] = { {0} },
@@ -581,7 +594,7 @@ static TokenType GetLexemeType(Tokenizer *Lexer)
 
 
 
-static bool AlphaArrayEquNoCase(const char *Str1, const char *UpperStr2, UInt Len)
+static bool AlphaArrayEquNoCase(const U8 *Str1, const U8 *UpperStr2, UInt Len)
 {
     while (Len && (CHR_TO_UPPER(*Str1) == *UpperStr2))
     {

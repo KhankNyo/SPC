@@ -4,6 +4,6 @@
 
 int main(int argc, char **argv)
 {
-    return PascalMain(argc, (const char *const *)argv);
+    return PascalMain(argc, (const U8 *const *)argv);
 }
 

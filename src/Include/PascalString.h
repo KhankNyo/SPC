@@ -12,7 +12,7 @@ typedef struct PascalDynStr
     USize Len;
 } PascalDynStr;
 
-#define PSTR_MAX_LOCAL_LEN (sizeof(USize)*2 + sizeof(U8*) - 1)
+#define PSTR_MAX_LOCAL_LEN (sizeof(PascalDynStr) - 1)
 #define PSTR_DYN_ISDYNBIT ((USize)1 << (sizeof(USize)*8 - 1))
 #define PSTR_LOC_ISDYNBIT (0x80)
 typedef struct PascalLocStr 
@@ -29,6 +29,10 @@ typedef struct PascalStr
         PascalLocStr Loc;
     };
 } PascalStr;
+
+PASCAL_STATIC_ASSERT(sizeof(PascalDynStr) == sizeof(PascalLocStr), "Incompatible sizes");
+
+
 
 bool PStrIsDyn(const PascalStr *PStr);
 

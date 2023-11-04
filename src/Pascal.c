@@ -5,34 +5,42 @@
 #include "Include/Tokenizer.h"
 
 
-static char *LoadFile(const char *FileName);
-static void UnloadFile(char *FileContents);
+static U8 *LoadFile(const U8 *FileName);
+static void UnloadFile(U8 *FileContents);
 
 
-int PascalMain(int argc, const char *const *argv)
+int PascalMain(int argc, const U8 *const *argv)
 {
     if (argc < 3)
     {
-        const char *name = argc == 0 
-            ? "Pascal"
+        const U8 *name = argc == 0 
+            ? (const U8*)"Pascal"
             : argv[0];
 
         PascalPrintUsage(stderr, name);
         return PASCAL_EXIT_FAILURE;
     }
 
-    const char *InFileName = argv[1];
-    char *Source = LoadFile(InFileName);
+    const U8 *InFileName = argv[1];
+    U8 *Source = LoadFile(InFileName);
 
     Tokenizer Lexer = TokenizerInit(Source);
     Token Current;
     do {
         Current = TokenizerGetToken(&Lexer);
-        fprintf(stdout, "Line %u: Type %s: \"%.*s\"\n", 
+        fprintf(stdout, "Line %u: Type %s: ", 
                 Current.Line,
-                TokenTypeToStr(Current.Type),
-                Current.Len, Current.Str
+                TokenTypeToStr(Current.Type)
         );
+        if (Current.Type == TOKEN_STRING_LITERAL)
+        {
+            fprintf(stdout, "\"%s\"\n", PStrGetPtr(&Current.Literal.Str));
+            PStrDeinit(&Current.Literal.Str);
+        }
+        else
+        {
+            fprintf(stdout, "\"%.*s\"\n", Current.Len, Current.Str);
+        }
     } while (Current.Type != TOKEN_EOF);
 
     UnloadFile(Source);
@@ -41,7 +49,7 @@ int PascalMain(int argc, const char *const *argv)
 
 
 
-void PascalPrintUsage(FILE *f, const char *ProgramName)
+void PascalPrintUsage(FILE *f, const U8 *ProgramName)
 {
     fprintf(f, "Usage: %s InputName.pas OutPutName\n",
             ProgramName
@@ -54,19 +62,19 @@ void PascalPrintUsage(FILE *f, const char *ProgramName)
 
 
 
-static char *LoadFile(const char *FileName)
+static U8 *LoadFile(const U8 *FileName)
 {
-    FILE *File = fopen(FileName, "rb");
+    FILE *File = fopen((const char *)FileName, "rb");
     if (NULL == File)
     {
-        perror(FileName);
+        perror((const char *)FileName);
         return NULL;
     }
 
     fseek(File, 0, SEEK_END);
     USize Size = ftell(File);
     fseek(File, 0, SEEK_SET);
-    char *Content = MemAllocate(Size + 1);
+    U8 *Content = MemAllocate(Size + 1);
 
     USize ReadSize = fread(Content, 1, Size, File);
     if (Size != ReadSize)
@@ -82,7 +90,7 @@ static char *LoadFile(const char *FileName)
 }
 
 
-static void UnloadFile(char *FileContent)
+static void UnloadFile(U8 *FileContent)
 {
     MemDeallocate(FileContent);
 }

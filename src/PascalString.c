@@ -46,7 +46,12 @@ USize PStrAddToLen(PascalStr *PStr, ISize Extra)
 {
     USize Old = PStrGetLen(PStr);
     USize New = (ISize)Old + Extra;
-    PStrReserve(PStr, New * 2 / 3);
+    USize OldCap = PStrGetCap(PStr);
+    if (New > OldCap)
+    {
+        PStrReserve(PStr, New * 2);
+    }
+
     if (PStrIsDyn(PStr))
     {
         PStr->Dyn.Len = New | PSTR_DYN_ISDYNBIT;
@@ -64,7 +69,7 @@ USize PStrAddToLen(PascalStr *PStr, ISize Extra)
 USize PStrReserve(PascalStr *PStr, USize NewCapacity)
 {
     USize OldCap = PStrGetCap(PStr);
-    if (OldCap <= NewCapacity)
+    if (OldCap >= NewCapacity)
         return OldCap;
 
 
@@ -95,13 +100,13 @@ PascalStr PStrInitReserved(USize Len, USize Extra)
     if (Len + Extra > PSTR_MAX_LOCAL_LEN)
     {
         PStr.Dyn = (PascalDynStr) {
-            .Len = Len | PSTR_DYN_BIT,
+            .Len = Len | PSTR_DYN_ISDYNBIT,
             .Cap = Len + Extra + 1,
             .Str = MemAllocate(Len + Extra + 1),
         };
         PASCAL_ASSERT(
                 (PStr.Dyn.Len >> (sizeof(USize)*8 - 1)) == (PStr.Loc.LenLeft >> 7), 
-                "Differing Dyn bit: (%u)|%u != (%u)|%u\n",
+                "Differing Dyn bit: (%zu)|%zu != (%u)|%u\n",
                 PStr.Dyn.Len, PStr.Dyn.Len >> (sizeof(USize)*8 - 1),
                 PStr.Loc.LenLeft, PStr.Loc.LenLeft >> 7
         );
@@ -143,7 +148,7 @@ void PStrDeinit(PascalStr *PStr)
     if (PStrIsDyn(PStr))
         MemDeallocate(PStr->Dyn.Str);
 
-    *PStr = (PascalStr) { {0} };
+    *PStr = (PascalStr) { {{0}} };
     PStr->Loc.LenLeft = PSTR_MAX_LOCAL_LEN;
 }
 
@@ -176,6 +181,8 @@ USize PStrAppendStr(PascalStr *PStr, const U8 *Str, USize Len)
     Ptr[OldLen + Len] = '\0';
     return OldLen;
 }
+
+
 
 
 
