@@ -180,7 +180,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_GOTO",
         "TOKEN_IF", "TOKEN_IMPLEMENTATION", "TOKEN_IN", "TOKEN_INLINE", "TOKEN_INFERFACE", 
         "TOKEN_LABEL", 
-        "TOKEN_MODE", 
+        "TOKEN_MOD", 
         "TOKEN_NIL", "TOKEN_NOT",
         "TOKEN_OBJECT", "TOKEN_OF", "TOKEN_ON", "TOKEN_OPERATOR", "TOKEN_OR", 
         "TOKEN_PACKED", "TOKEN_PROCEDURE", "TOKEN_PROGRAM", 
@@ -398,6 +398,7 @@ static Token ConsumeNumber(PascalTokenizer *Lexer)
 
 
     U64 Integer = 0;
+    Lexer->Curr = Lexer->Start;
     while (IsNumber(*Lexer->Curr))
     {
         Integer *= 10;
@@ -605,7 +606,7 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
             {.Str = (const U8 *)"ABEL", .Len = 4, .Type = TOKEN_LABEL},
         },
         ['M'] = {
-            {.Str = (const U8 *)"ODE", .Len = 3, .Type = TOKEN_MODE},
+            {.Str = (const U8 *)"ODE", .Len = 3, .Type = TOKEN_MOD},
         },
         ['N'] = {
             {.Str = (const U8 *)"IL", .Len = 2, .Type = TOKEN_NIL},

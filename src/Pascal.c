@@ -3,6 +3,7 @@
 #include "Include/Pascal.h"
 #include "Include/Memory.h"
 #include "Include/Tokenizer.h"
+#include "Include/Parser.h"
 
 
 static U8 *LoadFile(const U8 *FileName);
@@ -32,8 +33,16 @@ int PascalMain(int argc, const U8 *const *argv)
 int PascalRunFile(const U8 *InFileName, const U8 *OutFileName)
 {
     U8 *Source = LoadFile(InFileName);
-    PascalTokenizer Lexer = TokenizerInit(Source);
-    PascalParser Parser = ParserInit(Lexer);
+
+    PascalArena Allocator = ArenaInit(1024 * 1024, 4);
+
+    PascalParser Parser = ParserInit(Source, &Allocator, stderr);
+    ParserAst Ast = ParserGenerateAst(&Parser);
+    ParserPrintAst(stdout, &Ast);
+    ParserDestroyAst(&Ast);
+
+    ArenaDeinit(&Allocator);
+
     UnloadFile(Source);
     return PASCAL_EXIT_SUCCESS;
 }
