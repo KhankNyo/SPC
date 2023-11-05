@@ -1,4 +1,6 @@
 
+#include <string.h>
+
 #include "Include/Common.h"
 #include "Include/Pascal.h"
 #include "Include/Memory.h"
@@ -6,12 +8,17 @@
 #include "Include/Parser.h"
 
 
+static PascalAst Compile(const U8 *Source, PascalArena *Allocator);
 static U8 *LoadFile(const U8 *FileName);
 static void UnloadFile(U8 *FileContents);
 
 
 int PascalMain(int argc, const U8 *const *argv)
 {
+    if (argc <= 1)
+    {
+        return PascalRepl();
+    }
     if (argc < 3)
     {
         const U8 *name = argc == 0 
@@ -29,18 +36,61 @@ int PascalMain(int argc, const U8 *const *argv)
 
 
 
+int PascalRepl(void)
+{
+#define MB 1024*1024
+
+    PascalArena Scratch = ArenaInit(1 << 15, 2);
+    PascalArena Program = ArenaInit(MB, 4);
+    PascalArena Permanent = ArenaInit(MB, 4);
+
+
+    int RetVal = PASCAL_EXIT_SUCCESS;
+    while (1)
+    {
+        static char Tmp[1024] = { 0 };
+        do {
+            printf("\n>> ");
+            if (NULL == fgets(Tmp, sizeof Tmp, stdin))
+            {
+                RetVal = PASCAL_EXIT_FAILURE;
+                goto Cleanup;
+            }
+        } while ('\n' == Tmp[0]);
+
+
+        if (0 == strncmp(Tmp, "Quit", sizeof ("Quit") - 1))
+            break;
+
+        USize SourceLen = strlen(Tmp);
+        PASCAL_ASSERT(SourceLen < sizeof Tmp, "Unreachable");
+        U8 *CurrentSource = ArenaAllocate(&Program, SourceLen + 1);
+        memcpy(CurrentSource, Tmp, SourceLen);
+        CurrentSource[SourceLen] = '\0';
+
+        Compile(CurrentSource, &Scratch);
+
+        ArenaReset(&Scratch);
+    }
+
+
+Cleanup:
+    ArenaDeinit(&Scratch);
+    ArenaDeinit(&Program);
+    ArenaDeinit(&Permanent);
+
+#undef MB
+    return PASCAL_EXIT_SUCCESS;
+}
+
+
 
 int PascalRunFile(const U8 *InFileName, const U8 *OutFileName)
 {
     U8 *Source = LoadFile(InFileName);
 
     PascalArena Allocator = ArenaInit(1024 * 1024, 4);
-
-    PascalParser Parser = ParserInit(Source, &Allocator, stderr);
-    ParserAst Ast = ParserGenerateAst(&Parser);
-    ParserPrintAst(stdout, &Ast);
-    ParserDestroyAst(&Ast);
-
+    Compile(Source, &Allocator);
     ArenaDeinit(&Allocator);
 
     UnloadFile(Source);
@@ -59,6 +109,13 @@ void PascalPrintUsage(FILE *f, const U8 *ProgramName)
 
 
 
+static PascalAst Compile(const U8 *Source, PascalArena *Allocator)
+{
+    PascalParser Parser = ParserInit(Source, Allocator, stderr);
+    PascalAst Ast = ParserGenerateAst(&Parser);
+    PAstPrint(stdout, &Ast);
+    return Ast;
+}
 
 
 
