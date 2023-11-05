@@ -4,15 +4,35 @@
 
 set "ARG1=%1"
 set "OUTDIRS=bin obj"
+set "SRCDIR=%CD%\src"
+set "OBJDIR=%CD%\obj"
+set "BINDIR=%CD%\bin"
 
-set "CC=gcc"
-set "CCF=-g -Og -DDEBUG -Wall -Wextra -Wpedantic"
-set "LDF="
-set "LIBS="
+if "%ARG1%"=="cl" (
+    set "CC=cl"
+    set "CCF=-Zi -Od -DDEBUG -MT -FC"
+    set "LD="
+    set "LIBS="
+    set "OBJ_SWITCH=/Fo"
+    set "SRC_SWITCH=/c "
+    set "EXE_SWITCH=/Fe"
+    set "OBJ_EXTENSION=obj"
+) else (
+    set "CC=gcc"
+    set "CCF=-g -Og -DDEBUG -Wall -Wextra -Wpedantic"
+    set "LDF="
+    set "LIBS="
+    set "OBJ_SWITCH=-o "
+    set "SRC_SWITCH=-c "
+    set "EXE_SWITCH=-o "
+    set "OBJ_EXTENSION=o"
+)
 
 set "MSG="
-set "SRCS=src\main.c src\Pascal.c src\Memory.c src\Tokenizer.c, src\PascalString.c src\Parser.c"
-set "OUTPUT=bin\pascal.exe"
+set "SRCS=%SRCDIR%\PascalString.c %SRCDIR%\main.c %SRCDIR%\Pascal.c %SRCDIR%\Memory.c"
+set "SRCS=%SRCS% %SRCDIR%\Tokenizer.c %SRCDIR%\Parser.c"
+set "SRCS=%SRCS% %SRCDIR%\Ast.c"
+set "OUTPUT=%BINDIR%\pascal.exe"
 
 
 
@@ -27,19 +47,24 @@ if "%ARG1%"=="clean" (
 
     setlocal enabledelayedexpansion
     set "OBJS="
-    for %%F in (%SRCS%) do (
-        set CURRENT_OBJ=obj/%%~nF.o
+    pushd obj\
+        for %%F in (%SRCS%) do (
+            set CURRENT_OBJ=%OBJDIR%\%%~nF.%OBJ_EXTENSION%
 
-        :: compile each src file 
-        echo %CC% %CCF% -c %%F -o !CURRENT_OBJ!
-        %CC% %CCF% -c %%F -o !CURRENT_OBJ!
+            :: compile each src file 
+            echo %CC% %CCF% %SRC_SWITCH%%%F %OBJ_SWITCH%!CURRENT_OBJ!
+            %CC% %CCF% %SRC_SWITCH%%%F %OBJ_SWITCH%!CURRENT_OBJ!
 
-        :: add obj file to list 
-        set "OBJS=!OBJS! !CURRENT_OBJ!"
-    )
-    :: linking 
-    echo %CC% %LDF% -o %OUTPUT% !OBJS! %LIBS%
-    %CC% %LDF% -o %OUTPUT% !OBJS! %LIBS%
+            :: add obj file to list 
+            set "OBJS=!OBJS! !CURRENT_OBJ!"
+        )
+    popd
+
+    pushd bin\
+        :: linking 
+        echo %CC% %LDF% %EXE_SWITCH%%OUTPUT% !OBJS! %LIBS%
+        %CC% %LDF% %EXE_SWITCH%%OUTPUT% !OBJS! %LIBS%
+    popd
 
     :: cleanup
     set "OBJS="
