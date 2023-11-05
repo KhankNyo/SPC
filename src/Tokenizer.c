@@ -146,6 +146,8 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
             return MakeToken(Lexer, TOKEN_LESS_GREATER);
         if (AdvanceIfEqual(Lexer, '<'))
             return MakeToken(Lexer, TOKEN_LESS_LESS);
+        if (AdvanceIfEqual(Lexer, '='))
+            return MakeToken(Lexer, TOKEN_LESS_EQUAL);
         else return MakeToken(Lexer, TOKEN_LESS);
     } break;
 
@@ -153,6 +155,8 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
     {
         if (AdvanceIfEqual(Lexer, '>'))
             return MakeToken(Lexer, TOKEN_GREATER_GREATER);
+        if (AdvanceIfEqual(Lexer, '='))
+            return MakeToken(Lexer, TOKEN_GREATER_EQUAL);
         else return MakeToken(Lexer, TOKEN_GREATER);
     } break;
 
@@ -197,6 +201,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_PLUS_EQUAL", "TOKEN_MINUS_EQUAL", "TOKEN_STAR_EQUAL", "TOKEN_SLASH_EQUAL",
         "TOKEN_STAR_STAR",
         "TOKEN_EQUAL", "TOKEN_LESS", "TOKEN_GREATER", "TOKEN_LESS_GREATER",
+        "TOKEN_LESS_EQUAL", "TOKEN_GREATER_EQUAL",
         "TOKEN_LESS_LESS", "TOKEN_GREATER_GREATER",
         "TOKEN_DOT", "TOKEN_COMMA", "TOKEN_COLON", "TOKEN_SEMICOLON",
         "TOKEN_COLON_EQUAL",
@@ -208,6 +213,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_STRING_LITERAL", 
         "TOKEN_IDENTIFIER"
     };
+    PASCAL_STATIC_ASSERT(STATIC_ARRAY_SIZE(TokenNameLut) == TOKEN_TYPE_COUNT, "Missing types in string lookup table");
     PASCAL_ASSERT(Type < STATIC_ARRAY_SIZE(TokenNameLut), "Invalid token type: %d\n", Type);
     return (const U8*)TokenNameLut[Type];
 }
@@ -312,6 +318,7 @@ static void SkipWhitespace(PascalTokenizer *Lexer)
         } break;
 
         case '{': /* { comment } */
+        /* TODO: compiler directive */
         {
             Lexer->Curr++; /* skip '{' */
             do {
