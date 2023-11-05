@@ -1,8 +1,8 @@
 
 #include <string.h>
 
-#include "Include/PascalString.h"
-#include "Include/Memory.h"
+#include "PascalString.h"
+#include "Memory.h"
 
 
 #if PASCAL_LITTLE_ENDIAN

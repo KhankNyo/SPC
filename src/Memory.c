@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <string.h> /* memset */
 
-#include "Include/Pascal.h"
-#include "Include/Memory.h"
+#include "Pascal.h"
+#include "Memory.h"
 
 
 

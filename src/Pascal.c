@@ -1,12 +1,15 @@
 
 #include <string.h>
 
-#include "Include/Common.h"
-#include "Include/Pascal.h"
-#include "Include/Memory.h"
-#include "Include/Tokenizer.h"
-#include "Include/Parser.h"
+#include "Common.h"
+#include "Pascal.h"
+#include "Memory.h"
+#include "Tokenizer.h"
+#include "Parser.h"
+#include "Vm/CodeChunk.h"
 
+
+#define MB 1024*1024
 
 static PascalAst Compile(const U8 *Source, PascalArena *Allocator);
 static U8 *LoadFile(const U8 *FileName);
@@ -38,7 +41,6 @@ int PascalMain(int argc, const U8 *const *argv)
 
 int PascalRepl(void)
 {
-#define MB 1024*1024
 
     PascalArena Scratch = ArenaInit(1 << 15, 2);
     PascalArena Program = ArenaInit(MB, 4);
@@ -79,8 +81,7 @@ Cleanup:
     ArenaDeinit(&Program);
     ArenaDeinit(&Permanent);
 
-#undef MB
-    return PASCAL_EXIT_SUCCESS;
+    return RetVal;
 }
 
 
@@ -111,10 +112,22 @@ void PascalPrintUsage(FILE *f, const U8 *ProgramName)
 
 static PascalAst Compile(const U8 *Source, PascalArena *Allocator)
 {
+#if 0
     PascalParser Parser = ParserInit(Source, Allocator, stderr);
     PascalAst Ast = ParserGenerateAst(&Parser);
     PAstPrint(stdout, &Ast);
     return Ast;
+#endif
+    CodeChunk Chunk = CodeChunkInit(1024);
+
+    CodeChunkWrite(&Chunk, PVM_IRD_INS(LDI, 0, 1));
+    CodeChunkWrite(&Chunk, PVM_IRD_INS(LDI, 1, 2));
+    CodeChunkWrite(&Chunk, PVM_DATA_INS(ADD, 2, 1, 0));
+    CodeChunkWrite(&Chunk, PVM_RESV_INS(RET));
+
+    CodeChunkDisasm(stderr, &Chunk);
+
+    CodeChunkDeinit(&Chunk);
 }
 
 

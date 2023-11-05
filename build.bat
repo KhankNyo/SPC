@@ -7,7 +7,7 @@ set "OUTDIRS=bin obj"
 set "SRCDIR=%CD%\src"
 set "OBJDIR=%CD%\obj"
 set "BINDIR=%CD%\bin"
-set "INCPATH=%SRCDIR%"
+set "INCPATH=%SRCDIR%\Include"
 
 if "%ARG1%"=="cl" (
     set "CC=cl"
