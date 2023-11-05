@@ -7,10 +7,11 @@ set "OUTDIRS=bin obj"
 set "SRCDIR=%CD%\src"
 set "OBJDIR=%CD%\obj"
 set "BINDIR=%CD%\bin"
+set "INCPATH=%SRCDIR%"
 
 if "%ARG1%"=="cl" (
     set "CC=cl"
-    set "CCF=-Zi -Od -DDEBUG -MT -FC"
+    set "CCF=-Zi -Od -DDEBUG -MT -FC /I%INCPATH%"
     set "LD="
     set "LIBS="
     set "OBJ_SWITCH=/Fo"
@@ -19,7 +20,7 @@ if "%ARG1%"=="cl" (
     set "OBJ_EXTENSION=obj"
 ) else (
     set "CC=gcc"
-    set "CCF=-g -Og -DDEBUG -Wall -Wextra -Wpedantic"
+    set "CCF=-g -Og -DDEBUG -Wall -Wextra -Wpedantic -I%INCPATH%"
     set "LDF="
     set "LIBS="
     set "OBJ_SWITCH=-o "
