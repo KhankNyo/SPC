@@ -32,7 +32,7 @@ if "%ARG1%"=="cl" (
 set "MSG="
 set "SRCS=%SRCDIR%\PascalString.c %SRCDIR%\main.c %SRCDIR%\Pascal.c %SRCDIR%\Memory.c"
 set "SRCS=%SRCS% %SRCDIR%\Tokenizer.c %SRCDIR%\Parser.c %SRCDIR%\Ast.c"
-set "SRCS=%SRCS% %SRCDIR%\PVM\PVM.c %SRCDIR%\PVM\CodeChunk.c"
+set "SRCS=%SRCS% %SRCDIR%\PVM\Disassembler.c %SRCDIR%\PVM\PVM.c %SRCDIR%\PVM\CodeChunk.c"
 set "OUTPUT=%BINDIR%\pascal.exe"
 
 
