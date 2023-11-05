@@ -2,7 +2,7 @@
 #define PASCAL_VM_H
 
 
-#include "Common.h"
+#include "CodeChunk.h"
 
 /*---------------------------------------------------------------------*/
 /*
@@ -49,7 +49,7 @@
  */
 /*---------------------------------------------------------------------*/
 
-typedef enum PascalVMIns 
+typedef enum PVMIns
 {
     PVM_RESV = 0,
         
@@ -72,7 +72,7 @@ typedef enum PascalVMIns
         PVM_IRD_COUNT,
 
     PVM_INS_COUNT,
-} PascalVMIns;
+} PVMIns;
 
 #define PVM_MAX_INS_COUNT (1u << 6)
 PASCAL_STATIC_ASSERT(PVM_DI_COUNT < (PVM_DATA | PVM_MAX_INS_COUNT), "Too many instructions");
@@ -96,6 +96,22 @@ PASCAL_STATIC_ASSERT(PVM_IRD_COUNT < (PVM_IRD | PVM_MAX_INS_COUNT), "Too many in
      | BIT_POS32(Rb, 6, 10)\
      | BIT_POS32(Offset10, 10, 0))
 
+
+#define PVM_GET_INS(U32_Opcode) ((PVMIns)(((U32)(U32_Opcode)) >> 22))
+
+#define PVM_GET_DI_RD(U32_Opcode) BIT_AT32(U32_Opcode, 6, 16)
+#define PVM_GET_DI_RS0(U32_Opcode) BIT_AT32(U32_Opcode, 6, 10)
+#define PVM_GET_DI_RS1(U32_Opcode) BIT_AT32(U32_Opcode, 6, 4)
+
+#define PVM_GET_BRIF_RA(U32_Opcode) PVM_GET_DI_RD(U32_Opcode)
+#define PVM_GET_BRIF_RB(U32_Opcode) PVM_GET_DI_RS0(U32_Opcode)
+#define PVM_GET_BRIF_IMM10(U32_Opcode) BIT_SEX32(U32_Opcode, 9)
+
+#define PVM_GET_IRD_RD(U32_Opcode) PVM_GET_DI_RD(U32_Opcode)
+#define PVM_GET_IRD_IMM16(U32_Opcode) ((U32_Opcode) & 0xFFFF)
+
+
+void PVMDisasm(FILE *f, const CodeChunk *Chunk);
 
 
 

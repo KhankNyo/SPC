@@ -1,11 +1,8 @@
 
-#include "Include/Memory.h"
-#include "Include/CodeChunk.h"
+#include "Memory.h"
+#include "PVM/CodeChunk.h"
 
 
-
-
-static void DisasmInstruction(FILE *f, U32 Instruction);
 
 
 CodeChunk CodeChunkInit(U32 InitialCapacity)

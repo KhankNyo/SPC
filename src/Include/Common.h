@@ -68,6 +68,11 @@
 
 #define BIT_MASK32(Size, Index) (((U32)1 << (Size)) - 1)
 #define BIT_POS32(Value, Size, Index) (((Value) & BIT_MASK32(Size, 0)) << (Index))
+#define BIT_AT32(U32_Value, Size, Index) (((U32_Value) >> (Index)) & BIT_MASK32(Size, 0))
+#define BIT_SEX32(Value, SignBitIndex) \
+    (((Value) & ((U32)1 << (SignBitIndex))) \
+        ? (Value) | ~(((U32)1 << (SignBitIndex)) - 1)\
+        : (Value))
 
 
 
