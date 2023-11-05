@@ -10,16 +10,30 @@
 void *MemAllocate(USize ByteCount);
 
 /* 
+ * Allocates an array,
+ * never return NULL 
+ */
+#define MemAllocateArray(TypeName_T, USize_ElemCount)\
+    MemAllocate((USize_ElemCount) * sizeof(TypeName_T))
+
+/* 
  * NewSize of 0 is a nop,
  * otherwise, this function acts like realloc without ever returning NULL
  */
 void *MemReallocate(void *Pointer, USize NewSize);
+
+/* wrapper around MemReallocate for arrays */
+#define MemReallocateArray(TypeName_T, Pointer, USize_NewElemCount)\
+    MemReallocate(Pointer, (USize_NewElemCount) * sizeof(TypeName_T))
 
 /* 
  * Deallocate a block of memory, 
  * currently a wrapper around free
  */
 void MemDeallocate(void *Pointer);
+
+/* Wrapper around MemDeallocate */
+#define MemDeallocateArray(Pointer) MemDeallocate(Pointer)
 
 
 
