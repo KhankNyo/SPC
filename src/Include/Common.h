@@ -32,14 +32,47 @@
 #define _UNUSED_N(N, ...) GLUE(_UNUSED, N) (__VA_ARGS__)
 #define UNUSED(...) _UNUSED_N(_VANARGS(__VA_ARGS__), __VA_ARGS__) 
 
+#if defined(__LITTLE_ENDIAN__)
+#  define PASCAL_LITTLE_ENDIAN 1
+#elif defined(__BIG_ENDIAN__)
+#  define PASCAL_BIG_ENDIAN 1
+#elif !defined(__LITTLE_ENDIAN__) && !defined(__BIG_ENDIAN__)
+#  if (defined(__BYTE_ORDER__)  && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) || \
+     (defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN) || \
+     (defined(_BYTE_ORDER) && _BYTE_ORDER == _BIG_ENDIAN) || \
+     (defined(BYTE_ORDER) && BYTE_ORDER == BIG_ENDIAN) || \
+     (defined(__sun) && defined(__SVR4) && defined(_BIG_ENDIAN)) || \
+     defined(__ARMEB__) || defined(__THUMBEB__) || defined(__AARCH64EB__) || \
+     defined(_MIBSEB) || defined(__MIBSEB) || defined(__MIBSEB__) || \
+     defined(_M_PPC)
+#    define PASCAL_BIG_ENDIAN 1
+#  elif (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) || /* gcc */\
+     (defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN) /* linux header */ || \
+     (defined(_BYTE_ORDER) && _BYTE_ORDER == _LITTLE_ENDIAN) || \
+     (defined(BYTE_ORDER) && BYTE_ORDER == LITTLE_ENDIAN) /* mingw header */ ||  \
+     (defined(__sun) && defined(__SVR4) && defined(_LITTLE_ENDIAN)) || /* solaris */ \
+     defined(__ARMEL__) || defined(__THUMBEL__) || defined(__AARCH64EL__) || \
+     defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__) || \
+     defined(_M_IX86) || defined(_M_X64) || defined(_M_IA64) || /* msvc for intel processors */ \
+     defined(_M_ARM) /* msvc code on arm executes in little endian mode */
+#    define PASCAL_LITTLE_ENDIAN 1
+#  endif
+#endif
+
+#if PASCAL_LITTLE_ENDIAN
+#  define PASCAL_BIG_ENDIAN 0
+#else
+#  define PASCAL_LITTLE_ENDIAN 0
+#endif
+
+
+#define BIT_MASK32(Size, Index) (((U32)1 << (Size)) - 1)
+#define BIT_POS32(Value, Size, Index) (((Value) & BIT_MASK32(Size, 0)) << (Index))
 
 
 
-
-#define STATIC_ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
-
+#define STATIC_ARRAY_SIZE(Array) (sizeof(Array) / sizeof((Array)[0]))
 #define DIE() ((*(volatile char *)NULL) = 0)
-
 #define PASCAL_UNREACHABLE(...) \
     do {\
         fprintf(stderr, "Invalid code path reached on line "\
@@ -48,9 +81,7 @@
                 );\
         DIE();\
     }while(0)
-
 #define PASCAL_STATIC_ASSERT(COND, MSG) extern int static_assertion(char foo[(COND)?1:-1])
-
 
 #ifdef DEBUG
 #  define PASCAL_ASSERT(expr, ...) do {\
@@ -88,39 +119,9 @@ typedef ptrdiff_t ISize;
 
 PASCAL_STATIC_ASSERT(sizeof(double) == sizeof(U64), "Unsupported double size");
 typedef double F64;
+typedef float F32;
 
-#if defined(__LITTLE_ENDIAN__)
-#  define PASCAL_LITTLE_ENDIAN 1
-#elif defined(__BIG_ENDIAN__)
-#  define PASCAL_BIG_ENDIAN 1
-#elif !defined(__LITTLE_ENDIAN__) && !defined(__BIG_ENDIAN__)
-#  if (defined(__BYTE_ORDER__)  && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) || \
-     (defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN) || \
-     (defined(_BYTE_ORDER) && _BYTE_ORDER == _BIG_ENDIAN) || \
-     (defined(BYTE_ORDER) && BYTE_ORDER == BIG_ENDIAN) || \
-     (defined(__sun) && defined(__SVR4) && defined(_BIG_ENDIAN)) || \
-     defined(__ARMEB__) || defined(__THUMBEB__) || defined(__AARCH64EB__) || \
-     defined(_MIBSEB) || defined(__MIBSEB) || defined(__MIBSEB__) || \
-     defined(_M_PPC)
-#    define PASCAL_BIG_ENDIAN 1
-#  elif (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) || /* gcc */\
-     (defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN) /* linux header */ || \
-     (defined(_BYTE_ORDER) && _BYTE_ORDER == _LITTLE_ENDIAN) || \
-     (defined(BYTE_ORDER) && BYTE_ORDER == LITTLE_ENDIAN) /* mingw header */ ||  \
-     (defined(__sun) && defined(__SVR4) && defined(_LITTLE_ENDIAN)) || /* solaris */ \
-     defined(__ARMEL__) || defined(__THUMBEL__) || defined(__AARCH64EL__) || \
-     defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__) || \
-     defined(_M_IX86) || defined(_M_X64) || defined(_M_IA64) || /* msvc for intel processors */ \
-     defined(_M_ARM) /* msvc code on arm executes in little endian mode */
-#    define PASCAL_LITTLE_ENDIAN 1
-#  endif
-#endif
 
-#if PASCAL_LITTLE_ENDIAN
-#  define PASCAL_BIG_ENDIAN 0
-#else
-#  define PASCAL_LITTLE_ENDIAN 0
-#endif
 
 #endif /* PASCAL_COMMON_H */
 
