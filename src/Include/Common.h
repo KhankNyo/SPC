@@ -95,7 +95,7 @@ typedef double F64;
 #  define PASCAL_BIG_ENDIAN 1
 #elif !defined(__LITTLE_ENDIAN__) && !defined(__BIG_ENDIAN__)
 #  if (defined(__BYTE_ORDER__)  && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) || \
-                                                        (defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN) || \
+     (defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN) || \
      (defined(_BYTE_ORDER) && _BYTE_ORDER == _BIG_ENDIAN) || \
      (defined(BYTE_ORDER) && BYTE_ORDER == BIG_ENDIAN) || \
      (defined(__sun) && defined(__SVR4) && defined(_BIG_ENDIAN)) || \
