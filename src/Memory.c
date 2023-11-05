@@ -1,6 +1,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h> /* memset */
 
 #include "Include/Pascal.h"
 #include "Include/Memory.h"
@@ -52,10 +53,13 @@ PascalArena ArenaInit(
 {
     PascalArena Arena = {
         .Mem = {[0] = {MemAllocate(InitialCap)} },
-        .Used = {[0] = 0},
-        .Cap = {[0] = InitialCap},
+        .Used = { 0 },
         .SizeGrowFactor = SizeGrowFactor,
     };
+    Arena.Cap[0] = InitialCap;
+    for (UInt i = 1; i < PASCAL_ARENA_COUNT; i++)
+        Arena.Cap[i] = Arena.Cap[i - 1] * SizeGrowFactor; 
+
     return Arena;
 }
 
@@ -68,6 +72,13 @@ void ArenaDeinit(PascalArena *Arena)
     *Arena = (PascalArena){0};
 }
 
+void ArenaReset(PascalArena *Arena)
+{
+    Arena->CurrentIdx = 0;
+    for (UInt i = 0; i < PASCAL_ARENA_COUNT; i++)
+        Arena->Used[i] = 0;
+}
+
 
 void *ArenaAllocate(PascalArena *Arena, USize Bytes)
 {
@@ -75,13 +86,15 @@ void *ArenaAllocate(PascalArena *Arena, USize Bytes)
     /* start looking elsewhere */
     if ((USize)Arena->Used[i] + Bytes > Arena->Cap[i])
     {
+        /* look for the arenas before */
         for (i = 0; i < Arena->CurrentIdx; i++)
         {
             if ((USize)Arena->Used[i] + Bytes <= Arena->Cap[i])
                 goto Allocate;
         }
 
-        if (PASCAL_ARENA_COUNT - 1 == i)
+        /* if we ran out of arenas */
+        if (PASCAL_ARENA_COUNT == i)
         {
             USize Total = Arena->Cap[0];
             for (UInt i = 0; i < PASCAL_ARENA_COUNT; i++)
@@ -93,19 +106,28 @@ void *ArenaAllocate(PascalArena *Arena, USize Bytes)
         }
 
         /* have to allocate a brand new arena */
-        U32 NewCap = Arena->Cap[i] * Arena->SizeGrowFactor;
         i += 1;
-        Arena->Cap[i] = NewCap;
-        Arena->Used[i] = 0;
-        Arena->CurrentIdx = i;
-        Arena->Mem[i].Raw = MemAllocate(NewCap);
+        if (NULL == Arena->Mem[i].Raw)
+        {
+            Arena->CurrentIdx = i;
+            Arena->Mem[i].Raw = MemAllocate(Arena->Cap[i]);
+        }
     }
 
     void *Ptr;
+    USize Size;
 Allocate:
+    Size = Bytes & ~(PASCAL_ARENA_ALIGNMENT - 1);
     Ptr = &Arena->Mem[i].Bytes[Arena->Used[i]];
-    Arena->Used[i] += Bytes;
+    Arena->Used[i] += Size;
     return Ptr;
 }
 
+
+void *ArenaAllocateZero(PascalArena *Arena, USize Bytes)
+{
+    void *Ptr = ArenaAllocate(Arena, Bytes);
+    memset(Ptr, 0, Bytes);
+    return Ptr;
+}
 

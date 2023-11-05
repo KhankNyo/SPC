@@ -25,6 +25,7 @@ void MemDeallocate(void *Pointer);
 
 
 #define PASCAL_ARENA_COUNT 4
+#define PASCAL_ARENA_ALIGNMENT (sizeof(void*))
 
 typedef struct PascalArena
 {
@@ -47,8 +48,15 @@ typedef struct PascalArena
 PascalArena ArenaInit(
         UInt InitialCap, UInt SizeGrowFactor
 );
+/* free all arenas and set every field in the arena to 0 */
 void ArenaDeinit(PascalArena *Arena);
-void *ArenaAllocate(PascalArena *Allocator, USize Bytes);
+
+/* reset all Used and CurrentIdx to 0, but does not free the arena */
+void ArenaReset(PascalArena *Arena);
+
+
+void *ArenaAllocate(PascalArena *Arena, USize Bytes);
+void *ArenaAllocateZero(PascalArena *Arena, USize Bytes);
 
 
 #endif /* PASCAL_MEMORY_H */
