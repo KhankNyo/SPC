@@ -24,6 +24,7 @@ PascalVM PVMInit(U32 StackSize, UInt RetStackSize)
 void PVMDeinit(PascalVM *PVM)
 {
     MemDeallocateArray(PVM->Stack.Start);
+    MemDeallocateArray(PVM->RetStack.Start);
     *PVM = (PascalVM){ 0 };
 }
 
