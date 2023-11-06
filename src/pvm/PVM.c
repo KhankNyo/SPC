@@ -106,7 +106,7 @@ do {\
         } break;
         case PVM_BALT_SR:
         {
-            PVMSPtr SignedImm = PVM_BSR_GET_IMM(Opcode);
+            PVMSPtr SignedImm = (PVMSPtr)PVM_BSR_GET_IMM(Opcode);
             if (-1 == SignedImm) /* return instruction */
             {
                 if (PVM->RetStack.Val == PVM->RetStack.Start)
