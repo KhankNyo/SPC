@@ -6,6 +6,8 @@
 #include "Memory.h"
 #include "Tokenizer.h"
 #include "Parser.h"
+
+#include "PVM/Disassembler.h"
 #include "PVM/PVM.h"
 #include "PVM/CodeChunk.h"
 
@@ -120,14 +122,18 @@ static PascalAst Compile(const U8 *Source, PascalArena *Allocator)
     return Ast;
 #endif
     CodeChunk Chunk = CodeChunkInit(1024);
+    PascalVM PVM = PVMInit(0, 0);
 
-    CodeChunkWrite(&Chunk, PVM_IRD_INS(LDI, 0, 1));
-    CodeChunkWrite(&Chunk, PVM_IRD_INS(LDI, 1, 2));
-    CodeChunkWrite(&Chunk, PVM_DATA_INS(ADD, 2, 1, 0));
-    CodeChunkWrite(&Chunk, PVM_BRANCH_IF(EQ, 0, 1, -1));
+    CodeChunkWrite(&Chunk, PVM_IRD_ARITH_INS(LDI, 1, 10));
+    CodeChunkWrite(&Chunk, PVM_IRD_ARITH_INS(ADD, 0, 1));
+    CodeChunkWrite(&Chunk, PVM_BRANCH_IF(NE, 0, 1, -2));
+    CodeChunkWrite(&Chunk, PVM_SYS_INS(EXIT));
 
     PVMDisasm(stderr, &Chunk);
+    PVMInterpret(&PVM, &Chunk);
+    PVMDumpState(stderr, &PVM, 6);
 
+    PVMDeinit(&PVM);
     CodeChunkDeinit(&Chunk);
     return (PascalAst) { 0 };
 }

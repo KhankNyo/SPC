@@ -13,16 +13,24 @@ static const char *sRegName[] =
     "R48", "R49", "R50", "R51", "R52", "R53", "R54", "R55",
     "R56", "R57", "R58", "R59", "R60", "R61", "R62", "R63",
 };
-static void DisasmInstruction(FILE *f, U32 Addr, U32 Opcode);
-static void DisasmDataIns(FILE *f, const char *Mnemonic, U32 Addr, U32 Opcode);
-static void DisasmBrIf(FILE *f, const char *Mnemonic, U32 Addr, U32 Opcode);
-static void DisasmImmRd(FILE *f, const char *Mnemonic, U32 Addr, U32 Opcode, bool IsSigned);
-static void PrintAddr(FILE *f, U32 Addr);
+static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode);
+
+static void DisasmDataInsArith(FILE *f, PVMWord Addr, PVMWord Opcode);
+static void DisasmDataIns(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode);
+
+static void DisasmBrIf(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode);
+static void DisasmBAlt(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode);
+
+static void DisasmImmRdArith(FILE *f, PVMWord Addr, PVMWord Opcode);
+static void DisasmImmRd(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode, bool IsSigned);
+
+static void DisasmSysOp(FILE *f, PVMWord Addr, PVMWord Opcode);
+static void PrintAddr(FILE *f, PVMWord Addr);
 
 
 void PVMDisasm(FILE *f, const CodeChunk *Chunk)
 {
-    for (U32 i = 0; i < Chunk->Count; i++)
+    for (PVMWord i = 0; i < Chunk->Count; i++)
     {
         DisasmInstruction(f, i, Chunk->Data[i]);
     }
@@ -30,75 +38,139 @@ void PVMDisasm(FILE *f, const CodeChunk *Chunk)
 
 
 
-static void DisasmInstruction(FILE *f, U32 Addr, U32 Opcode)
+static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode)
 {
     PVMIns Ins = PVM_GET_INS(Opcode);
     switch (Ins)
     {
-    case PVM_RESV:
-
-    case PVM_DI_ADD: DisasmDataIns(f, "ADD", Addr, Opcode); break;
-    case PVM_DI_SUB: DisasmDataIns(f, "SUB", Addr, Opcode); break;
+    case PVM_RE_SYS: DisasmSysOp(f, Addr, Opcode); break;
+    case PVM_DI_ARITH: DisasmDataInsArith(f, Addr, Opcode); break;
+    case PVM_IRD_ARITH: DisasmImmRdArith(f, Addr, Opcode); break;
 
     case PVM_BRIF_EQ: DisasmBrIf(f, "EQ", Addr, Opcode); break;
+    case PVM_BRIF_NE: DisasmBrIf(f, "NE", Addr, Opcode); break;
+    case PVM_BRIF_LT: DisasmBrIf(f, "LT", Addr, Opcode); break;
+    case PVM_BRIF_GT: DisasmBrIf(f, "GT", Addr, Opcode); break;
+    case PVM_BALT_SLT: DisasmBrIf(f, "SLT", Addr, Opcode); break;
+    case PVM_BALT_SGT: DisasmBrIf(f, "SGT", Addr, Opcode); break;
+    case PVM_BALT_AL: DisasmBAlt(f, "BAL", Addr, Opcode); break;
+    case PVM_BALT_SR: DisasmBAlt(f, "BSR", Addr, Opcode); break;
 
-    case PVM_IRD_ADD: DisasmImmRd(f, "ADD", Addr, Opcode, true); break;
-    case PVM_IRD_SUB: DisasmImmRd(f, "SUB", Addr, Opcode, true); break;
-    case PVM_IRD_LDI: DisasmImmRd(f, "LDI", Addr, Opcode, true); break;
-    case PVM_IRD_LUI: DisasmImmRd(f, "LUI", Addr, Opcode, false); break;
-    case PVM_IRD_ORI: DisasmImmRd(f, "ORI", Addr, Opcode, false); break;
-
+    case PVM_RE_COUNT:
     case PVM_IRD_COUNT:
-    case PVM_BRIF_COUNT:
     case PVM_DI_COUNT:
     case PVM_INS_COUNT:
     {
-        PASCAL_UNREACHABLE("Counting enums are not instructions");
+        PrintAddr(f, Addr);
+        fprintf(f, "???\n");
     } break;
     }
 }
 
 
 
-static void DisasmDataIns(FILE *f, const char *Mnemonic, U32 Addr, U32 Opcode)
+
+
+
+
+
+static void DisasmDataInsArith(FILE *f, PVMWord Addr, PVMWord Opcode)
 {
-    const char *Rd = sRegName[PVM_GET_DI_RD(Opcode)];
-    const char *Rs0 = sRegName[PVM_GET_DI_RS0(Opcode)];
-    const char *Rs1 = sRegName[PVM_GET_DI_RS1(Opcode)];
+    switch ((PVMDIArith)PVM_DI_GET_OP(Opcode))
+    {
+    case PVM_DI_ADD: DisasmDataIns(f, "ADD", Addr, Opcode); break;
+    case PVM_DI_SUB: DisasmDataIns(f, "SUB", Addr, Opcode); break;
+    }
+}
+
+
+static void DisasmDataIns(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode)
+{
+    const char *Rd = sRegName[PVM_DI_GET_RD(Opcode)];
+    const char *Rs0 = sRegName[PVM_DI_GET_RA(Opcode)];
+    const char *Rs1 = sRegName[PVM_DI_GET_RB(Opcode)];
 
     PrintAddr(f, Addr);
-    fprintf(f, "DI_%s %s, %s, %s\n", 
+    fprintf(f, "%s %s, %s, %s\n", 
             Mnemonic, Rd, Rs0, Rs1
     );
 }
 
-static void DisasmBrIf(FILE *f, const char *Mnemonic, U32 Addr, U32 Opcode)
+static void DisasmBrIf(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode)
 {
-    const char *Ra = sRegName[PVM_GET_BRIF_RA(Opcode)];
-    const char *Rb = sRegName[PVM_GET_BRIF_RB(Opcode)];
-    U32 BranchTarget = Addr + PVM_GET_BRIF_IMM10(Opcode);
+    const char *Ra = sRegName[PVM_BRIF_GET_RA(Opcode)];
+    const char *Rb = sRegName[PVM_BRIF_GET_RB(Opcode)];
+    PVMWord BranchTarget = Addr + 1 + PVM_BRIF_GET_IMM(Opcode);
 
     PrintAddr(f, Addr);
-    fprintf(f, "BRIF_%s %s, %s, [%u]\n", 
+    fprintf(f, "B%s %s, %s, [%u]\n", 
             Mnemonic, Ra, Rb, BranchTarget
     );
 }
 
-static void DisasmImmRd(FILE *f, const char *Mnemonic, U32 Addr, U32 Opcode, bool IsSigned)
+
+static void DisasmBAlt(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode)
 {
-    const char *Rd = sRegName[PVM_GET_IRD_RD(Opcode)];
+    PVMWord BranchTarget = Addr + 1 + PVM_BAL_GET_IMM(Opcode);
+    PrintAddr(f, Addr);
+    fprintf(f, "%s [%u]\n", Mnemonic, BranchTarget);
+}
+
+
+
+
+static void DisasmImmRdArith(FILE *f, PVMWord Addr, PVMWord Opcode)
+{
+    switch ((PVMIRDArith)PVM_IRD_GET_OP(Opcode))
+    {
+    case PVM_IRD_ADD: DisasmImmRd(f, "ADD", Addr, Opcode, true); break;
+    case PVM_IRD_SUB: DisasmImmRd(f, "SUB", Addr, Opcode, true); break;
+    case PVM_IRD_LDI: DisasmImmRd(f, "LDI", Addr, Opcode, true); break;
+    case PVM_IRD_LUI: DisasmImmRd(f, "LUI", Addr, Opcode, false); break;
+    case PVM_IRD_ORI: DisasmImmRd(f, "ORI", Addr, Opcode, false); break;
+    }
+}
+
+
+
+static void DisasmImmRd(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode, bool IsSigned)
+{
+    const char *Rd = sRegName[PVM_IRD_GET_RD(Opcode)];
     int Immediate = IsSigned 
-        ? (int)(I16)PVM_GET_IRD_IMM16(Opcode)
-        : (int)PVM_GET_IRD_IMM16(Opcode);
+        ? (int)(I16)PVM_IRD_GET_IMM(Opcode)
+        : (int)PVM_IRD_GET_IMM(Opcode);
 
     PrintAddr(f, Addr);
-    fprintf(f, "IRD_%s %s, %d\n", 
+    fprintf(f, "%s %s, %d\n", 
             Mnemonic, Rd, Immediate
     );
 }
 
 
-static void PrintAddr(FILE *f, U32 Addr)
+
+static void DisasmSysOp(FILE *f, PVMWord Addr, PVMWord Opcode)
+{
+    PVMSysOp SysOp = PVM_GET_SYS_OP(Opcode);
+    PrintAddr(f, Addr);
+
+    switch (SysOp)
+    {
+    case PVM_SYS_EXIT:
+    {
+        fprintf(f, "SYS_EXIT\n");
+    } break;
+
+    case PVM_SYS_COUNT:
+    {
+        PASCAL_UNREACHABLE("Disassembler: SYS_COUNT is not an instruction\n");
+    } break;
+
+    }
+
+}
+
+
+static void PrintAddr(FILE *f, PVMWord Addr)
 {
     fprintf(f, "%8x:    ", Addr);
 }

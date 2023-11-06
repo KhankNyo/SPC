@@ -67,12 +67,13 @@
 
 
 #define BIT_MASK32(Size, Index) (((U32)1 << (Size)) - 1)
-#define BIT_POS32(Value, Size, Index) (((Value) & BIT_MASK32(Size, 0)) << (Index))
-#define BIT_AT32(U32_Value, Size, Index) (((U32_Value) >> (Index)) & BIT_MASK32(Size, 0))
+#define BIT_POS32(Value, Size, Index) (((U32)(Value) & BIT_MASK32(Size, 0)) << (Index))
+#define BIT_AT32(U32_Value, Size, Index) (((U32)(U32_Value) >> (Index)) & BIT_MASK32(Size, 0))
+/* not a safe macro, but better than a static function in a header file */
 #define BIT_SEX32(Value, SignBitIndex) \
     (((Value) & ((U32)1 << (SignBitIndex))) \
-        ? (Value) | ~(((U32)1 << (SignBitIndex)) - 1)\
-        : (Value))
+        ? (U32)(Value) | ~(((U32)1 << (SignBitIndex)) - 1)\
+        : (U32)(Value))
 
 
 
@@ -87,6 +88,7 @@
         DIE();\
     }while(0)
 #define PASCAL_STATIC_ASSERT(COND, MSG) extern int static_assertion(char foo[(COND)?1:-1])
+
 
 #ifdef DEBUG
 #  define PASCAL_ASSERT(expr, ...) do {\
