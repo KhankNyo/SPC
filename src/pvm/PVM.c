@@ -98,8 +98,8 @@ do {\
         case PVM_BRIF_NE: BRANCH_IF(!=, IP, Opcode, .Word.First); break;
         case PVM_BRIF_GT: BRANCH_IF(>, IP, Opcode, .Word.First); break;
         case PVM_BRIF_LT: BRANCH_IF(<, IP, Opcode, .Word.First); break;
-        case PVM_BALT_SGT: BRANCH_IF(==, IP, Opcode, .Word.First); break;
-        case PVM_BALT_SLT: BRANCH_IF(!=, IP, Opcode, .Word.First); break;
+        case PVM_BALT_SGT: BRANCH_IF(>, IP, Opcode, .SWord.First); break;
+        case PVM_BALT_SLT: BRANCH_IF(<, IP, Opcode, .SWord.First); break;
         case PVM_BALT_AL: 
         {
             IP += (PVMSPtr)(I32)PVM_BAL_GET_IMM(Opcode);
