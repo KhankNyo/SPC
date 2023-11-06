@@ -149,6 +149,11 @@ static AstFactor ParseFactor(PascalParser *Parser)
         Factor.As.Integer = Parser->Curr.Literal.Int;
         return Factor;
     }
+    if (ConsumeIfNextIs(Parser, TOKEN_NUMBER_LITERAL))
+    {
+        Factor.Type = FACTOR_REAL;
+        Factor.As.Real = Parser->Curr.Literal.Real;
+    }
     if (ConsumeIfNextIs(Parser, TOKEN_LEFT_PAREN))
     {
         AstExpr Expression = ParseExpr(Parser);
