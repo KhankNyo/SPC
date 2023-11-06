@@ -10,17 +10,24 @@
  * [b..a]:          bits from index a to index b
  * SExWord(val):    sign extend value to signed word from word
  * SExPtr(val):     sign extend value to signed ptr from word
+ * PC:              Program Counter, has size of Ptr, always aligned to Word boundary
+ * FP:              Frame Pointer, has size of Ptr, always aligned on Ptr boundary
+ * SP:              Stack Pointer, has size of Ptr, always aligned on Ptr boundary
+ * R*:              General purpose registers, assumed to be Word size if there are no postfix
  *
  * 2/ Pascal VM opcode format:
- * U32 Opcode:      [31..28][27..26][25..21][20..16][15..10][ 9..5 ][ 4..0 ] 
- * Resv:            [ 0000 ][ Mode ][         Depends on each Mode         ] 
- * Data:            [ 0001 ][ Mode ][  Op  ][  RD  ][  RA  ][  RB  ][  Sh  ]
- * BranchIf:        [ 0010 ][  CC  ][  RA  ][  RB  ][         Imm16        ]
- * BranchSignedIf:  [ 0011 ][  0C  ][  RA  ][  RB  ][         Imm16        ]
- * BranchAlways:    [ 0011 ][  1C  ][                 Imm26                ]
+ * U32 Opcode:      [31..28][27..26][  25..21 ][20..16][15..11][10..6 ][5][ 4..0 ] 
+ * Resv:            [ 0000 ][ Mode ][              Depends on each Mode          ] 
+ * Data:            [ 0001 ][ Mode ][    Op   ][  RD  ][  RA  ][  RB  ][   Sh    ]
+ *                  [ 0001 ][  00  ][  (S)Mul ][  RD  ][  RA  ][  RB  ][S][ 0000 ]
+ *                  [ 0001 ][  00  ][(S)Div(P)][  RD  ][  RA  ][  RB  ][S][  RR  ]
  *
- * LimmRd:          [ 0100 ][ Mode ][  RD  ][             Imm20            ]
- * ImmRd:           [ 0101 ][ Mode ][  Op  ][  RD  ][         Imm16        ]
+ * BranchIf:        [ 0010 ][  CC  ][    RA   ][  RB  ][           Imm16         ]
+ * BranchSignedIf:  [ 0011 ][  0C  ][    RA   ][  RB  ][           Imm16         ]
+ * BranchAlways:    [ 0011 ][  1C  ][                     Imm26                  ]
+ *
+ * LimmRd:          [ 0100 ][ Mode ][    RD   ][              Imm20              ]
+ * ImmRd:           [ 0101 ][ Mode ][    Op   ][  RD  ][          Imm16          ]
  * 
  * 
  * 3/ Instructions:
@@ -35,10 +42,37 @@
  *      Mode:
  *      00: Arith
  *          Ins:
- *          00000:  ADD RD, RA, RB:
+ *          00000:  ADD RD, RA, RB
  *                      RD := RA + RB
- *          00001:  SUB RD, RA, RB:
+ *          00001:  SUB RD, RA, RB
  *                      RD := RA - RB
+ *          00010:  (S)MUL HI, RA, RB, LO
+ *                  if (S)
+ *                      Product := SExPtr(RA) * SExPtr(RB)
+ *                      HI := Product.HI
+ *                      LO := Product.LO
+ *                  else
+ *                      Product := RA * RB
+ *                      HI := Product.HI
+ *                      LO := Product.LO
+ *          00011:  (S)DIVP RD, RA, RB, RR
+ *                  if (RB.Ptr == 0)
+ *                      DivisionBy0Exception()
+ *                  if (S)
+ *                      RD.SPtr  := RA.SPtr / RB.SPtr
+ *                  else
+ *                      RD.Ptr   := RA.SPtr / RB.SPtr
+ *                  RR.Word  := Remainder
+ *
+ *          00100:  (S)DIV RD, RA, RB, RR
+ *                  if (RB.Ptr == 0)
+ *                      DivisionBy0Exception()
+ *                  if (S)
+ *                      RD.SWord := RA.SWord / RB.SWord
+ *                  else 
+ *                      RD.Word  := RA.Word / RB.Word
+ *                  RR.Word  := Remainder
+ *
  *      01: 
  *      10:
  *      11:
@@ -71,22 +105,26 @@
  *          if (SExWord(RA) > SExWord(RB))
  *              PC += SExPtr(Offset16)
  *
+ *  3.3.5/BranchAlways, Ret:
+ *      Mode:
  *      10: B Offset26
  *          PC += SExPtr(Offset26)
  *
  *      11: BSR Offset26
- *          ReturnValueStack++ = PC
- *          PC += SExPtr(Offset26)
- */
-/*
- *  3.2/LimmRd:
+ *          if (SExPtr(Offset26) == -1) Do Ret:
+ *              PC, FP = RetStackPop(.Addr, .Frame);
+ *          else Do BranchSubroutine:
+ *              RetStackPush(.Addr = PC, .Frame = FP);
+ *              PC += SExPtr(Offset26);
+ *
+ *  3.4/LimmRd:
  *      Mode:
  *      00:
  *      01:
  *      10:
  *      11:
  *
- *  3.3/ImmRd:
+ *  3.5/ImmRd:
  *      Mode:
  *      00: Arith:
  *          00000: ADD RD, Imm16
@@ -107,10 +145,15 @@
  *      Mode:
  *      00: Arith:
  *          00000: ADD RD, Imm16
+ *              RD += SExWord(Imm16)
  *          00001: SUB RD, Imm16
+ *              RD -= SExWord(Imm16)
  *          00010: LDI RD, Imm16
+ *              RD = SExWord(Imm16)
  *          00011: LUI RD, Imm16
+ *              RD := Imm16 << 16
  *          00100: ORI RD, Imm16
+ *              RD |= Imm16
  *
 * */
 /*---------------------------------------------------------------------*/
@@ -154,6 +197,10 @@ typedef enum PVMDIArith
 {
     PVM_DI_ADD = 0,
     PVM_DI_SUB,
+    PVM_DI_MUL,
+    PVM_DI_DIV,
+    PVM_DI_DIVP,
+    PVM_DI_ARITH_COUNT,
 } PVMDIArith;
 
 typedef enum PVMIRDArith 
@@ -163,6 +210,8 @@ typedef enum PVMIRDArith
     PVM_IRD_LDI,
     PVM_IRD_LUI,
     PVM_IRD_ORI,
+    PVM_IRD_SCC,
+    PVM_IRD_ARITH_COUNT,
 } PVMIRDArith;
 
 typedef enum PVMSysOp 
@@ -174,7 +223,7 @@ typedef enum PVMSysOp
 
 
 #define PVM_REG_COUNT 32
-#define PVM_MAX_INS_COUNT ((U32)1 << 2)
+#define PVM_MAX_OP_COUNT ((U32)1 << 5)
 #define PVM_MAX_SYS_COUNT ((U32)1 << 26)
 
 PASCAL_STATIC_ASSERT(PVM_RE_COUNT <= PVM_DI, "Too many Resv instructions");
@@ -184,6 +233,8 @@ PASCAL_STATIC_ASSERT(PVM_BALT_COUNT <= PVM_IRD, "Too many BranchAlt instructions
 PASCAL_STATIC_ASSERT(PVM_IRD_COUNT <= PVM_INS_COUNT, "Too many ImmRd instructions");
 
 PASCAL_STATIC_ASSERT(PVM_SYS_COUNT < PVM_MAX_SYS_COUNT, "Too many SysOp instructions");
+PASCAL_STATIC_ASSERT(PVM_DI_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for DataIns Arith instruction");
+PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for ImmRd Arith instruction");
 
 
 /* Setters */

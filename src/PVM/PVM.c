@@ -35,9 +35,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk)
 #define IRD_SIGNED_IMM(Opcode) (I32)(I16)PVM_IRD_GET_IMM(Opcode)
 
 #define DI_IBINARY_OP(Operation, Opcode, RegType)\
-do {\
-    REG(Opcode, DI, RD)RegType = REG(Opcode, DI, RA)RegType Operation REG(Opcode, DI, RB)RegType;\
-} while(0)
+    REG(Opcode, DI, RD)RegType = REG(Opcode, DI, RA)RegType Operation REG(Opcode, DI, RB)RegType
 
 #define BRANCH_IF(Operation, IP, Opcode, RegType)\
 do {\
@@ -75,6 +73,48 @@ do {\
             {
             case PVM_DI_ADD: DI_IBINARY_OP(+, Opcode, .Word.First); break;
             case PVM_DI_SUB: DI_IBINARY_OP(-, Opcode, .Word.First); break;
+            case PVM_DI_MUL:
+            {
+                if (Opcode & (1 << 5))
+                {
+                    REG(Opcode, DI, RD).SPtr = 
+                        REG(Opcode, DI, RA).SWord.First * REG(Opcode, DI, RB).SWord.First;
+                }
+                else
+                {
+                    REG(Opcode, DI, RD).Ptr = 
+                        REG(Opcode, DI, RA).Word.First * REG(Opcode, DI, RB).Word.First;
+                }
+            } break;
+            case PVM_DI_DIV:
+            {
+                if (0 == REG(Opcode, DI, RB).Word.First)
+                {
+                    /* TODO division by 0 exception */
+                }
+
+                if (Opcode & (1 << 5))
+                    DI_IBINARY_OP(/, Opcode, .SPtr);
+                else 
+                    DI_IBINARY_OP(/, Opcode, .Ptr);
+            } break;
+            case PVM_DI_DIVP:
+            {
+                if (0 == REG(Opcode, DI, RB).Word.First)
+                {
+                    /* TODO division by 0 exception */
+                }
+
+                if (Opcode & (1 << 5))
+                    DI_IBINARY_OP(/, Opcode, .SWord.First);
+                else 
+                    DI_IBINARY_OP(/, Opcode, .Word.First);
+            } break;
+
+            case PVM_DI_ARITH_COUNT: 
+            {
+                PASCAL_UNREACHABLE("PVM: DI_ARITH_COUNT is not an instruction\n");
+            } break;
             }
         } break;
 
@@ -88,6 +128,11 @@ do {\
             case PVM_IRD_LDI: REG(Opcode, IRD, RD).Word.First = IRD_SIGNED_IMM(Opcode); break;
             case PVM_IRD_LUI: REG(Opcode, IRD, RD).Word.First = PVM_IRD_GET_IMM(Opcode) << 16; break;
             case PVM_IRD_ORI: REG(Opcode, IRD, RD).Word.First |= PVM_IRD_GET_IMM(Opcode); break;
+            case PVM_IRD_SCC: break;
+            case PVM_IRD_ARITH_COUNT:
+            {
+                PASCAL_UNREACHABLE("PVM: IRD_ARITH_COUNT is not an instruction\n");
+            } break;
             }
         } break;
 
