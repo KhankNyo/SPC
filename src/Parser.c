@@ -98,8 +98,8 @@ static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser)
     AstSimpleExpr SimpleExpression = {0};
 
     /* prefixes */
-    static const TokenType PrefixOps[] = { TOKEN_PLUS, TOKEN_MINUS };
-    ConsumeIfNextIsOneOf(Parser, STATIC_ARRAY_SIZE(PrefixOps), PrefixOps);
+    //static const TokenType PrefixOps[] = { TOKEN_PLUS, TOKEN_MINUS };
+    //ConsumeIfNextIsOneOf(Parser, STATIC_ARRAY_SIZE(PrefixOps), PrefixOps);
 
     /* left */
     SimpleExpression.Left = ParseTerm(Parser);

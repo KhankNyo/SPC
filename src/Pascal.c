@@ -10,11 +10,12 @@
 #include "PVM/Disassembler.h"
 #include "PVM/PVM.h"
 #include "PVM/CodeChunk.h"
+#include "PVM/Codegen.h"
 
 
 #define MB 1024*1024
 
-static PascalAst Compile(const U8 *Source, PascalArena *Allocator);
+static bool PascalRun(const U8 *Source, PascalArena *Allocator);
 static U8 *LoadFile(const U8 *FileName);
 static void UnloadFile(U8 *FileContents);
 
@@ -73,7 +74,7 @@ int PascalRepl(void)
         memcpy(CurrentSource, Tmp, SourceLen);
         CurrentSource[SourceLen] = '\0';
 
-        Compile(CurrentSource, &Scratch);
+        PascalRun(CurrentSource, &Scratch);
 
         ArenaReset(&Scratch);
     }
@@ -94,7 +95,7 @@ int PascalRunFile(const U8 *InFileName, const U8 *OutFileName)
     U8 *Source = LoadFile(InFileName);
 
     PascalArena Allocator = ArenaInit(1024 * 1024, 4);
-    Compile(Source, &Allocator);
+    PascalRun(Source, &Allocator);
     ArenaDeinit(&Allocator);
 
     UnloadFile(Source);
@@ -113,29 +114,22 @@ void PascalPrintUsage(FILE *f, const U8 *ProgramName)
 
 
 
-static PascalAst Compile(const U8 *Source, PascalArena *Allocator)
+static bool PascalRun(const U8 *Source, PascalArena *Allocator)
 {
-#if 0
     PascalParser Parser = ParserInit(Source, Allocator, stderr);
     PascalAst Ast = ParserGenerateAst(&Parser);
     PAstPrint(stdout, &Ast);
-    return Ast;
-#endif
-    CodeChunk Chunk = CodeChunkInit(1024);
-    PascalVM PVM = PVMInit(0, 0);
 
-    CodeChunkWrite(&Chunk, PVM_IRD_ARITH_INS(LDI, 1, 10));
-    CodeChunkWrite(&Chunk, PVM_IRD_ARITH_INS(ADD, 0, 1));
-    CodeChunkWrite(&Chunk, PVM_BRANCH_IF(NE, 0, 1, -2));
-    CodeChunkWrite(&Chunk, PVM_SYS_INS(EXIT));
-
-    PVMDisasm(stderr, &Chunk);
-    PVMInterpret(&PVM, &Chunk);
-    PVMDumpState(stderr, &PVM, 6);
-
-    PVMDeinit(&PVM);
-    CodeChunkDeinit(&Chunk);
-    return (PascalAst) { 0 };
+    CodeChunk Code = PVMCompile(&Ast);
+    if (NULL == Code.Data)
+    {
+        fprintf(stderr, "Compile error\n");
+        return false;
+    }
+    PascalVM VM = PVMInit(1024, 128);
+    PVMReturnValue Ret = PVMInterpret(&VM, &Code);
+    CodeChunkDeinit(&Code);
+    return Ret == PVM_NO_ERROR;
 }
 
 
