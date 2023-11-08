@@ -16,7 +16,6 @@ CodeChunk CodeChunkInit(U32 InitialCap);
 void CodeChunkDeinit(CodeChunk *Chunk);
 
 U32 CodeChunkWrite(CodeChunk *Chunk, U32 Word);
-void CodeChunkDisasm(FILE *f, const CodeChunk *Chunk);
 
 
 

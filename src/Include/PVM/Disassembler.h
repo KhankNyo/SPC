@@ -6,7 +6,7 @@
 #include "PVM.h"
 
 
-void PVMDisasm(FILE *f, const CodeChunk *Chunk);
+void PVMDisasm(FILE *f, const CodeChunk *Chunk, const char *ChunkName);
 
 
 #endif /* PASCAL_VM_DISASSEMBLER_H */

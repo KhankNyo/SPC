@@ -153,8 +153,16 @@
  *              RD := Imm16 << 16
  *          00100: ORI RD, Imm16
  *              RD |= Imm16
+ * 4/ ABI:
+ *  4.0/ Function Call and return values
+ *      Let Rx = General Register x
+ *          Fx = Floating Point Register x
+ *      Arguments:  R0..R7, rest are on stack from the order of left to right
+ *                  F0..F7, rest are on stack from the order of left to right
+ *      Return:     R0 or F0
  *
-* */
+ *
+ */
 /*---------------------------------------------------------------------*/
 
 
@@ -262,6 +270,22 @@ typedef enum PVMSysOp
 
 
 
+typedef enum PVMArgReg 
+{
+    PVM_REG_ARG0 = 0,
+    PVM_REG_ARG1,
+    PVM_REG_ARG2,
+    PVM_REG_ARG3,
+    PVM_REG_ARG4,
+    PVM_REG_ARG5,
+    PVM_REG_ARG6,
+    PVM_REG_ARG7,
+
+    PVM_REG_RET = PVM_REG_ARG0,
+} PVMArgReg;
+
+
+
 #define PVM_REG_COUNT 32
 #define PVM_MAX_OP_COUNT ((U32)1 << 5)
 #define PVM_MAX_SYS_COUNT ((U32)1 << 26)
@@ -309,6 +333,7 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
     | BIT_POS32(PVM_IRD_ ## Mnemonic, 5, 21)\
     | BIT_POS32(Rd, 5, 16)\
     | BIT_POS32(Imm16, 16, 0))\
+
 
 #define PVM_BRANCH_IF(CC, Ra, Rb, Offset16)\
     (BIT_POS32(PVM_BRIF_ ## CC, 6, 26)\

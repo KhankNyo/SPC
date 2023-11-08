@@ -126,8 +126,14 @@ static bool PascalRun(const U8 *Source, PascalArena *Allocator)
         fprintf(stderr, "Compile error\n");
         return false;
     }
+
+    PVMDisasm(stdout, &Code, "Compiled expression");
+    printf("Press any key to execute...\n");
+    getc(stdin);
+
     PascalVM VM = PVMInit(1024, 128);
     PVMReturnValue Ret = PVMInterpret(&VM, &Code);
+    PVMDumpState(stdout, &VM, 6);
     CodeChunkDeinit(&Code);
     return Ret == PVM_NO_ERROR;
 }

@@ -34,8 +34,9 @@ static void PrintHexCode(FILE *f, PVMWord Opcode);
 
 
 
-void PVMDisasm(FILE *f, const CodeChunk *Chunk)
+void PVMDisasm(FILE *f, const CodeChunk *Chunk, const char *ChunkName)
 {
+    fprintf(f, "<========== %s ==========>\n", ChunkName);
     for (PVMWord i = 0; i < Chunk->Count; i++)
     {
         DisasmInstruction(f, i, Chunk->Data[i]);
@@ -122,7 +123,8 @@ static void DisasmDataInsSpecial(FILE *f, PVMWord Opcode)
             DisasmDataExOper(f, "SDIVP", Rd, Ra, Rb, Rr);
         else
             DisasmDataExOper(f, "DIVP", Rd, Ra, Rb, Rr);
-    }
+    } break;
+
     case PVM_DI_DIV:
     {
         const char *Rr = sRegName[PVM_DI_SPECIAL_GET_RR(Opcode)];
