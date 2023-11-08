@@ -37,6 +37,12 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk)
 #define DI_IBINARY_OP(Operation, Opcode, RegType)\
     REG(Opcode, DI, RD)RegType = REG(Opcode, DI, RA)RegType Operation REG(Opcode, DI, RB)RegType
 
+#define DI_IDIVIDE_OP(Opcode, RegType)\
+    do {\
+        DI_IBINARY_OP(/, Opcode, RegType);\
+        REG(Opcode, DI_SPECIAL, RR)RegType = REG(Opcode, DI, RA)RegType % REG(Opcode, DI, RB)RegType;\
+    } while(0)
+
 #define DI_TEST_AND_SET(Operation, Opcode, RegType)\
     REG(Opcode, DI, RD).Ptr = REG(Opcode, DI, RA)RegType Operation REG(Opcode, DI, RB)RegType
 
@@ -47,6 +53,7 @@ do {\
         /* TODO: verify jump target */\
     }\
 } while(0)
+
 
     PVMWord *IP = Chunk->Data;
     PVMPtr *FP = PVM->Stack.Start;
@@ -108,9 +115,9 @@ do {\
                 }
 
                 if (PVM_DI_SPECIAL_SIGNED(Opcode))
-                    DI_IBINARY_OP(/, Opcode, .SPtr);
+                    DI_IDIVIDE_OP(Opcode, .SPtr);
                 else 
-                    DI_IBINARY_OP(/, Opcode, .Ptr);
+                    DI_IDIVIDE_OP(Opcode, .Ptr);
             } break;
 
             case PVM_DI_DIV:
@@ -121,9 +128,9 @@ do {\
                 }
 
                 if (PVM_DI_SPECIAL_SIGNED(Opcode))
-                    DI_IBINARY_OP(/, Opcode, .SWord.First);
+                    DI_IDIVIDE_OP(Opcode, .SWord.First);
                 else 
-                    DI_IBINARY_OP(/, Opcode, .Word.First);
+                    DI_IDIVIDE_OP(Opcode, .Word.First);
             } break;
             }
         } break;
@@ -252,6 +259,7 @@ Out:
 #undef REG
 #undef IRD_SIGNED_IMM
 #undef DI_IBINARY_OP
+#undef DI_IDIVIDE_OP
 #undef BRIF
 #undef CMP_AND_SET
 }

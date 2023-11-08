@@ -115,8 +115,10 @@ static void DisasmDataInsSpecial(FILE *f, PVMWord Opcode)
     {
     case PVM_DI_MUL: 
     {
-        const char *Lo = sRegName[PVM_DI_SPECIAL_GET_RR(Opcode)];
-        DisasmDataExOper(f, "MUL", Ra, Ra, Rb, Lo);
+        if (PVM_DI_SPECIAL_SIGNED(Opcode))
+            DisasmDataIns(f, "SMUL", Ra, Ra, Rb);
+        else
+            DisasmDataIns(f, "MUL", Ra, Ra, Rb);
     } break;
 
     case PVM_DI_DIVP:

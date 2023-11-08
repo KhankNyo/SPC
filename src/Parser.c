@@ -77,10 +77,9 @@ static AstExpr ParseExpr(PascalParser *Parser)
 
 
     static const TokenType Ops[] = { 
-        TOKEN_COMMA, 
         TOKEN_LESS, TOKEN_GREATER, 
         TOKEN_LESS_EQUAL, TOKEN_GREATER_EQUAL, 
-        TOKEN_LESS_GREATER, TOKEN_EQUAL
+        TOKEN_LESS_GREATER, TOKEN_EQUAL, TOKEN_IN
     };
     while (ConsumeIfNextIsOneOf(Parser, STATIC_ARRAY_SIZE(Ops), Ops))
     {
