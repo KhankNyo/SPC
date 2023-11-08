@@ -31,11 +31,14 @@ void PVMDeinit(PascalVM *PVM)
 
 PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk)
 {
-#define REG(Opcode, InstructionType, Reg) (PVM->R[GLUE(PVM_ ##InstructionType, _GET_ ##Reg) (Opcode)])
+#define REG(Opcode, InstructionType, RegType) (PVM->R[GLUE(PVM_ ##InstructionType, _GET_ ##RegType) (Opcode)])
 #define IRD_SIGNED_IMM(Opcode) (I32)(I16)PVM_IRD_GET_IMM(Opcode)
 
 #define DI_IBINARY_OP(Operation, Opcode, RegType)\
     REG(Opcode, DI, RD)RegType = REG(Opcode, DI, RA)RegType Operation REG(Opcode, DI, RB)RegType
+
+#define DI_TEST_AND_SET(Operation, Opcode, RegType)\
+    REG(Opcode, DI, RD).Ptr = REG(Opcode, DI, RA)RegType Operation REG(Opcode, DI, RB)RegType
 
 #define BRANCH_IF(Operation, IP, Opcode, RegType)\
 do {\
@@ -62,7 +65,6 @@ do {\
             {
                 PASCAL_UNREACHABLE("PVM: SYS_COUNT is not an instruction\n");
             } break;
-
             }
         } break;
 
@@ -73,9 +75,20 @@ do {\
             {
             case PVM_DI_ADD: DI_IBINARY_OP(+, Opcode, .Word.First); break;
             case PVM_DI_SUB: DI_IBINARY_OP(-, Opcode, .Word.First); break;
+            case PVM_DI_ARITH_COUNT: 
+            {
+                PASCAL_UNREACHABLE("PVM: DI_ARITH_COUNT is not an instruction\n");
+            } break;
+            }
+        } break;
+
+        case PVM_DI_SPECIAL:
+        {
+            switch ((PVMDISpecial)PVM_DI_GET_OP(Opcode))
+            {            
             case PVM_DI_MUL:
             {
-                if (Opcode & (1 << 5))
+                if (PVM_DI_SPECIAL_SIGNED(Opcode))
                 {
                     REG(Opcode, DI, RD).SPtr = 
                         REG(Opcode, DI, RA).SWord.First * REG(Opcode, DI, RB).SWord.First;
@@ -86,6 +99,20 @@ do {\
                         REG(Opcode, DI, RA).Word.First * REG(Opcode, DI, RB).Word.First;
                 }
             } break;
+
+            case PVM_DI_DIVP:
+            {
+                if (0 == REG(Opcode, DI, RB).Ptr)
+                {
+                    /* TODO division by 0 exception */
+                }
+
+                if (PVM_DI_SPECIAL_SIGNED(Opcode))
+                    DI_IBINARY_OP(/, Opcode, .SPtr);
+                else 
+                    DI_IBINARY_OP(/, Opcode, .Ptr);
+            } break;
+
             case PVM_DI_DIV:
             {
                 if (0 == REG(Opcode, DI, RB).Word.First)
@@ -93,30 +120,54 @@ do {\
                     /* TODO division by 0 exception */
                 }
 
-                if (Opcode & (1 << 5))
-                    DI_IBINARY_OP(/, Opcode, .SPtr);
-                else 
-                    DI_IBINARY_OP(/, Opcode, .Ptr);
-            } break;
-            case PVM_DI_DIVP:
-            {
-                if (0 == REG(Opcode, DI, RB).Word.First)
-                {
-                    /* TODO division by 0 exception */
-                }
-
-                if (Opcode & (1 << 5))
+                if (PVM_DI_SPECIAL_SIGNED(Opcode))
                     DI_IBINARY_OP(/, Opcode, .SWord.First);
                 else 
                     DI_IBINARY_OP(/, Opcode, .Word.First);
             } break;
-
-            case PVM_DI_ARITH_COUNT: 
-            {
-                PASCAL_UNREACHABLE("PVM: DI_ARITH_COUNT is not an instruction\n");
-            } break;
             }
         } break;
+
+        case PVM_DI_CMP:
+        {
+            switch ((PVMDICmp)PVM_DI_GET_OP(Opcode))
+            {
+            case PVM_DI_SEQB: DI_TEST_AND_SET(==, Opcode, .Byte[0]); break;
+            case PVM_DI_SNEB: DI_TEST_AND_SET(!=, Opcode, .Byte[0]); break;
+            case PVM_DI_SLTB: DI_TEST_AND_SET(<, Opcode, .Byte[0]); break;
+            case PVM_DI_SGTB: DI_TEST_AND_SET(>, Opcode, .Byte[0]); break;
+
+            case PVM_DI_SEQH: DI_TEST_AND_SET(==, Opcode, .Half.First); break;
+            case PVM_DI_SNEH: DI_TEST_AND_SET(!=, Opcode, .Half.First); break;
+            case PVM_DI_SLTH: DI_TEST_AND_SET(<, Opcode, .Half.First); break;
+            case PVM_DI_SGTH: DI_TEST_AND_SET(>, Opcode, .Half.First); break;
+
+            case PVM_DI_SEQW: DI_TEST_AND_SET(==, Opcode, .Word.First); break;
+            case PVM_DI_SNEW: DI_TEST_AND_SET(!=, Opcode, .Word.First); break;
+            case PVM_DI_SLTW: DI_TEST_AND_SET(<, Opcode, .Word.First); break;
+            case PVM_DI_SGTW: DI_TEST_AND_SET(>, Opcode, .Word.First); break;
+
+            case PVM_DI_SEQP: DI_TEST_AND_SET(==, Opcode, .Ptr); break;
+            case PVM_DI_SNEP: DI_TEST_AND_SET(!=, Opcode, .Ptr); break;
+            case PVM_DI_SLTP: DI_TEST_AND_SET(<, Opcode, .Ptr); break;
+            case PVM_DI_SGTP: DI_TEST_AND_SET(>, Opcode, .Ptr); break;
+
+
+            case PVM_DI_SSLTB: DI_TEST_AND_SET(<, Opcode, .SByte[0]); break;
+            case PVM_DI_SSGTB: DI_TEST_AND_SET(>, Opcode, .SByte[0]); break;
+
+            case PVM_DI_SSLTH: DI_TEST_AND_SET(<, Opcode, .SHalf.First); break;
+            case PVM_DI_SSGTH: DI_TEST_AND_SET(>, Opcode, .SHalf.First); break;
+
+            case PVM_DI_SSLTW: DI_TEST_AND_SET(<, Opcode, .SWord.First); break;
+            case PVM_DI_SSGTW: DI_TEST_AND_SET(>, Opcode, .SWord.First); break;
+
+            case PVM_DI_SSLTP: DI_TEST_AND_SET(<, Opcode, .SPtr); break;
+            case PVM_DI_SSGTP: DI_TEST_AND_SET(>, Opcode, .SPtr); break;
+            }
+        } break;
+
+
 
         case PVM_IRD_ARITH:
         {
@@ -128,14 +179,12 @@ do {\
             case PVM_IRD_LDI: REG(Opcode, IRD, RD).Word.First = IRD_SIGNED_IMM(Opcode); break;
             case PVM_IRD_LUI: REG(Opcode, IRD, RD).Word.First = PVM_IRD_GET_IMM(Opcode) << 16; break;
             case PVM_IRD_ORI: REG(Opcode, IRD, RD).Word.First |= PVM_IRD_GET_IMM(Opcode); break;
-            case PVM_IRD_SCC: break;
             case PVM_IRD_ARITH_COUNT:
             {
                 PASCAL_UNREACHABLE("PVM: IRD_ARITH_COUNT is not an instruction\n");
             } break;
             }
         } break;
-
 
 
 
@@ -153,7 +202,7 @@ do {\
         case PVM_BALT_SR:
         {
             PVMSPtr SignedImm = (PVMSPtr)PVM_BSR_GET_IMM(Opcode);
-            if (-1 == SignedImm) /* return instruction */
+            if (-1 == SignedImm) /* RET */
             {
                 if (PVM->RetStack.Val == PVM->RetStack.Start)
                     goto CallstackUnderflow;
@@ -197,6 +246,7 @@ Out:
 #undef IRD_SIGNED_IMM
 #undef DI_IBINARY_OP
 #undef BRIF
+#undef CMP_AND_SET
 }
 
 

@@ -18,9 +18,10 @@
  * 2/ Pascal VM opcode format:
  * U32 Opcode:      [31..28][27..26][  25..21 ][20..16][15..11][10..6 ][5][ 4..0 ] 
  * Resv:            [ 0000 ][ Mode ][              Depends on each Mode          ] 
- * Data:            [ 0001 ][ Mode ][    Op   ][  RD  ][  RA  ][  RB  ][   Sh    ]
- *                  [ 0001 ][  00  ][  (S)Mul ][  RD  ][  RA  ][  RB  ][S][ 0000 ]
- *                  [ 0001 ][  00  ][(S)Div(P)][  RD  ][  RA  ][  RB  ][S][  RR  ]
+ * Data:            [ 0001 ][ Mode ][    Op   ][  RD  ][  RA  ][  RB  ][   Sh    ] Arith
+ *                  [ 0001 ][  01  ][  00000  ][  RD  ][  RA  ][  RB  ][S][ 0000 ] Special: (S)Mul
+ *                  [ 0001 ][  01  ][(S)Div(P)][  RD  ][  RA  ][  RB  ][S][  RR  ] Special: (S)Div(P)
+ *                  [ 0001 ][  10  ][    Op   ][  RD  ][  RA  ][  RB  ][  00000  ] Cmp
  *
  * BranchIf:        [ 0010 ][  CC  ][    RA   ][  RB  ][           Imm16         ]
  * BranchSignedIf:  [ 0011 ][  0C  ][    RA   ][  RB  ][           Imm16         ]
@@ -46,6 +47,7 @@
  *                      RD := RA + RB
  *          00001:  SUB RD, RA, RB
  *                      RD := RA - RB
+ *
  *          00010:  (S)MUL HI, RA, RB, LO
  *                  if (S)
  *                      Product := SExPtr(RA) * SExPtr(RB)
@@ -54,7 +56,8 @@
  *                  else
  *                      Product := RA * RB
  *                      HI := Product.HI
- *                      LO := Product.LO
+ *                      LO := Prod_ARITHuct.LO
+ *
  *          00011:  (S)DIVP RD, RA, RB, RR
  *                  if (RB.Ptr == 0)
  *                      DivisionBy0Exception()
@@ -72,27 +75,24 @@
  *                  else 
  *                      RD.Word  := RA.Word / RB.Word
  *                  RR.Word  := Remainder
- *
+ *          00101: Scc RD, RA, RB
  *      01: 
  *      10:
  *      11:
  *
  *  3.2/BranchIf:
  *      CC:
- *      00: BEQ RA, RB, Offset16
- *          if (RA == RB)
- *              PC += SExPtr(Offset16)
- *              
- *      01: BNE RA, RB, Offset16
- *          if (RA != RB)
- *              PC += SExPtr(Offset16)
- *
- *      10: BLT RA, RB, Offset16
+ *      00: BLT RA, RB, Offset16
  *          if (RA < RB)
  *              PC += SExPtr(Offset16)
- *
- *      11: BGT RA, RB, Offset16
+ *      01: BGT RA, RB, Offset16
  *          if (RA > RB)
+ *              PC += SExPtr(Offset16)
+ *      10: BEQ RA, RB, Offset16
+ *          if (RA == RB)
+ *              PC += SExPtr(Offset16)
+ *      11: BNE RA, RB, Offset16
+ *          if (RA != RB)
  *              PC += SExPtr(Offset16)
  *
  *  3.3/BranchSignedIf:
@@ -100,7 +100,6 @@
  *      00: BSLT RA, RB, Offset16
  *          if (SExWord(RA) < SExWord(RB))
  *              PC += SExPtr(Offset16)
- *
  *      01: BSGT RA, RB, Offset16 
  *          if (SExWord(RA) > SExWord(RB))
  *              PC += SExPtr(Offset16)
@@ -110,7 +109,7 @@
  *      10: B Offset26
  *          PC += SExPtr(Offset26)
  *
- *      11: BSR Offset26
+ *      11: BSR Offset26, RET
  *          if (SExPtr(Offset26) == -1) Do Ret:
  *              PC, FP = RetStackPop(.Addr, .Frame);
  *          else Do BranchSubroutine:
@@ -170,6 +169,8 @@ typedef enum PVMIns
 
     PVM_DI = 1 << PVM_MODE_SIZE,
         PVM_DI_ARITH = PVM_DI,
+        PVM_DI_SPECIAL,
+        PVM_DI_CMP,
         PVM_DI_COUNT,
 
     PVM_BRIF = 2 << PVM_MODE_SIZE,
@@ -197,11 +198,51 @@ typedef enum PVMDIArith
 {
     PVM_DI_ADD = 0,
     PVM_DI_SUB,
-    PVM_DI_MUL,
-    PVM_DI_DIV,
-    PVM_DI_DIVP,
     PVM_DI_ARITH_COUNT,
 } PVMDIArith;
+
+typedef enum PVMDISpecial
+{
+    PVM_DI_MUL = 0,
+    PVM_DI_DIVP,
+    PVM_DI_DIV,
+} PVMDISpecial;
+
+typedef enum PVMDICmp 
+{
+    PVM_DI_SEQB = 0,
+    PVM_DI_SNEB,
+    PVM_DI_SLTB,
+    PVM_DI_SGTB,
+
+    PVM_DI_SEQH,
+    PVM_DI_SNEH,
+    PVM_DI_SLTH,
+    PVM_DI_SGTH,
+
+    PVM_DI_SEQW,
+    PVM_DI_SNEW,
+    PVM_DI_SLTW,
+    PVM_DI_SGTW,
+
+    PVM_DI_SEQP,
+    PVM_DI_SNEP,
+    PVM_DI_SLTP,
+    PVM_DI_SGTP,
+
+
+    PVM_DI_SSLTB,
+    PVM_DI_SSGTB,
+
+    PVM_DI_SSLTH,
+    PVM_DI_SSGTH,
+
+    PVM_DI_SSLTW,
+    PVM_DI_SSGTW,
+    
+    PVM_DI_SSLTP,
+    PVM_DI_SSGTP,
+} PVMDICmp;
 
 typedef enum PVMIRDArith 
 {
@@ -210,7 +251,6 @@ typedef enum PVMIRDArith
     PVM_IRD_LDI,
     PVM_IRD_LUI,
     PVM_IRD_ORI,
-    PVM_IRD_SCC,
     PVM_IRD_ARITH_COUNT,
 } PVMIRDArith;
 
@@ -247,6 +287,23 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
     | BIT_POS32(Rb, 5, 6)\
     | BIT_POS32(Sh, 6, 0))
 
+#define PVM_DI_SPECIAL_INS(Mnemonic, Rd, Ra, Rb, Signed, Rr)\
+    (BIT_POS32(PVM_DI_SPECIAL, 6, 26)\
+    | BIT_POS32(PVM_DI_ ## Mnemonic, 5, 21)\
+    | BIT_POS32(Rd, 5, 16)\
+    | BIT_POS32(Ra, 5, 11)\
+    | BIT_POS32(Rb, 5, 6)\
+    | BIT_POS32(Signed, 1, 5)\
+    | BIT_POS32(Rr, 5, 0))
+
+#define PVM_DI_CMP_INS(Mnemonic, Rd, Ra, Rb)\
+    (BIT_POS32(PVM_DI_CMP, 6, 26)\
+    | BIT_POS32(PVM_DI_ ## Mnemonic, 5, 21)\
+    | BIT_POS32(Rd, 5, 16)\
+    | BIT_POS32(Ra, 5, 11)\
+    | BIT_POS32(Rb, 5, 6))
+
+
 #define PVM_IRD_ARITH_INS(Mnemonic, Rd, Imm16)\
     (BIT_POS32(PVM_IRD_ARITH, 6, 26)\
     | BIT_POS32(PVM_IRD_ ## Mnemonic, 5, 21)\
@@ -275,6 +332,9 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
 #define PVM_DI_GET_RB(OpcodeWord) BIT_AT32(OpcodeWord, 5, 6)
 #define PVM_DI_GET_SH(OpcodeWord) BIT_AT32(OpcodeWord, 6, 0)
 
+#define PVM_DI_SPECIAL_SIGNED(OpcodeWord) ((OpcodeWord) & ((U32)1 << 6))
+#define PVM_DI_SPECIAL_GET_RR(OpcodeWord) BIT_AT32(OpcodeWord, 5, 0)
+
 #define PVM_BRIF_GET_RA(OpcodeWord) PVM_DI_GET_OP(OpcodeWord)
 #define PVM_BRIF_GET_RB(OpcodeWord) PVM_DI_GET_RD(OpcodeWord)
 #define PVM_BRIF_GET_IMM(OpcodeWord) BIT_SEX32(BIT_AT32(OpcodeWord, 16, 0), 15)
@@ -288,6 +348,7 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
 
 
 #define PVM_GET_SYS_OP(OpcodeWord) (PVMSysOp)BIT_AT32(OpcodeWord, 26, 0)
+
 
 
 typedef uintptr_t PVMPtr;
@@ -307,8 +368,8 @@ typedef union PVMGPR
 {
     PVMPtr Ptr;
     PVMSPtr SPtr;
-    PVMSByte SByte[8];
-    PVMByte Byte[8];
+    PVMSByte SByte[sizeof(PVMPtr)];
+    PVMByte Byte[sizeof(PVMPtr)];
 #if PASCAL_LITTLE_ENDIAN
     struct {
         PVMWord First, Second;
