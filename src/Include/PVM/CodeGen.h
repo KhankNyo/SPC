@@ -7,7 +7,7 @@
 #include "Ast.h"
 
 
-CodeChunk PVMCompile(const PascalAst *Ast);
+bool PVMCompile(CodeChunk *Chunk, const PascalAst *Ast);
 
 
 

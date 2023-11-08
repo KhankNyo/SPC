@@ -7,14 +7,14 @@ typedef UInt Operand;
 typedef struct PVMCompiler
 {
     const PascalAst *Ast;
-    CodeChunk Code;
+    CodeChunk *Chunk;
     bool HasError;
     U32 RegisterList;
 } PVMCompiler;
 
-PVMCompiler PVMCompilerInit(const PascalAst *Ast);
-void PVMCompilerDeinit(PVMCompiler *Compiler, Operand ExitCode);
 
+PVMCompiler PVMCompilerInit(CodeChunk *Code, const PascalAst *Ast);
+void PVMCompilerDeinit(PVMCompiler *Compiler, Operand ExitCode);
 
 static Operand PVMCompileExpr(PVMCompiler *Compiler, const AstExpr *Expr);
 static Operand PVMCompileSimpleExpr(PVMCompiler *Compiler, const AstSimpleExpr *SimpleExpr);
@@ -34,32 +34,30 @@ static void PVMEmitExit(PVMCompiler *Compiler, Operand ExitCodeRegister);
 
 static Operand PVMAllocateRegister(PVMCompiler *Compiler);
 static void PVMFreeRegister(PVMCompiler *Compiler, Operand Register);
+static CodeChunk *PVMCurrentChunk(PVMCompiler *Compiler);
 
 
 
 
 
-CodeChunk PVMCompile(const PascalAst *Ast)
+bool PVMCompile(CodeChunk *Chunk, const PascalAst *Ast)
 {
-    PVMCompiler Compiler = PVMCompilerInit(Ast);
+    PVMCompiler Compiler = PVMCompilerInit(Chunk, Ast);
     Operand ReturnValue = PVMCompileExpr(&Compiler, &Ast->Expression);
-    PVMCompilerDeinit(&Compiler, ReturnValue);
 
-    if (Compiler.HasError)
-    {
-        return (CodeChunk) { 0 };
-    }
-    return Compiler.Code;
+    bool HasError = Compiler.HasError;
+    PVMCompilerDeinit(&Compiler, ReturnValue);
+    return !HasError;
 }
 
 
 
 
-PVMCompiler PVMCompilerInit(const PascalAst *Ast)
+PVMCompiler PVMCompilerInit(CodeChunk *Chunk, const PascalAst *Ast)
 {
     PVMCompiler Compiler = {
         .Ast = Ast,
-        .Code = CodeChunkInit(1024),
+        .Chunk = Chunk,
         .HasError = false,
         .RegisterList = 0,
     };
@@ -204,29 +202,29 @@ static Operand PVMCompileFactor(PVMCompiler *Compiler, const AstFactor *Factor)
 
 static void PVMEmitLoadI32(PVMCompiler *Compiler, Operand Dest, I32 Integer)
 {
-    CodeChunkWrite(&Compiler->Code, PVM_IRD_ARITH_INS(LDI, Dest, Integer));
+    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_IRD_ARITH_INS(LDI, Dest, Integer));
 }
 
 
 static void PVMEmitAddI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right)
 {
-    CodeChunkWrite(&Compiler->Code, PVM_DI_ARITH_INS(ADD, Dest, Left, Right, 0));
+    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_ARITH_INS(ADD, Dest, Left, Right, 0));
 }
 
 
 static void PVMEmitSubI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right)
 {
-    CodeChunkWrite(&Compiler->Code, PVM_DI_ARITH_INS(SUB, Dest, Left, Right, 0));
+    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_ARITH_INS(SUB, Dest, Left, Right, 0));
 }
 
 static void PVMEmitMulI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right)
 {
-    CodeChunkWrite(&Compiler->Code, PVM_DI_SPECIAL_INS(MUL, Dest, Left, Right, true, 0));
+    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_SPECIAL_INS(MUL, Dest, Left, Right, true, 0));
 }
 
 static void PVMEmitDivI32(PVMCompiler *Compiler, Operand Dividend, Operand Remainder, Operand Left, Operand Right)
 {
-    CodeChunkWrite(&Compiler->Code, PVM_DI_SPECIAL_INS(DIV, Dividend, Left, Right, true, Remainder));
+    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_SPECIAL_INS(DIV, Dividend, Left, Right, true, Remainder));
 }
 
 static void PVMEmitSetCCU(PVMCompiler *Compiler, TokenType Op, Operand Dest, Operand Left, Operand Right, UInt OperandSize)
@@ -234,12 +232,12 @@ static void PVMEmitSetCCU(PVMCompiler *Compiler, TokenType Op, Operand Dest, Ope
 #define SET(Size, ...)\
     do {\
         switch (Op) {\
-        case TOKEN_EQUAL:           CodeChunkWrite(&Compiler->Code, PVM_DI_CMP_INS(SEQ ## Size, Dest, Left, Right)); break;\
-        case TOKEN_LESS_GREATER:    CodeChunkWrite(&Compiler->Code, PVM_DI_CMP_INS(SNE ## Size, Dest, Left, Right)); break;\
-        case TOKEN_LESS:            CodeChunkWrite(&Compiler->Code, PVM_DI_CMP_INS(SLT ## Size, Dest, Left, Right)); break;\
-        case TOKEN_GREATER:         CodeChunkWrite(&Compiler->Code, PVM_DI_CMP_INS(SGT ## Size, Dest, Left, Right)); break;\
-        case TOKEN_GREATER_EQUAL:   CodeChunkWrite(&Compiler->Code, PVM_DI_CMP_INS(SLT ## Size, Dest, Right, Left)); break;\
-        case TOKEN_LESS_EQUAL:      CodeChunkWrite(&Compiler->Code, PVM_DI_CMP_INS(SGT ## Size, Dest, Right, Left)); break;\
+        case TOKEN_EQUAL:           CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SEQ ## Size, Dest, Left, Right)); break;\
+        case TOKEN_LESS_GREATER:    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SNE ## Size, Dest, Left, Right)); break;\
+        case TOKEN_LESS:            CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SLT ## Size, Dest, Left, Right)); break;\
+        case TOKEN_GREATER:         CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SGT ## Size, Dest, Left, Right)); break;\
+        case TOKEN_GREATER_EQUAL:   CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SLT ## Size, Dest, Right, Left)); break;\
+        case TOKEN_LESS_EQUAL:      CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SGT ## Size, Dest, Right, Left)); break;\
         default: {\
             PASCAL_UNREACHABLE(__VA_ARGS__);\
         } break;\
@@ -261,8 +259,8 @@ static void PVMEmitSetCCU(PVMCompiler *Compiler, TokenType Op, Operand Dest, Ope
 
 static void PVMEmitExit(PVMCompiler *Compiler, Operand ExitCode)
 {
-    CodeChunkWrite(&Compiler->Code, PVM_DI_TRANSFER_INS(MOV, PVM_REG_RET, ExitCode));
-    CodeChunkWrite(&Compiler->Code, PVM_SYS_INS(EXIT));
+    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_TRANSFER_INS(MOV, PVM_REG_RET, ExitCode));
+    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_SYS_INS(EXIT));
 }
 
 
@@ -288,5 +286,11 @@ static Operand PVMAllocateRegister(PVMCompiler *Compiler)
 static void PVMFreeRegister(PVMCompiler *Compiler, Operand Register)
 {
     Compiler->RegisterList &= ~(1u << Register);
+}
+
+
+static CodeChunk *PVMCurrentChunk(PVMCompiler *Compiler)
+{
+    return Compiler->Chunk;
 }
 
