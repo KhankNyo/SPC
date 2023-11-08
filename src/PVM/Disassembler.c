@@ -18,6 +18,7 @@ static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode);
 static void DisasmDataInsArith(FILE *f, PVMWord Opcode);
 static void DisasmDataInsSpecial(FILE *f, PVMWord Opcode);
 static void DisasmDataInsCmp(FILE *f, PVMWord Opcode);
+static void DisasmDataInsTransfer(FILE *f, PVMWord Opcode);
 static void DisasmDataIns(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra, const char *Rb);
 static void DisasmDataExOper(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra, const char *Rb, const char *Sh);
 
@@ -54,9 +55,12 @@ static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode)
     switch (Ins)
     {
     case PVM_RE_SYS: DisasmSysOp(f, Addr, Opcode); break;
+
     case PVM_DI_ARITH: DisasmDataInsArith(f, Opcode); break;
     case PVM_DI_SPECIAL: DisasmDataInsSpecial(f, Opcode); break;
     case PVM_DI_CMP: DisasmDataInsCmp(f, Opcode); break;
+    case PVM_DI_TRANSFER: DisasmDataInsTransfer(f, Opcode); break;
+
     case PVM_IRD_ARITH: DisasmImmRdArith(f, Opcode); break;
 
     case PVM_BRIF_EQ: DisasmBrIf(f, "EQ", Addr, Opcode); break;
@@ -70,7 +74,6 @@ static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode)
 
     case PVM_RE_COUNT:
     case PVM_IRD_COUNT:
-    case PVM_DI_COUNT:
     case PVM_INS_COUNT:
     {
         fprintf(f, "???\n");
@@ -183,6 +186,22 @@ static void DisasmDataInsCmp(FILE *f, PVMWord Opcode)
     {
         fprintf(f, "???\n");
     }
+}
+
+
+
+static void DisasmDataInsTransfer(FILE *f, PVMWord Opcode)
+{
+    const char *Mnemonic = "???";
+    const char *Rd = sRegName[PVM_DI_GET_RD(Opcode)];
+    const char *Ra = sRegName[PVM_DI_GET_RA(Opcode)];
+
+    switch ((PVMDITransfer)PVM_DI_GET_OP(Opcode))
+    {
+    case PVM_DI_MOV: Mnemonic = "MOV"; break;
+    }
+
+    fprintf(f, "%s %s, %s\n", Mnemonic, Rd, Ra);
 }
 
 

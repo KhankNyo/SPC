@@ -1,4 +1,6 @@
 
+
+#include <string.h> /* strlen */
 #include "Ast.h"
 
 
@@ -19,12 +21,12 @@ void PAstPrint(FILE *f, const PascalAst *PAst)
 static void PAstPrintExpr(FILE *f, const AstExpr *Expression)
 {
     PAstPrintSimpleExpr(f, &Expression->Left);
-    const AstExpr *CurrentExpr = Expression->Right;
-    while (NULL != CurrentExpr)
+    const AstOpSimpleExpr *Right = Expression->Right;
+    while (NULL != Right)
     {
-        fprintf(f, "%.*s ", CurrentExpr->InfixOp.Len, CurrentExpr->InfixOp.Str);
-        PAstPrintSimpleExpr(f, &CurrentExpr->Left);
-        CurrentExpr = CurrentExpr->Right;
+        fprintf(f, "%s ", TokenTypeToStr(Right->Op));
+        PAstPrintSimpleExpr(f, &Right->SimpleExpr);
+        Right = Right->Next;
     }
 }
 
@@ -32,12 +34,12 @@ static void PAstPrintExpr(FILE *f, const AstExpr *Expression)
 static void PAstPrintSimpleExpr(FILE *f, const AstSimpleExpr *Simple)
 {
     PAstPrintTerm(f, &Simple->Left);
-    const AstSimpleExpr *SimpleExpr = Simple->Right;
-    while (NULL != SimpleExpr)
+    const AstOpTerm *Term = Simple->Right;
+    while (NULL != Term)
     {
-        fprintf(f, "%.*s ", SimpleExpr->InfixOp.Len, SimpleExpr->InfixOp.Str);
-        PAstPrintTerm(f, &SimpleExpr->Left);
-        SimpleExpr = SimpleExpr->Right;
+        fprintf(f, "%s ", TokenTypeToStr(Term->Op));
+        PAstPrintTerm(f, &Term->Term);
+        Term = Term->Next;
     }
 }
 
@@ -45,12 +47,12 @@ static void PAstPrintSimpleExpr(FILE *f, const AstSimpleExpr *Simple)
 static void PAstPrintTerm(FILE *f, const AstTerm *Term)
 {
     PAstPrintFactor(f, &Term->Left);
-    const AstTerm *CurrentTerm = Term->Right;
-    while (NULL != CurrentTerm)
+    const AstOpFactor *Factor = Term->Right;
+    while (NULL != Factor)
     {
-        fprintf(f, "%.*s ", CurrentTerm->InfixOp.Len, CurrentTerm->InfixOp.Str);
-        PAstPrintFactor(f, &CurrentTerm->Left);
-        CurrentTerm = CurrentTerm->Right;
+        fprintf(f, "%s ", TokenTypeToStr(Factor->Op));
+        PAstPrintFactor(f, &Factor->Factor);
+        Factor = Factor->Next;
     }
 }
 

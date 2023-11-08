@@ -118,7 +118,6 @@ static bool PascalRun(const U8 *Source, PascalArena *Allocator)
 {
     PascalParser Parser = ParserInit(Source, Allocator, stderr);
     PascalAst Ast = ParserGenerateAst(&Parser);
-    PAstPrint(stdout, &Ast);
 
     CodeChunk Code = PVMCompile(&Ast);
     if (NULL == Code.Data)

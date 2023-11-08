@@ -73,7 +73,7 @@ static AstExpr ParseExpr(PascalParser *Parser)
     AstExpr Expression = {0};
     /* leftmost */
     Expression.Left = ParseSimpleExpr(Parser);
-    AstExpr *RightExpr = &Expression;
+    AstOpSimpleExpr **Right = &Expression.Right;
 
 
     static const TokenType Ops[] = { 
@@ -84,13 +84,10 @@ static AstExpr ParseExpr(PascalParser *Parser)
     };
     while (ConsumeIfNextIsOneOf(Parser, STATIC_ARRAY_SIZE(Ops), Ops))
     {
-        /* get operation */
-        RightExpr->InfixOp = Parser->Curr;
-        RightExpr->Right = ArenaAllocateZero(Parser->Arena, sizeof(*RightExpr));
-
-        /* left side of the right operand */
-        RightExpr = RightExpr->Right;
-        RightExpr->Left = ParseSimpleExpr(Parser);
+        (*Right) = ArenaAllocateZero(Parser->Arena, sizeof(**Right));
+        (*Right)->Op = Parser->Curr.Type;
+        (*Right)->SimpleExpr = ParseSimpleExpr(Parser);
+        Right = &(*Right)->Next;
     }
     return Expression;
 }
@@ -100,23 +97,23 @@ static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser)
     AstSimpleExpr SimpleExpression = {0};
 
     /* prefixes */
-    //static const TokenType PrefixOps[] = { TOKEN_PLUS, TOKEN_MINUS };
-    //ConsumeIfNextIsOneOf(Parser, STATIC_ARRAY_SIZE(PrefixOps), PrefixOps);
+    static const TokenType PrefixOps[] = { TOKEN_PLUS, TOKEN_MINUS };
+    if (ConsumeIfNextIsOneOf(Parser, STATIC_ARRAY_SIZE(PrefixOps), PrefixOps))
+    {
+        SimpleExpression.Prefix = Parser->Curr.Type;
+    }
 
     /* left */
     SimpleExpression.Left = ParseTerm(Parser);
-    AstSimpleExpr *RightExpr = &SimpleExpression;
+    AstOpTerm **Right = &SimpleExpression.Right;
 
     static const TokenType Ops[] = { TOKEN_MINUS, TOKEN_PLUS, TOKEN_OR };
     while (ConsumeIfNextIsOneOf(Parser, STATIC_ARRAY_SIZE(Ops), Ops))
     {
-        /* operation */
-        RightExpr->InfixOp = Parser->Curr;
-        RightExpr->Right = ArenaAllocateZero(Parser->Arena, sizeof(*RightExpr));
-
-        /* left side of the right operand */
-        RightExpr = RightExpr->Right;
-        RightExpr->Left = ParseTerm(Parser);
+        (*Right) = ArenaAllocateZero(Parser->Arena, sizeof(**Right));
+        (*Right)->Op = Parser->Curr.Type;
+        (*Right)->Term = ParseTerm(Parser);
+        Right = &(*Right)->Next;
     }
     return SimpleExpression;
 }
@@ -126,18 +123,15 @@ static AstTerm ParseTerm(PascalParser *Parser)
     AstTerm CurrentTerm = {0};
     /* left oper */
     CurrentTerm.Left = ParseFactor(Parser);
-    AstTerm *RightTerm = &CurrentTerm;
+    AstOpFactor **Right = &CurrentTerm.Right;
 
     static const TokenType InfixOps[] = { TOKEN_STAR, TOKEN_SLASH, TOKEN_DIV, TOKEN_MOD, TOKEN_AND };
     while (ConsumeIfNextIsOneOf(Parser, STATIC_ARRAY_SIZE(InfixOps), InfixOps))
     {
-        /* operation */
-        RightTerm->InfixOp = Parser->Curr;
-        RightTerm = ArenaAllocateZero(Parser->Arena, sizeof(*RightTerm));
-
-        /* left side of the right operand */
-        RightTerm = RightTerm->Right;
-        RightTerm->Left = ParseFactor(Parser);
+        (*Right) = ArenaAllocateZero(Parser->Arena, sizeof(**Right));
+        (*Right)->Op = Parser->Curr.Type;
+        (*Right)->Factor = ParseFactor(Parser);
+        Right = &(*Right)->Next;
     }
     return CurrentTerm;
 }

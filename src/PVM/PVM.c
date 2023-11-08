@@ -167,6 +167,14 @@ do {\
             }
         } break;
 
+        case PVM_DI_TRANSFER:
+        {
+            switch ((PVMDITransfer)PVM_DI_GET_OP(Opcode))
+            {
+            case PVM_DI_MOV: REG(Opcode, DI, RD).Word.First = REG(Opcode, DI, RA).Word.First; break;
+            }
+        } break;
+
 
 
         case PVM_IRD_ARITH:
@@ -226,7 +234,6 @@ do {\
         } break;
 
         case PVM_RE_COUNT:
-        case PVM_DI_COUNT:
         case PVM_IRD_COUNT:
         case PVM_INS_COUNT:
         {
@@ -263,7 +270,7 @@ void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
         fprintf(f, "[R%02d: 0x%08llx]", i, PVM->R[i].Ptr);
     }
 
-    fprintf(f, "\n===================== F32 REGISTERS ======================");
+    fprintf(f, "\n===================== F%d REGISTERS ======================", (int)sizeof(PVM->F[0])*8);
     for (UInt i = 0; i < PVM_REG_COUNT; i++)
     {
         if (i % RegPerLine == 0)

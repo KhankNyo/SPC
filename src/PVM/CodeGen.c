@@ -13,7 +13,7 @@ typedef struct PVMCompiler
 } PVMCompiler;
 
 PVMCompiler PVMCompilerInit(const PascalAst *Ast);
-void PVMCompilerDeinit(PVMCompiler *Compiler);
+void PVMCompilerDeinit(PVMCompiler *Compiler, Operand ExitCode);
 
 
 static Operand PVMCompileExpr(PVMCompiler *Compiler, const AstExpr *Expr);
@@ -24,11 +24,14 @@ static Operand PVMCompileFactor(PVMCompiler *Compiler, const AstFactor *Factor);
 static Operand PVMEmitLoadI32(PVMCompiler *Compiler, I32 Integer);
 static Operand PVMEmitAddI32(PVMCompiler *Compiler, Operand Left, Operand Right);
 static Operand PVMEmitSubI32(PVMCompiler *Compiler, Operand Left, Operand Right);
-static void PVMEmitReturn(PVMCompiler *Compiler, Operand Value);
-static void PVMEmitExit(PVMCompiler *Compiler);
+static Operand PVMEmitMulI32(PVMCompiler *Compiler, Operand Left, Operand Right);
+static Operand PVMEmitDivI32(PVMCompiler *Compiler, Operand Left, Operand Right);
+static void PVMEmitExit(PVMCompiler *Compiler, Operand ExitCode);
 
 static Operand PVMAllocateRegister(PVMCompiler *Compiler);
 static void PVMFreeRegister(PVMCompiler *Compiler, Operand Register);
+
+
 
 
 
@@ -36,8 +39,7 @@ CodeChunk PVMCompile(const PascalAst *Ast)
 {
     PVMCompiler Compiler = PVMCompilerInit(Ast);
     Operand ReturnValue = PVMCompileExpr(&Compiler, &Ast->Expression);
-    PVMEmitReturn(&Compiler, ReturnValue);
-    PVMCompilerDeinit(&Compiler);
+    PVMCompilerDeinit(&Compiler, ReturnValue);
 
     if (Compiler.HasError)
     {
@@ -60,9 +62,9 @@ PVMCompiler PVMCompilerInit(const PascalAst *Ast)
     return Compiler;
 }
 
-void PVMCompilerDeinit(PVMCompiler *Compiler)
+void PVMCompilerDeinit(PVMCompiler *Compiler, Operand ExitCode)
 {
-    PVMEmitExit(Compiler);
+    PVMEmitExit(Compiler, ExitCode);
 }
 
 
@@ -70,48 +72,95 @@ void PVMCompilerDeinit(PVMCompiler *Compiler)
 
 static Operand PVMCompileExpr(PVMCompiler *Compiler, const AstExpr *Expr)
 {
-    return PVMCompileSimpleExpr(Compiler, &Expr->SimpleExpression);
+    Operand Left = PVMCompileSimpleExpr(Compiler, &Expr->Left);
+    return Left;
 }
 
 static Operand PVMCompileSimpleExpr(PVMCompiler *Compiler, const AstSimpleExpr *SimpleExpr)
 {
     Operand Left = PVMCompileTerm(Compiler, &SimpleExpr->Left);
-    if (NULL == SimpleExpr->Right)
+    Operand Result = Left;
+
+    const AstOpTerm *RightSimpleExpr = SimpleExpr->Right;
+    while (NULL != RightSimpleExpr)
     {
-        return Left;
+        Operand Right = PVMCompileTerm(Compiler, &RightSimpleExpr->Term);
+
+        switch (RightSimpleExpr->Op)
+        {
+        case TOKEN_PLUS:
+        {
+            Result = PVMEmitAddI32(Compiler, Result, Right);
+        } break;
+        case TOKEN_MINUS:
+        {
+            Result = PVMEmitSubI32(Compiler, Result, Right);
+        } break;
+
+        case TOKEN_NOT:
+        default: 
+        {
+            PASCAL_UNREACHABLE("CompileSimpleExpr: %s is an invalid op\n", 
+                    TokenTypeToStr(RightSimpleExpr->Op)
+            );
+        } break;
+        }
+
+        PVMFreeRegister(Compiler, Right);
+        RightSimpleExpr = RightSimpleExpr->Next;
+    } 
+
+    if (Result != Left)
+    {
+        PVMFreeRegister(Compiler, Left);
     }
-
-    Operand Right = PVMCompileSimpleExpr(Compiler, SimpleExpr->Right);
-    Operand Result;
-
-    switch (SimpleExpr->InfixOp.Type)
-    {
-    case TOKEN_PLUS:
-    {
-        Result = PVMEmitAddI32(Compiler, Left, Right);
-    } break;
-    case TOKEN_MINUS:
-    {
-        Result = PVMEmitSubI32(Compiler, Left, Right);
-    } break;
-
-    case TOKEN_NOT:
-    default: 
-    {
-        PASCAL_UNREACHABLE("SimpleExpr: '%s' is invalid\n", TokenTypeToStr(SimpleExpr->InfixOp.Type));
-    } break;
-    }
-
-    PVMFreeRegister(Compiler, Left);
-    PVMFreeRegister(Compiler, Right);
     return Result;
 }
 
 
 static Operand PVMCompileTerm(PVMCompiler *Compiler, const AstTerm *Term)
 {
-    return PVMCompileFactor(Compiler, &Term->Factor);
+    Operand Left = PVMCompileFactor(Compiler, &Term->Left);
+    Operand Result = Left;
+
+    const AstOpFactor *RightFactor = Term->Right;
+    while (NULL != RightFactor)
+    {
+        Operand Right = PVMCompileFactor(Compiler, &RightFactor->Factor);
+        switch (RightFactor->Op)
+        {
+        case TOKEN_STAR:
+        {
+            Result = PVMEmitMulI32(Compiler, Result, Right);
+        } break;
+
+        case TOKEN_SLASH:
+        case TOKEN_DIV:
+        {
+            Result = PVMEmitDivI32(Compiler, Result, Right);
+        } break;
+
+        case TOKEN_MOD:
+        case TOKEN_AND:
+        default:
+        {
+            PASCAL_UNREACHABLE("CompileTerm: %s is an invalid op\n", 
+                    TokenTypeToStr(RightFactor->Op)
+            );
+        } break;
+        }
+
+        PVMFreeRegister(Compiler, Right);
+        RightFactor = RightFactor->Next;
+    }
+
+    if (Result != Left)
+    {
+        PVMFreeRegister(Compiler, Left);
+    }
+    return Result;
 }
+
 
 static Operand PVMCompileFactor(PVMCompiler *Compiler, const AstFactor *Factor)
 {
@@ -130,7 +179,7 @@ static Operand PVMCompileFactor(PVMCompiler *Compiler, const AstFactor *Factor)
 
     default: 
     {
-        PASCAL_UNREACHABLE("TODO: other factors\n");
+        PASCAL_UNREACHABLE("CompileTerm: Invalid factor: %d\n", Factor->Type);
     } break;
     }
     return 0;
@@ -164,15 +213,28 @@ static Operand PVMEmitSubI32(PVMCompiler *Compiler, Operand Left, Operand Right)
     return Result;
 }
 
-
-static void PVMEmitReturn(PVMCompiler *Compiler, Operand Value)
+static Operand PVMEmitMulI32(PVMCompiler *Compiler, Operand Left, Operand Right)
 {
-    
+    Operand Result = PVMAllocateRegister(Compiler);
+    Operand Dummy = PVMAllocateRegister(Compiler);
+    CodeChunkWrite(&Compiler->Code, PVM_DI_SPECIAL_INS(MUL, Result, Left, Right, false, Dummy));
+    PVMFreeRegister(Compiler, Dummy);
+    return Result;
+}
+
+static Operand PVMEmitDivI32(PVMCompiler *Compiler, Operand Left, Operand Right)
+{
+    Operand Result = PVMAllocateRegister(Compiler);
+    Operand Dummy = PVMAllocateRegister(Compiler);
+    CodeChunkWrite(&Compiler->Code, PVM_DI_SPECIAL_INS(DIV, Result, Left, Right, false, Dummy));
+    PVMFreeRegister(Compiler, Dummy);
+    return Result;
 }
 
 
-static void PVMEmitExit(PVMCompiler *Compiler)
+static void PVMEmitExit(PVMCompiler *Compiler, Operand ExitCode)
 {
+    CodeChunkWrite(&Compiler->Code, PVM_DI_TRANSFER_INS(MOV, PVM_REG_RET, ExitCode));
     CodeChunkWrite(&Compiler->Code, PVM_SYS_INS(EXIT));
 }
 

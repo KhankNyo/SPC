@@ -5,9 +5,17 @@
 #include "Common.h"
 
 typedef struct AstFactor AstFactor;
+typedef struct AstOpFactor AstOpFactor;
+
 typedef struct AstTerm AstTerm;
+typedef struct AstOpTerm AstOpTerm;
+
 typedef struct AstSimpleExpr AstSimpleExpr;
+typedef struct AstOpSimpleExpr AstOpSimpleExpr;
+
 typedef struct AstExpr AstExpr;
+typedef struct AstOpExpr AstExOppr;
+
 typedef enum AstFactorType 
 {
     FACTOR_INVALID = 0,
@@ -31,32 +39,49 @@ struct AstFactor
     } As;
 };
 
+struct AstOpFactor 
+{
+    TokenType Op;
+    AstFactor Factor;
+    struct AstOpFactor *Next;
+};
+
+
 struct AstTerm
 {
-    Token InfixOp;
-    union {
-        AstFactor Left, Factor;
-    };
-    struct AstTerm *Right;
+    AstFactor Left;
+    AstOpFactor *Right;
 };
+
+struct AstOpTerm 
+{
+    TokenType Op;
+    AstTerm Term;
+    struct AstOpTerm *Next;
+};
+
+
 
 struct AstSimpleExpr
 {
-    Token PrefixOp;
-    union {
-        AstTerm Left, Term;
-    };
-    Token InfixOp;
-    struct AstSimpleExpr *Right;
+    TokenType Prefix;
+    AstTerm Left;
+    AstOpTerm *Right;
 };
+
+struct AstOpSimpleExpr
+{
+    TokenType Op;
+    AstSimpleExpr SimpleExpr;
+    struct AstOpSimpleExpr *Next;
+};
+
+
 
 struct AstExpr 
 {
-    union {
-        AstSimpleExpr Left, SimpleExpression;
-    };
-    Token InfixOp;
-    struct AstExpr *Right;
+    AstSimpleExpr Left;
+    AstOpSimpleExpr *Right;
 };
 
 

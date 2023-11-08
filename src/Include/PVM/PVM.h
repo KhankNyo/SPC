@@ -22,6 +22,7 @@
  *                  [ 0001 ][  01  ][  00000  ][  RD  ][  RA  ][  RB  ][S][ 0000 ] Special: (S)Mul
  *                  [ 0001 ][  01  ][(S)Div(P)][  RD  ][  RA  ][  RB  ][S][  RR  ] Special: (S)Div(P)
  *                  [ 0001 ][  10  ][    Op   ][  RD  ][  RA  ][  RB  ][  00000  ] Cmp
+ *                  [ 0001 ][  11  ][    Op   ][  RD  ][  RA  ][    0000000000   ] Transfer
  *
  * BranchIf:        [ 0010 ][  CC  ][    RA   ][  RB  ][           Imm16         ]
  * BranchSignedIf:  [ 0011 ][  0C  ][    RA   ][  RB  ][           Imm16         ]
@@ -75,7 +76,6 @@
  *                  else 
  *                      RD.Word  := RA.Word / RB.Word
  *                  RR.Word  := Remainder
- *          00101: Scc RD, RA, RB
  *      01: 
  *      10:
  *      11:
@@ -179,6 +179,7 @@ typedef enum PVMIns
         PVM_DI_ARITH = PVM_DI,
         PVM_DI_SPECIAL,
         PVM_DI_CMP,
+        PVM_DI_TRANSFER,
         PVM_DI_COUNT,
 
     PVM_BRIF = 2 << PVM_MODE_SIZE,
@@ -251,6 +252,11 @@ typedef enum PVMDICmp
     PVM_DI_SSLTP,
     PVM_DI_SSGTP,
 } PVMDICmp;
+
+typedef enum PVMDITransfer 
+{
+    PVM_DI_MOV = 0,
+} PVMDITransfer;
 
 typedef enum PVMIRDArith 
 {
@@ -326,6 +332,13 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
     | BIT_POS32(Rd, 5, 16)\
     | BIT_POS32(Ra, 5, 11)\
     | BIT_POS32(Rb, 5, 6))
+
+#define PVM_DI_TRANSFER_INS(Mnemonic, Rd, Ra)\
+    (BIT_POS32(PVM_DI_TRANSFER, 6, 26)\
+    | BIT_POS32(PVM_DI_ ## Mnemonic, 5, 21)\
+    | BIT_POS32(Rd, 5, 16)\
+    | BIT_POS32(Ra, 5, 11))
+
 
 
 #define PVM_IRD_ARITH_INS(Mnemonic, Rd, Imm16)\
