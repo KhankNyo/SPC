@@ -26,8 +26,8 @@ AstExpr ParseExpr(PascalParser *Parser);
 
 /* ptr owned by the arena */
 AstBlock *ParseBlock(PascalParser *Parser);
-AstStatement *ParseStatement(PascalParser *Parser);
-AstDeclaration *ParseDeclaration(PascalParser *Parser);
+AstStmt *ParseStatement(PascalParser *Parser);
+
 
 void ParserDestroyAst(PascalAst *Ast);
 

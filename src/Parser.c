@@ -11,17 +11,24 @@
 
 
 
-static AstFunction *ParseFunction(PascalParser *Parser);
+static AstVarBlock *ParseVar(PascalParser *Parser);
+static AstStmtBlock *ParseBeginEnd(PascalParser *Parser);
+static AstFunctionBlock *ParseFunction(PascalParser *Parser);
+static AstAssignStmt *ParseAssignStmt(PascalParser *Parser);
+
 
 static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser);
 static AstTerm ParseTerm(PascalParser *Parser);
 static AstFactor ParseFactor(PascalParser *Parser);
 
 
+static bool IsAtEnd(const PascalParser *Parser);
+static bool NextTokenIs(const PascalParser *Parser, const TokenType Type);
 static bool ConsumeIfNextIsOneOf(PascalParser *Parser, UInt Count, const TokenType Types[]);
 static bool ConsumeIfNextIs(PascalParser *Parser, TokenType Type);
 static void ConsumeToken(PascalParser *Parser);
 static bool ConsumeOrError(PascalParser *Parser, TokenType Expected, const char *Fmt, ...);
+
 static void Error(PascalParser *Parser, const char *Fmt, ...);
 static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList);
 
@@ -63,6 +70,33 @@ void ParserDestroyAst(PascalAst *Ast)
 
 
 
+
+AstBlock *ParseBlock(PascalParser *Parser)
+{
+    if (ConsumeIfNextIs(Parser, TOKEN_FUNCTION))
+    {
+        return (AstBlock*)ParseFunction(Parser);
+    }
+    if (ConsumeIfNextIs(Parser, TOKEN_VAR))
+    {
+        return (AstBlock*)ParseVar(Parser);
+    }
+    if (ConsumeIfNextIs(Parser, TOKEN_BEGIN))
+    {
+        return (AstBlock*)ParseBeginEnd(Parser);
+    }
+
+    PASCAL_ASSERT(0, "Unimplemented %s in ParseBlock()", TokenTypeToStr(Parser->Curr.Type));
+    return NULL;
+}
+
+
+AstStmt *ParseStmt(PascalParser *Parser)
+{
+    return (AstStmt*)ParseAssignStmt(Parser);
+}
+
+
 AstExpr ParseExpr(PascalParser *Parser)
 {
     AstExpr Expression = {0};
@@ -88,33 +122,91 @@ AstExpr ParseExpr(PascalParser *Parser)
 
 
 
-AstBlock *ParseBlock(PascalParser *Parser)
+
+
+
+
+
+static AstVarBlock *ParseVar(PascalParser *Parser)
 {
-    if (ConsumeIfNextIs(Parser, TOKEN_FUNCTION))
+    AstVarBlock *BlockDeclaration = ArenaAllocateZero(Parser->Arena, sizeof(*BlockDeclaration));
+    BlockDeclaration->Base.Type = AST_BLOCK_VAR;
+    AstVarList *Decl = &BlockDeclaration->Decl;
+
+    do {
+        /* parses declaration */
+        AstVarList *Start = Decl;
+        do {
+            ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected variable name.");
+
+            Decl->TypeName = Parser->Curr;
+            if (NextTokenIs(Parser, TOKEN_COMMA))
+            {
+                Decl->Next = ArenaAllocateZero(Parser->Arena, sizeof(*Decl->Next));
+                Decl = Decl->Next;
+                ConsumeToken(Parser);
+            }
+            else break;
+        } while (1);
+
+
+        ConsumeOrError(Parser, TOKEN_COLON, "Expected ':' or ',' after variable name.");
+        ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected type name after ':'.");
+        /* assign type to each variable */
+        while (NULL != Start)
+        {
+            Start->TypeName = Parser->Curr;
+            Start = Start->Next;
+        }
+
+
+        ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after type name.");
+    } while (NextTokenIs(Parser, TOKEN_IDENTIFIER));
+
+    return BlockDeclaration;
+}
+
+
+
+static AstStmtBlock *ParseBeginEnd(PascalParser *Parser)
+{
+    AstStmtBlock *Statements = ArenaAllocateZero(Parser->Arena, sizeof(*Statements));
+    AstStmtList *CurrStmt = Statements->Statements;
+    Statements->Base.Type = AST_BLOCK_STATEMENTS;
+
+    while (!IsAtEnd(Parser) && ConsumeIfNextIs(Parser, TOKEN_END))
     {
-        return (AstBlock*)ParseFunction(Parser);
+        CurrStmt->Statement = ParseStatement(Parser);
+        CurrStmt = CurrStmt->Next;
     }
-    if (ConsumeIfNextIs(Parser, TOKEN_VAR))
+
+    if (IsAtEnd(Parser))
     {
-        return (AstBlock*)ParseDeclaration(Parser);
+        Error(Parser, "Unexpected end of file.");
     }
-    if (ConsumeIfNextIs(Parser, TOKEN_BEGIN))
-    {
-        AstBlock *Ret = (AstBlock *)ParseStatement(Parser);
-        ConsumeOrError(Parser, TOKEN_END, "Expected 'End' after statements.");
-        return Ret;
-    }
+    return Statements;
+}
+
+
+
+static AstAssignStmt *ParseAssignStmt(PascalParser *Parser)
+{
+    AstAssignStmt *Assignment = ArenaAllocateZero(Parser->Arena, sizeof(*Assignment));
+    Assignment->Base.Type = AST_STMT_ASSIGNMENT;
+
+    Assignment->Variable = Parser->Curr;
+    ConsumeOrError(Parser, TOKEN_COLON_EQUAL, "TODO: assignment");
+    Assignment->Expr = ParseExpr(Parser);
+
+    return Assignment;
 }
 
 
 
 
-
-
-
-static AstFunction *ParseFunction(PascalParser *Parser)
+static AstFunctionBlock *ParseFunction(PascalParser *Parser)
 {
-    AstFunction *Function = ArenaAllocateZero(Parser->Arena, sizeof(*Function));
+    AstFunctionBlock *Function = ArenaAllocateZero(Parser->Arena, sizeof(*Function));
     Function->Base.Type = AST_BLOCK_FUNCTION;
 
     ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected function name.");
@@ -130,10 +222,11 @@ static AstFunction *ParseFunction(PascalParser *Parser)
     ConsumeOrError(Parser, TOKEN_COLON, "Expected ':' after '%.*s'.", BeforeColon.Len, BeforeColon.Str);
     ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected function return type.");
     ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after function return type.");
-    ParseBlock(Parser);
 
+    Function->Block = ParseBlock(Parser);
     return Function;
 }
+
 
 
 
@@ -236,8 +329,15 @@ static AstFactor ParseFactor(PascalParser *Parser)
 
 
 
+static bool IsAtEnd(const PascalParser *Parser)
+{
+    return Parser->Next.Type == TOKEN_EOF;
+}
 
-
+static bool NextTokenIs(const PascalParser *Parser, const TokenType Type)
+{
+    return Parser->Next.Type == Type;
+}
 
 static bool ConsumeIfNextIsOneOf(PascalParser *Parser, UInt Count, const TokenType Types[])
 {
@@ -273,8 +373,6 @@ static bool ConsumeOrError(PascalParser *Parser, TokenType Expected, const char 
 {
     if (!ConsumeIfNextIs(Parser, Expected))
     {
-        Parser->Error = true;
-
         va_list VaList;
         va_start(VaList, Fmt);
         VaListError(Parser, Fmt, VaList);
@@ -283,6 +381,11 @@ static bool ConsumeOrError(PascalParser *Parser, TokenType Expected, const char 
     }
     return true;
 }
+
+
+
+
+
 
 static void Error(PascalParser *Parser, const char *Fmt, ...)
 {

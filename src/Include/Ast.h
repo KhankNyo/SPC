@@ -7,35 +7,114 @@
 
 
 typedef struct AstBlock AstBlock;
-typedef struct AstFunction AstFunction;
-typedef struct AstStatement AstStatement;
-typedef struct AstDeclaration AstDeclaration;
+typedef struct AstStmt AstStmt;
+
+typedef struct AstVarList AstVarList;
+typedef struct AstStmtList AstStmtList;
+
+typedef struct AstFunctionBlock AstFunctionBlock;
+typedef struct AstVarBlock AstVarBlock;
+typedef struct AstConstBlock AstConstBlock;
+typedef struct AstStmtBlock AstStmtBlock;
+
+
+typedef struct AstAssignStmt AstAssignStmt;
+
+
 
 typedef enum AstBlockType
 {
+    AST_BLOCK_INVALID = 0,
     AST_BLOCK_FUNCTION,
+    AST_BLOCK_VAR,
+    AST_BLOCK_STATEMENTS,
 } AstBlockType;
+
+typedef enum AstStmtType 
+{
+    AST_STMT_INVALID = 0,
+    AST_STMT_ASSIGNMENT,
+} AstStmtType;
+
+
+
+/*----------------------------------------- 
+ *                  BASE
+ *-----------------------------------------*/
 
 struct AstBlock 
 {
     AstBlockType Type;
-    AstBlock *Next;
+};
+
+struct AstStmt 
+{
+    AstStmtType Type;
 };
 
 
-struct AstFunction 
+
+/*----------------------------------------- 
+ *                  LISTS
+ *-----------------------------------------*/
+
+
+struct AstVarList
+{
+    Token Identifier;
+    Token TypeName;
+    struct AstVarList *Next;
+};
+
+struct AstStmtList
+{
+    AstStmt *Statement;
+    struct AstStmtList *Next;
+};
+
+
+
+
+
+/*----------------------------------------- 
+ *                  BLOCKS
+ *-----------------------------------------*/
+
+
+struct AstFunctionBlock 
 {
     AstBlock Base;
     Token Identifier;
+    AstBlock *Block;
 };
 
-struct AstStatement 
+
+struct AstVarBlock
 {
+    AstBlock Base;
+    AstVarList Decl;
 };
 
-struct AstDeclaration 
+
+struct AstStmtBlock
 {
+    AstBlock Base;
+    AstStmtList *Statements;
 };
+
+
+
+/*----------------------------------------- 
+ *                 STATEMENTS
+ *-----------------------------------------*/
+
+struct AstAssignStmt 
+{
+    AstStmt Base;
+    Token Variable;
+    AstExpr Expr;
+};
+
 
 
 
