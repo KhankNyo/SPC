@@ -563,7 +563,7 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
         UInt Type;
     } Keyword;
 
-    Keyword KeywordLut[][6] = 
+    static Keyword KeywordLut[][6] = 
     {
         ['A'] = {
             {.Str = (const U8 *)"ND",   .Len = 2, .Type = TOKEN_AND}, 
@@ -681,6 +681,8 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
     for (UInt i = 0; i < STATIC_ARRAY_SIZE(KeywordLut[Key]); i++)
     {
         Keyword *KeywordSlot = &KeywordLut[Key][i];
+        if (0 == KeywordSlot->Len)
+            break;
 
         if (LexemeLen - 1 == KeywordSlot->Len
         && AlphaArrayEquNoCase(Lexer->Start + 1, KeywordSlot->Str, KeywordSlot->Len))

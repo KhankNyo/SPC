@@ -11,8 +11,8 @@
 
 
 
-static AstVarBlock *ParseVar(PascalParser *Parser);
 static AstStmtBlock *ParseBeginEnd(PascalParser *Parser);
+static AstVarBlock *ParseVar(PascalParser *Parser);
 static AstAssignStmt *ParseAssignStmt(PascalParser *Parser);
 static AstReturnStmt *ParseReturnStmt(PascalParser *Parser);
 static AstFunctionBlock *ParseFunction(PascalParser *Parser);
@@ -75,26 +75,41 @@ void ParserDestroyAst(PascalAst *Ast)
 
 AstBlock *ParseBlock(PascalParser *Parser)
 {
+    AstBlock *Block = NULL;
     if (ConsumeIfNextIs(Parser, TOKEN_FUNCTION))
     {
-        return (AstBlock*)ParseFunction(Parser);
+        Block = (AstBlock*)ParseFunction(Parser);
     }
-    if (ConsumeIfNextIs(Parser, TOKEN_VAR))
+    else if (ConsumeIfNextIs(Parser, TOKEN_VAR))
     {
-        return (AstBlock*)ParseVar(Parser);
+        Block = (AstBlock*)ParseVar(Parser);
     }
-    if (ConsumeIfNextIs(Parser, TOKEN_BEGIN))
+
+    if (NULL == Block)
     {
-        return (AstBlock*)ParseBeginEnd(Parser);
+        Error(Parser, 
+                "Expected 'label', 'const', "
+                "'type', 'var', 'procedure', "
+                "'function' or 'begin' before a block."
+        );
     }
+
 
     if (Parser->Error)
     {
         RecoverFromError(Parser);
-        return NULL;
     }
-    PASCAL_ASSERT(0, "Unimplemented %s in ParseBlock()", TokenTypeToStr(Parser->Curr.Type));
-    return NULL;
+
+    /* consume the end of a block */
+    if (ConsumeIfNextIs(Parser, TOKEN_BEGIN))
+    {
+        Block->Next = (AstBlock*)ParseBeginEnd(Parser);
+    }
+    else
+    {
+        Block->Next = ParseBlock(Parser);
+    }
+    return Block;
 }
 
 
@@ -150,7 +165,7 @@ static AstVarBlock *ParseVar(PascalParser *Parser)
         do {
             ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected variable name.");
 
-            Decl->TypeName = Parser->Curr;
+            Decl->Identifier = Parser->Curr;
             if (ConsumeIfNextIs(Parser, TOKEN_COMMA))
             {
                 Decl->Next = ArenaAllocateZero(Parser->Arena, sizeof(*Decl->Next));
@@ -181,18 +196,17 @@ static AstVarBlock *ParseVar(PascalParser *Parser)
 static AstStmtBlock *ParseBeginEnd(PascalParser *Parser)
 {
     AstStmtBlock *Statements = ArenaAllocateZero(Parser->Arena, sizeof(*Statements));
-    AstStmtList *CurrStmt = Statements->Statements;
     Statements->Base.Type = AST_BLOCK_STATEMENTS;
+    AstStmtList **CurrStmt = &Statements->Statements;
 
-    while (!IsAtEnd(Parser) && ConsumeIfNextIs(Parser, TOKEN_END))
+    while (!IsAtEnd(Parser) && !ConsumeIfNextIs(Parser, TOKEN_END))
     {
-        CurrStmt->Statement = ParseStmt(Parser);
-        CurrStmt = CurrStmt->Next;
-    }
+        *CurrStmt = ArenaAllocateZero(Parser->Arena, sizeof(**CurrStmt));
 
-    if (IsAtEnd(Parser))
-    {
-        Error(Parser, "Unexpected end of file.");
+        (*CurrStmt)->Statement = ParseStmt(Parser);
+        ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after statement.");
+
+        CurrStmt = &(*CurrStmt)->Next;
     }
     return Statements;
 }
@@ -204,7 +218,9 @@ static AstAssignStmt *ParseAssignStmt(PascalParser *Parser)
     AstAssignStmt *Assignment = ArenaAllocateZero(Parser->Arena, sizeof(*Assignment));
     Assignment->Base.Type = AST_STMT_ASSIGNMENT;
 
+    ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected identifier before ':='");
     Assignment->Variable = Parser->Curr;
+
     ConsumeOrError(Parser, TOKEN_COLON_EQUAL, "TODO: assignment");
     Assignment->Expr = ParseExpr(Parser);
 
@@ -425,7 +441,8 @@ static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList)
     if (!Parser->Error)
     {
         Parser->Error = true;
-        fprintf(Parser->ErrorFile, "Parser [line %d]: '%.*s'\n    ", Parser->Curr.Line, Parser->Curr.Len, Parser->Curr.Str);
+        fprintf(Parser->ErrorFile, "Parser [line %d]: '%.*s'\n    ", 
+                Parser->Next.Line, Parser->Next.Len, Parser->Next.Str);
         vfprintf(Parser->ErrorFile, Fmt, VaList);
         fputc('\n', Parser->ErrorFile);
     }
@@ -443,16 +460,19 @@ static void RecoverFromError(PascalParser *Parser)
             continue;
         }
 
+        /* keywords before a block */
         switch (Parser->Curr.Type)
         {
-        case TOKEN_FUNCTION:
-        case TOKEN_PROCEDURE:
-        case TOKEN_VAR:
-        case TOKEN_BEGIN:
+        case TOKEN_LABEL:
         case TOKEN_CONST:
+        case TOKEN_TYPE:
+        case TOKEN_VAR:
+        case TOKEN_PROCEDURE:
+        case TOKEN_FUNCTION:
+        case TOKEN_BEGIN:
             return;
 
-        // default: break;
+        default: break;
         }
     }
 }

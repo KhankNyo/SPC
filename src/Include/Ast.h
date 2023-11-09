@@ -15,8 +15,8 @@ typedef struct AstStmtList AstStmtList;
 typedef struct AstFunctionBlock AstFunctionBlock;
 typedef struct AstVarBlock AstVarBlock;
 typedef struct AstConstBlock AstConstBlock;
-typedef struct AstStmtBlock AstStmtBlock;
 typedef struct AstReturnStmt AstReturnStmt;
+typedef struct AstStmtBlock AstStmtBlock;
 
 
 typedef struct AstAssignStmt AstAssignStmt;
@@ -47,12 +47,14 @@ typedef enum AstStmtType
 struct AstBlock 
 {
     AstBlockType Type;
+    struct AstBlock *Next;
 };
 
 struct AstStmt 
 {
     AstStmtType Type;
 };
+
 
 
 
@@ -97,13 +99,11 @@ struct AstVarBlock
     AstVarList Decl;
 };
 
-
 struct AstStmtBlock
 {
     AstBlock Base;
     AstStmtList *Statements;
 };
-
 
 
 /*----------------------------------------- 

@@ -142,6 +142,7 @@ static void PVMDeclareLocal(PVMCompiler *Compiler, Token Name, Operand Dest)
 static void PVMBindVariableToCurrentLocation(PVMCompiler *Compiler, Token Name)
 {
     (void)Compiler, (void)Name;
+    PASCAL_ASSERT(0, "TODO: PVMBindVariableToCurrentLocation()");
 }
 
 static Operand PVMGetLocationOf(const PVMCompiler *Compiler, Token Variable)
@@ -198,6 +199,11 @@ static void PVMCompileBlock(PVMCompiler *Compiler, const AstBlock *Block)
         break;
     }
 
+    /* TODO: loop instead */
+    if (NULL != Block->Next)
+    {
+        PVMCompileBlock(Compiler, Block->Next);
+    }
 }
 
 
