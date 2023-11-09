@@ -9,18 +9,27 @@ typedef struct PVMCompiler
     const PascalAst *Ast;
     CodeChunk *Chunk;
     bool HasError;
-    U32 RegisterList;
+    U32 RegisterList[32]; /* 32 scopes */
+
+    UInt ScopeDepth;
 } PVMCompiler;
 
 
 PVMCompiler PVMCompilerInit(CodeChunk *Code, const PascalAst *Ast);
-void PVMCompilerDeinit(PVMCompiler *Compiler, Operand ExitCode);
+void PVMCompilerDeinit(PVMCompiler *Compiler);
+
+
+static void PVMCompileBlock(PVMCompiler *Compiler, const AstBlock *Block);
+static void PVMCompileVar(PVMCompiler *Compiler, const AstVarBlock *Declarations);
+static void PVMCompileFunction(PVMCompiler *Compiler, const AstFunctionBlock *Function);
+static void PVMCompileStmts(PVMCompiler *Compiler, const AstStmtBlock *Block);
 
 static Operand PVMCompileExpr(PVMCompiler *Compiler, const AstExpr *Expr);
 static Operand PVMCompileSimpleExpr(PVMCompiler *Compiler, const AstSimpleExpr *SimpleExpr);
 static Operand PVMCompileTerm(PVMCompiler *Compiler, const AstTerm *Term);
 static Operand PVMCompileFactor(PVMCompiler *Compiler, const AstFactor *Factor);
 
+static void PVMEmitMovI32(PVMCompiler *Compiler, Operand Dest, Operand Src);
 static void PVMEmitLoadI32(PVMCompiler *Compiler, Operand Dest, I32 Integer);
 static void PVMEmitAddI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right);
 static void PVMEmitSubI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right);
@@ -30,11 +39,14 @@ static void PVMEmitSetCCU(
         PVMCompiler *Compiler, TokenType Op, 
         Operand Dest, Operand Left, Operand Right, UInt OperandSize
 );
-static void PVMEmitExit(PVMCompiler *Compiler, Operand ExitCodeRegister);
+static void PVMEmitExit(PVMCompiler *Compiler);
 
 static Operand PVMAllocateRegister(PVMCompiler *Compiler);
 static void PVMFreeRegister(PVMCompiler *Compiler, Operand Register);
 static CodeChunk *PVMCurrentChunk(PVMCompiler *Compiler);
+
+static void PVMBeginScope(PVMCompiler *Compiler);
+static void PVMEndScope(PVMCompiler *Compiler);
 
 
 
@@ -43,10 +55,10 @@ static CodeChunk *PVMCurrentChunk(PVMCompiler *Compiler);
 bool PVMCompile(CodeChunk *Chunk, const PascalAst *Ast)
 {
     PVMCompiler Compiler = PVMCompilerInit(Chunk, Ast);
-    Operand ReturnValue = PVMCompileExpr(&Compiler, &Ast->Expression);
+    PVMCompileBlock(&Compiler, Ast->Block);
 
     bool HasError = Compiler.HasError;
-    PVMCompilerDeinit(&Compiler, ReturnValue);
+    PVMCompilerDeinit(&Compiler);
     return !HasError;
 }
 
@@ -59,18 +71,103 @@ PVMCompiler PVMCompilerInit(CodeChunk *Chunk, const PascalAst *Ast)
         .Ast = Ast,
         .Chunk = Chunk,
         .HasError = false,
-        .RegisterList = 0,
+        .RegisterList = { 0 },
+        .ScopeDepth = 0,
     };
     return Compiler;
 }
 
-void PVMCompilerDeinit(PVMCompiler *Compiler, Operand ExitCodeRegister)
+void PVMCompilerDeinit(PVMCompiler *Compiler)
 {
-    if (ExitCodeRegister != PVM_REG_RET)
+    PVMEmitExit(Compiler);
+}
+
+
+
+static void PVMCompileBlock(PVMCompiler *Compiler, const AstBlock *Block)
+{
+    switch (Block->Type)
     {
-        PVMEmitExit(Compiler, ExitCodeRegister);
+    case AST_BLOCK_VAR:
+    {
+        PVMCompileVar(Compiler, (const AstVarBlock*)Block);
+    } break;
+    case AST_BLOCK_FUNCTION:
+    {
+        PVMCompileFunction(Compiler (const AstFunctionBlock*)Block);
+    } break;
+    case AST_BLOCK_STATEMENTS:
+    {
+        PVMBeginScope(Compiler);
+        PVMCompileStmts(Compiler (const AstStmtBlock*)Block);
+        PVMEndScope(Compiler);
+    } break;
+
+    case AST_BLOCK_INVALID:
+        break;
+    }
+
+}
+
+
+
+
+static void PVMCompileVar(PVMCompiler *Compiler, const AstVarBlock *Declarations)
+{
+    const AstVarList *I = &Declarations->Decl;
+    do {
+        Operand Register = PVMAllocateRegister(Compiler);
+        PVMBindVariableToOperand(Compiler, I->Identifier, Register);
+        I = I->Next;
+    } while (NULL != I);
+}
+
+
+static void PVMCompileFunction(PVMCompiler *Compiler, const AstFunctionBlock *Function)
+{
+    PVMBindVariableToMemory(Compiler, Function->Identifier);
+    PVMCompileBlock(Compiler, Function->Block);
+}
+
+static void PVMCompileStmts(PVMCompiler *Compiler, const AstStmtBlock *Block)
+{
+    const AstStmtList *I = Block->Statements;
+    while (NULL != I)
+    {
+        const AstAssignStmt *Assignment = (const AstAssignStmt *)I->Statement;
+        const Token *Identifier = &Assignment->Variable;
+        switch (I->Statement->Type)
+        {
+        case AST_STMT_ASSIGNMENT:
+        {
+            Operand LValue = PVMGetLocationOf(Compiler, Identifier);
+            Operand RValue = PVMCompileExpr(Compiler, &Assignment->Expr);
+            PVMEmitMovI32(Compiler, LValue, RValue);
+            PVMFreeRegister(Compiler, RValue);
+        } break;
+
+        case AST_STMT_INVALID:
+        {
+            PASCAL_UNREACHABLE("PVMCompileStmts: AST_STMT_INVALID encountered\n");
+        } break;
+        }
+
+        I = I->Next;
     }
 }
+
+
+
+
+static void PVMBindVariableToOperand(PVMCompiler *Compiler, Token Variable, Operand Dest)
+{
+}
+
+
+static void PVMBindVariableToMemory(PVMCompiler *Compiler, Token Name)
+{
+}
+
 
 
 
@@ -200,6 +297,10 @@ static Operand PVMCompileFactor(PVMCompiler *Compiler, const AstFactor *Factor)
 
 
 
+static void PVMEmitMovI32(PVMCompiler *Compiler, Operand Dest, Operand Src)
+{
+    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_TRANSFER_INS(MOV, Dest, Src));
+}
 
 static void PVMEmitLoadI32(PVMCompiler *Compiler, Operand Dest, I32 Integer)
 {
@@ -258,9 +359,8 @@ static void PVMEmitSetCCU(PVMCompiler *Compiler, TokenType Op, Operand Dest, Ope
 }
 
 
-static void PVMEmitExit(PVMCompiler *Compiler, Operand ExitCode)
+static void PVMEmitExit(PVMCompiler *Compiler)
 {
-    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_TRANSFER_INS(MOV, PVM_REG_RET, ExitCode));
     CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_SYS_INS(EXIT));
 }
 
@@ -293,5 +393,19 @@ static void PVMFreeRegister(PVMCompiler *Compiler, Operand Register)
 static CodeChunk *PVMCurrentChunk(PVMCompiler *Compiler)
 {
     return Compiler->Chunk;
+}
+
+
+
+
+static void PVMBeginScope(PVMCompiler *Compiler)
+{
+    Compiler->RegisterList[Compiler->ScopeDepth + 1] = Compiler->RegisterList[Compiler->ScopeDepth];
+    Compiler->ScopeDepth++;
+}
+
+static void PVMEndScope(PVMCompiler *Compiler)
+{
+    Compiler->ScopeDepth--;
 }
 
