@@ -176,19 +176,19 @@ const U8 *TokenTypeToStr(TokenType Type)
 
         /* keywords */
         "TOKEN_AND", "TOKEN_ARRAY", "TOKEN_ASM",
-        "TOKEN_BEGIN", "TOKEN_BREAK", 
+        "TOKEN_BEGIN", "TOKEN_BREAK", "TOKEN_BOOLEAN",
         "TOKEN_CASE", "TOKEN_CONST", "TOKEN_CONSTRUCTOR", "TOKEN_CONTINUE", 
         "TOKEN_DESTRUCTOR", "TOKEN_DIV", "TOKEN_DO", "TOKEN_DOWNTO",
         "TOKEN_ELSE", "TOKEN_END", 
         "TOKEN_FALSE", "TOKEN_FILE", "TOKEN_FOR", "TOKEN_FUNCTION", 
         "TOKEN_GOTO",
-        "TOKEN_IF", "TOKEN_IMPLEMENTATION", "TOKEN_IN", "TOKEN_INLINE", "TOKEN_INFERFACE", 
+        "TOKEN_IF", "TOKEN_IMPLEMENTATION", "TOKEN_IN", "TOKEN_INLINE", "TOKEN_INFERFACE", "TOKEN_INTEGER", 
         "TOKEN_LABEL", 
         "TOKEN_MOD", 
         "TOKEN_NIL", "TOKEN_NOT",
         "TOKEN_OBJECT", "TOKEN_OF", "TOKEN_ON", "TOKEN_OPERATOR", "TOKEN_OR", 
         "TOKEN_PACKED", "TOKEN_PROCEDURE", "TOKEN_PROGRAM", 
-        "TOKEN_RECORD", "TOKEN_REPEAT", 
+        "TOKEN_RECORD", "TOKEN_REPEAT", "TOKEN_RESULT", "TOKEN_REAL",
         "TOKEN_SET", "TOKEN_SHL", "TOKEN_SHR", "TOKEN_STRING", 
         "TOKEN_THEN", "TOKEN_TRUE", "TOKEN_TYPE", 
         "TOKEN_UNIT", "TOKEN_UNTIL", "TOKEN_USES", 
@@ -214,7 +214,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_IDENTIFIER"
     };
     PASCAL_STATIC_ASSERT(STATIC_ARRAY_SIZE(TokenNameLut) == TOKEN_TYPE_COUNT, "Missing types in string lookup table");
-    PASCAL_ASSERT(Type < STATIC_ARRAY_SIZE(TokenNameLut), "Invalid token type: %d\n", Type);
+    PASCAL_ASSERT(Type < (int)STATIC_ARRAY_SIZE(TokenNameLut), "Invalid token type: %d\n", Type);
     return (const U8*)TokenNameLut[Type];
 }
 
@@ -563,7 +563,7 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
         UInt Type;
     } Keyword;
 
-    Keyword KeywordLut[][5] = 
+    Keyword KeywordLut[][6] = 
     {
         ['A'] = {
             {.Str = (const U8 *)"ND",   .Len = 2, .Type = TOKEN_AND}, 
@@ -572,7 +572,8 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
         },
         ['B'] = {
             {.Str = (const U8 *)"EGIN", .Len = 4, .Type = TOKEN_BEGIN},
-            {.Str = (const U8 *)"REAK", .Len = 4, .Type = TOKEN_BREAK}
+            {.Str = (const U8 *)"REAK", .Len = 4, .Type = TOKEN_BREAK},
+            {.Str = (const U8 *)"OOLEAN", .Len = 6, .Type = TOKEN_BOOLEAN},
         },
         ['C'] = {
             {.Str = (const U8 *)"ASE", .Len = 3, .Type = TOKEN_CASE},
@@ -604,6 +605,7 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
             {.Str = (const U8 *)"F", .Len = 1, .Type = TOKEN_IF},
             {.Str = (const U8 *)"N", .Len = 1, .Type = TOKEN_IN},
             {.Str = (const U8 *)"NLINE", .Len = 5, .Type = TOKEN_INLINE},
+            {.Str = (const U8 *)"MNTEGER", .Len = 7, .Type = TOKEN_INTEGER},
             {.Str = (const U8 *)"NTERFACE", .Len = 8, .Type = TOKEN_INTERFACE},
             {.Str = (const U8 *)"MPLEMENTATION", .Len = 13, .Type = TOKEN_IMPLEMENTATION},
         },
@@ -633,8 +635,10 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
         },
         ['Q'] = { {0} },
         ['R'] = {
+            {.Str = (const U8 *)"EAL", .Len = 3, .Type = TOKEN_REAL},
             {.Str = (const U8 *)"EPEAT", .Len = 5, .Type = TOKEN_RECORD},
             {.Str = (const U8 *)"ECORD", .Len = 5, .Type = TOKEN_REPEAT},
+            {.Str = (const U8 *)"ESULT", .Len = 5, .Type = TOKEN_RESULT},
         },
         ['S'] = {
             {.Str = (const U8 *)"ET", .Len = 2, .Type = TOKEN_SET},
