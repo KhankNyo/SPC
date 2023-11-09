@@ -4,6 +4,6 @@ var
     Something: Integer;
 begin
     Something := 5;
-    Result := Something;
+    Exit(Something);
 end;
 

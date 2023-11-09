@@ -67,8 +67,8 @@ static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode)
     case PVM_BRIF_NE: DisasmBrIf(f, "NE", Addr, Opcode); break;
     case PVM_BRIF_LT: DisasmBrIf(f, "LT", Addr, Opcode); break;
     case PVM_BRIF_GT: DisasmBrIf(f, "GT", Addr, Opcode); break;
-    case PVM_BALT_SLT: DisasmBrIf(f, "SLT", Addr, Opcode); break;
-    case PVM_BALT_SGT: DisasmBrIf(f, "SGT", Addr, Opcode); break;
+    case PVM_BRIF_SLT: DisasmBrIf(f, "SLT", Addr, Opcode); break;
+    case PVM_BRIF_SGT: DisasmBrIf(f, "SGT", Addr, Opcode); break;
     case PVM_BALT_AL: DisasmBAlt(f, "BAL", Addr, Opcode); break;
     case PVM_BALT_SR: DisasmBAlt(f, "BSR", Addr, Opcode); break;
 

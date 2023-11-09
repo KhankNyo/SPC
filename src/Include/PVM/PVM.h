@@ -190,8 +190,8 @@ typedef enum PVMIns
         PVM_BRIF_COUNT,
 
     PVM_BALT = 3 << PVM_MODE_SIZE,
-        PVM_BALT_SGT = PVM_BALT,
-        PVM_BALT_SLT,
+        PVM_BRIF_SGT = PVM_BALT,
+        PVM_BRIF_SLT,
         PVM_BALT_AL,
         PVM_BALT_SR,
         PVM_BALT_COUNT,
@@ -292,6 +292,8 @@ typedef enum PVMArgReg
 
 
 
+
+
 #define PVM_REG_COUNT 32
 #define PVM_MAX_OP_COUNT ((U32)1 << 5)
 #define PVM_MAX_SYS_COUNT ((U32)1 << 26)
@@ -348,11 +350,22 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
     | BIT_POS32(Imm16, 16, 0))\
 
 
-#define PVM_BRANCH_IF(CC, Ra, Rb, Offset16)\
+#define PVM_BRANCH_IF_INS(CC, Ra, Rb, Offset16)\
     (BIT_POS32(PVM_BRIF_ ## CC, 6, 26)\
      | BIT_POS32(Ra, 5, 21)\
      | BIT_POS32(Rb, 5, 16)\
      | BIT_POS32(Offset16, 16, 0))
+
+
+#define PVM_LONGBRANCH_INS(Offset26)\
+    (BIT_POS32(PVM_BALT_AL, 6, 26)\
+     | BIT_POS32(Offset26, 26, 0))
+
+#define PVM_BSR_INS(Offset26)\
+    (BIT_POS32(PVM_BALT_SR, 6, 26)\
+     | BIT_POS32(Offset26, 26, 0))
+
+#define PVM_RET_INS PVM_BSR_INS((U32)-1)
 
 #define PVM_SYS_INS(Mnemonic)\
     (BIT_POS32(PVM_RE_SYS, 6, 26)\
@@ -386,6 +399,10 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
 
 
 #define PVM_GET_SYS_OP(OpcodeWord) (PVMSysOp)BIT_AT32(OpcodeWord, 26, 0)
+
+
+
+
 
 
 

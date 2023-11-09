@@ -13,8 +13,9 @@
 
 static AstVarBlock *ParseVar(PascalParser *Parser);
 static AstStmtBlock *ParseBeginEnd(PascalParser *Parser);
-static AstFunctionBlock *ParseFunction(PascalParser *Parser);
 static AstAssignStmt *ParseAssignStmt(PascalParser *Parser);
+static AstReturnStmt *ParseReturnStmt(PascalParser *Parser);
+static AstFunctionBlock *ParseFunction(PascalParser *Parser);
 
 
 static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser);
@@ -99,6 +100,10 @@ AstBlock *ParseBlock(PascalParser *Parser)
 
 AstStmt *ParseStmt(PascalParser *Parser)
 {
+    if (ConsumeIfNextIs(Parser, TOKEN_EXIT)) /* TODO: return by assigning function name */
+    {
+        return (AstStmt*)ParseReturnStmt(Parser);
+    }
     return (AstStmt*)ParseAssignStmt(Parser);
 }
 
@@ -181,7 +186,7 @@ static AstStmtBlock *ParseBeginEnd(PascalParser *Parser)
 
     while (!IsAtEnd(Parser) && ConsumeIfNextIs(Parser, TOKEN_END))
     {
-        CurrStmt->Statement = ParseStatement(Parser);
+        CurrStmt->Statement = ParseStmt(Parser);
         CurrStmt = CurrStmt->Next;
     }
 
@@ -204,6 +209,21 @@ static AstAssignStmt *ParseAssignStmt(PascalParser *Parser)
     Assignment->Expr = ParseExpr(Parser);
 
     return Assignment;
+}
+
+
+static AstReturnStmt *ParseReturnStmt(PascalParser *Parser)
+{
+    AstReturnStmt *RetStmt = ArenaAllocateZero(Parser->Arena, sizeof(*RetStmt));
+    RetStmt->Base.Type = AST_STMT_RETURN;
+    if (ConsumeIfNextIs(Parser, TOKEN_LEFT_PAREN))
+    {
+        RetStmt->Expr = ArenaAllocateZero(Parser->Arena, sizeof *RetStmt->Expr);
+        *RetStmt->Expr = ParseExpr(Parser);
+        ConsumeOrError(Parser, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
+    }
+    ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after '%.*s'.", Parser->Curr.Len, Parser->Curr.Str);
+    return RetStmt;
 }
 
 
@@ -405,7 +425,9 @@ static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList)
     if (!Parser->Error)
     {
         Parser->Error = true;
+        fprintf(Parser->ErrorFile, "Parser [line %d]: '%.*s'\n    ", Parser->Curr.Line, Parser->Curr.Len, Parser->Curr.Str);
         vfprintf(Parser->ErrorFile, Fmt, VaList);
+        fputc('\n', Parser->ErrorFile);
     }
 }
 
@@ -428,7 +450,6 @@ static void RecoverFromError(PascalParser *Parser)
         case TOKEN_VAR:
         case TOKEN_BEGIN:
         case TOKEN_CONST:
-        case TOKEN_ERROR:
             return;
 
         // default: break;

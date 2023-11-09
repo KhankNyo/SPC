@@ -4,6 +4,8 @@
 #include "Ast.h"
 
 
+
+
 static void PAstPrintExpr(FILE *f, const AstExpr *Expression);
 static void PAstPrintSimpleExpr(FILE *f, const AstSimpleExpr *Simple);
 static void PAstPrintTerm(FILE *f, const AstTerm *Term);
@@ -14,7 +16,8 @@ static void PAstPrintFactor(FILE *f, const AstFactor *Factor);
 
 void PAstPrint(FILE *f, const PascalAst *PAst)
 {
-    PAstPrintExpr(f, &PAst->Expression);
+    (void)f, (void)PAst;
+    PASCAL_UNREACHABLE("TODO: PAstPrint");
 }
 
 

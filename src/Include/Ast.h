@@ -16,6 +16,7 @@ typedef struct AstFunctionBlock AstFunctionBlock;
 typedef struct AstVarBlock AstVarBlock;
 typedef struct AstConstBlock AstConstBlock;
 typedef struct AstStmtBlock AstStmtBlock;
+typedef struct AstReturnStmt AstReturnStmt;
 
 
 typedef struct AstAssignStmt AstAssignStmt;
@@ -34,6 +35,7 @@ typedef enum AstStmtType
 {
     AST_STMT_INVALID = 0,
     AST_STMT_ASSIGNMENT,
+    AST_STMT_RETURN,
 } AstStmtType;
 
 
@@ -113,6 +115,12 @@ struct AstAssignStmt
     AstStmt Base;
     Token Variable;
     AstExpr Expr;
+};
+
+struct AstReturnStmt 
+{
+    AstStmt Base;
+    AstExpr *Expr;
 };
 
 

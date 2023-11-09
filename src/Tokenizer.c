@@ -179,7 +179,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_BEGIN", "TOKEN_BREAK", "TOKEN_BOOLEAN",
         "TOKEN_CASE", "TOKEN_CONST", "TOKEN_CONSTRUCTOR", "TOKEN_CONTINUE", 
         "TOKEN_DESTRUCTOR", "TOKEN_DIV", "TOKEN_DO", "TOKEN_DOWNTO",
-        "TOKEN_ELSE", "TOKEN_END", 
+        "TOKEN_ELSE", "TOKEN_END", "TOKEN_EXIT",
         "TOKEN_FALSE", "TOKEN_FILE", "TOKEN_FOR", "TOKEN_FUNCTION", 
         "TOKEN_GOTO",
         "TOKEN_IF", "TOKEN_IMPLEMENTATION", "TOKEN_IN", "TOKEN_INLINE", "TOKEN_INFERFACE", "TOKEN_INTEGER", 
@@ -590,6 +590,7 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
         ['E'] = {
             {.Str = (const U8 *)"ND", .Len = 2, .Type = TOKEN_END},
             {.Str = (const U8 *)"LSE", .Len = 3, .Type = TOKEN_ELSE},
+            {.Str = (const U8 *)"XIT", .Len = 3, .Type = TOKEN_EXIT},
         },
         ['F'] = {
             {.Str = (const U8 *)"OR", .Len = 2, .Type = TOKEN_FOR},
