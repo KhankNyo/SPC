@@ -146,11 +146,10 @@ static AstVarBlock *ParseVar(PascalParser *Parser)
             ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected variable name.");
 
             Decl->TypeName = Parser->Curr;
-            if (NextTokenIs(Parser, TOKEN_COMMA))
+            if (ConsumeIfNextIs(Parser, TOKEN_COMMA))
             {
                 Decl->Next = ArenaAllocateZero(Parser->Arena, sizeof(*Decl->Next));
                 Decl = Decl->Next;
-                ConsumeToken(Parser);
             }
             else break;
         } while (1);
