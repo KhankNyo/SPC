@@ -22,6 +22,13 @@ typedef struct PascalParser
 PascalParser ParserInit(const U8 *Source, PascalArena *Arena, FILE *ErrorFile);
 
 PascalAst ParserGenerateAst(PascalParser *Parser);
+AstExpr ParseExpr(PascalParser *Parser);
+
+/* ptr owned by the arena */
+AstBlock *ParseBlock(PascalParser *Parser);
+AstStatement *ParseStatement(PascalParser *Parser);
+AstDeclaration *ParseDeclaration(PascalParser *Parser);
+
 void ParserDestroyAst(PascalAst *Ast);
 
 

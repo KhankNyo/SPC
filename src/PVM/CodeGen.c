@@ -181,6 +181,7 @@ static Operand PVMCompileFactor(PVMCompiler *Compiler, const AstFactor *Factor)
         return Ret;
     } break;
 
+
     case FACTOR_GROUP_EXPR:
     {
         return PVMCompileExpr(Compiler, Factor->As.Expression);

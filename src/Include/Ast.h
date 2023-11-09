@@ -1,98 +1,51 @@
 #ifndef PASCAL_AST_H
 #define PASCAL_AST_H
 
-#include "Tokenizer.h"
-#include "Common.h"
 
-typedef struct AstFactor AstFactor;
-typedef struct AstOpFactor AstOpFactor;
+#include "AstExpr.h"
 
-typedef struct AstTerm AstTerm;
-typedef struct AstOpTerm AstOpTerm;
 
-typedef struct AstSimpleExpr AstSimpleExpr;
-typedef struct AstOpSimpleExpr AstOpSimpleExpr;
 
-typedef struct AstExpr AstExpr;
-typedef struct AstOpExpr AstExOppr;
+typedef struct AstBlock AstBlock;
+typedef struct AstFunction AstFunction;
+typedef struct AstStatement AstStatement;
+typedef struct AstDeclaration AstDeclaration;
 
-typedef enum AstFactorType 
+typedef enum AstBlockType
 {
-    FACTOR_INVALID = 0,
-    FACTOR_GROUP_EXPR,
-    FACTOR_NOT,
-    FACTOR_INTEGER,
-    FACTOR_REAL,
-    FACTOR_CALL,
-    FACTOR_VARIABLE,
-} AstFactorType;
+    AST_BLOCK_FUNCTION,
+} AstBlockType;
 
-
-struct AstFactor 
+struct AstBlock 
 {
-    AstFactorType Type;
-    union {
-        U64 Integer;
-        F64 Real;
-        AstExpr *Expression;
-        struct AstFactor *NotFactor;
-    } As;
-};
-
-struct AstOpFactor 
-{
-    TokenType Op;
-    AstFactor Factor;
-    struct AstOpFactor *Next;
+    AstBlockType Type;
+    AstBlock *Next;
 };
 
 
-struct AstTerm
+struct AstFunction 
 {
-    AstFactor Left;
-    AstOpFactor *Right;
+    AstBlock Base;
+    Token Identifier;
 };
 
-struct AstOpTerm 
+struct AstStatement 
 {
-    TokenType Op;
-    AstTerm Term;
-    struct AstOpTerm *Next;
 };
 
-
-
-struct AstSimpleExpr
+struct AstDeclaration 
 {
-    TokenType Prefix;
-    AstTerm Left;
-    AstOpTerm *Right;
-};
-
-struct AstOpSimpleExpr
-{
-    TokenType Op;
-    AstSimpleExpr SimpleExpr;
-    struct AstOpSimpleExpr *Next;
 };
 
 
-
-struct AstExpr 
-{
-    AstSimpleExpr Left;
-    AstOpSimpleExpr *Right;
-};
 
 
 typedef struct PascalAst 
 {
-    AstExpr Expression;
+    AstBlock *Block;
 } PascalAst;
 
-
 void PAstPrint(FILE *f, const PascalAst *Ast);
-AstFactor PAstEvaluate(const PascalAst *Ast);
 
 
 #endif /* PASCAL_AST_H */

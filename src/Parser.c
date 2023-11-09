@@ -11,12 +11,12 @@
 
 
 
+static AstFunction *ParseFunction(PascalParser *Parser);
 
-
-static AstExpr ParseExpr(PascalParser *Parser);
 static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser);
 static AstTerm ParseTerm(PascalParser *Parser);
 static AstFactor ParseFactor(PascalParser *Parser);
+
 
 static bool ConsumeIfNextIsOneOf(PascalParser *Parser, UInt Count, const TokenType Types[]);
 static bool ConsumeIfNextIs(PascalParser *Parser, TokenType Type);
@@ -44,11 +44,10 @@ PascalParser ParserInit(const U8 *Source, PascalArena *Arena, FILE *ErrorFile)
 PascalAst ParserGenerateAst(PascalParser *Parser)
 {
     Parser->Next = TokenizerGetToken(&Parser->Lexer);
-    AstExpr Expression = ParseExpr(Parser);
-
-    return (PascalAst) {
-        .Expression = Expression,
+    PascalAst Ast = {
+        .Block = ParseBlock(Parser),
     };
+    return Ast;
 }
 
 void ParserDestroyAst(PascalAst *Ast)
@@ -64,11 +63,7 @@ void ParserDestroyAst(PascalAst *Ast)
 
 
 
-
-
-
-
-static AstExpr ParseExpr(PascalParser *Parser)
+AstExpr ParseExpr(PascalParser *Parser)
 {
     AstExpr Expression = {0};
     /* leftmost */
@@ -90,6 +85,71 @@ static AstExpr ParseExpr(PascalParser *Parser)
     }
     return Expression;
 }
+
+
+
+AstBlock *ParseBlock(PascalParser *Parser)
+{
+    if (ConsumeIfNextIs(Parser, TOKEN_FUNCTION))
+    {
+        return (AstBlock*)ParseFunction(Parser);
+    }
+    if (ConsumeIfNextIs(Parser, TOKEN_VAR))
+    {
+        return (AstBlock*)ParseDeclaration(Parser);
+    }
+    if (ConsumeIfNextIs(Parser, TOKEN_BEGIN))
+    {
+        AstBlock *Ret = (AstBlock *)ParseStatement(Parser);
+        ConsumeOrError(Parser, TOKEN_END, "Expected 'End' after statements.");
+        return Ret;
+    }
+}
+
+
+
+
+
+
+
+static AstFunction *ParseFunction(PascalParser *Parser)
+{
+    AstFunction *Function = ArenaAllocateZero(Parser->Arena, sizeof(*Function));
+    Function->Base.Type = AST_BLOCK_FUNCTION;
+
+    ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected function name.");
+    Function->Identifier = Parser->Curr;
+
+
+    Token BeforeColon = Function->Identifier;
+    if (ConsumeIfNextIs(Parser, TOKEN_LEFT_PAREN))
+    {
+        BeforeColon = Parser->Curr;
+    }
+
+    ConsumeOrError(Parser, TOKEN_COLON, "Expected ':' after '%.*s'.", BeforeColon.Len, BeforeColon.Str);
+    ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected function return type.");
+    ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after function return type.");
+    ParseBlock(Parser);
+
+    return Function;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser)
 {
@@ -169,7 +229,7 @@ static AstFactor ParseFactor(PascalParser *Parser)
     }
 
 
-    Error(Parser, "Expected expression\n");
+    Error(Parser, "Expected expression");
     return Factor;
 }
 
