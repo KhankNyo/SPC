@@ -31,6 +31,7 @@ static bool ConsumeOrError(PascalParser *Parser, TokenType Expected, const char 
 
 static void Error(PascalParser *Parser, const char *Fmt, ...);
 static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList);
+static void RecoverFromError(PascalParser *Parser);
 
 
 
@@ -86,6 +87,11 @@ AstBlock *ParseBlock(PascalParser *Parser)
         return (AstBlock*)ParseBeginEnd(Parser);
     }
 
+    if (Parser->Error)
+    {
+        RecoverFromError(Parser);
+        return NULL;
+    }
     PASCAL_ASSERT(0, "Unimplemented %s in ParseBlock()", TokenTypeToStr(Parser->Curr.Type));
     return NULL;
 }
@@ -397,12 +403,39 @@ static void Error(PascalParser *Parser, const char *Fmt, ...)
 
 static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList)
 {
-    Parser->Error = true;
-    vfprintf(Parser->ErrorFile, Fmt, VaList);
+    if (!Parser->Error)
+    {
+        Parser->Error = true;
+        vfprintf(Parser->ErrorFile, Fmt, VaList);
+    }
 }
 
 
+static void RecoverFromError(PascalParser *Parser)
+{
+    Parser->Error = false;
+    while (!IsAtEnd(Parser))
+    {
+        if (!NextTokenIs(Parser, TOKEN_SEMICOLON))
+        {
+            ConsumeToken(Parser);
+            continue;
+        }
 
+        switch (Parser->Curr.Type)
+        {
+        case TOKEN_FUNCTION:
+        case TOKEN_PROCEDURE:
+        case TOKEN_VAR:
+        case TOKEN_BEGIN:
+        case TOKEN_CONST:
+        case TOKEN_ERROR:
+            return;
+
+        // default: break;
+        }
+    }
+}
 
 
 
