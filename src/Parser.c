@@ -105,7 +105,7 @@ AstBlock *ParseBlock(PascalParser *Parser)
     {
         Block->Next = (AstBlock*)ParseBeginEnd(Parser);
     }
-    else
+    else if (!IsAtEnd(Parser))
     {
         Block->Next = ParseBlock(Parser);
     }
@@ -152,6 +152,35 @@ AstExpr ParseExpr(PascalParser *Parser)
 
 
 
+static AstVarList *ParseVarList(PascalParser *Parser, AstVarList *List)
+{        
+    /* parses declaration */
+    AstVarList *Start = List;
+    do {
+        ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected variable name.");
+
+        List->Identifier = Parser->Curr;
+        if (ConsumeIfNextIs(Parser, TOKEN_COMMA))
+        {
+            List->Next = ArenaAllocateZero(Parser->Arena, sizeof(*List->Next));
+            List = List->Next;
+        }
+        else break;
+    } while (1);
+
+
+    ConsumeOrError(Parser, TOKEN_COLON, "Expected ':' or ',' after variable name.");
+    ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected type name after ':'.");
+    /* assign type to each variable */
+    while (NULL != Start)
+    {
+        Start->TypeName = Parser->Curr;
+        Start = Start->Next;
+    }
+    ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after type name.");
+    return List;
+}
+
 
 static AstVarBlock *ParseVar(PascalParser *Parser)
 {
@@ -159,34 +188,12 @@ static AstVarBlock *ParseVar(PascalParser *Parser)
     BlockDeclaration->Base.Type = AST_BLOCK_VAR;
     AstVarList *Decl = &BlockDeclaration->Decl;
 
-    do {
-        /* parses declaration */
-        AstVarList *Start = Decl;
-        do {
-            ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected variable name.");
-
-            Decl->Identifier = Parser->Curr;
-            if (ConsumeIfNextIs(Parser, TOKEN_COMMA))
-            {
-                Decl->Next = ArenaAllocateZero(Parser->Arena, sizeof(*Decl->Next));
-                Decl = Decl->Next;
-            }
-            else break;
-        } while (1);
-
-
-        ConsumeOrError(Parser, TOKEN_COLON, "Expected ':' or ',' after variable name.");
-        ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected type name after ':'.");
-        /* assign type to each variable */
-        while (NULL != Start)
-        {
-            Start->TypeName = Parser->Curr;
-            Start = Start->Next;
-        }
-
-
-        ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after type name.");
-    } while (NextTokenIs(Parser, TOKEN_IDENTIFIER));
+    Decl = ParseVarList(Parser, Decl);
+    while (NextTokenIs(Parser, TOKEN_IDENTIFIER))
+    {
+        Decl->Next = ArenaAllocateZero(Parser->Arena, sizeof(*Decl));
+        Decl = ParseVarList(Parser, Decl->Next);
+    }
 
     return BlockDeclaration;
 }
@@ -332,19 +339,23 @@ static AstTerm ParseTerm(PascalParser *Parser)
 static AstFactor ParseFactor(PascalParser *Parser)
 {
     AstFactor Factor = {0};
-    if (ConsumeIfNextIs(Parser, TOKEN_INTEGER_LITERAL))
+    switch (Parser->Next.Type)
     {
+    case TOKEN_INTEGER_LITERAL:
+    {
+        ConsumeToken(Parser);
         Factor.Type = FACTOR_INTEGER;
         Factor.As.Integer = Parser->Curr.Literal.Int;
-        return Factor;
-    }
-    if (ConsumeIfNextIs(Parser, TOKEN_NUMBER_LITERAL))
+    } break;
+    case TOKEN_NUMBER_LITERAL:
     {
+        ConsumeToken(Parser);
         Factor.Type = FACTOR_REAL;
         Factor.As.Real = Parser->Curr.Literal.Real;
-    }
-    if (ConsumeIfNextIs(Parser, TOKEN_LEFT_PAREN))
+    } break;
+    case TOKEN_LEFT_PAREN:
     {
+        ConsumeToken(Parser);
         AstExpr Expression = ParseExpr(Parser);
         if (ConsumeOrError(Parser, TOKEN_RIGHT_PAREN, "Expected ')' after expression."))
         {
@@ -352,18 +363,29 @@ static AstFactor ParseFactor(PascalParser *Parser)
             Factor.As.Expression = ArenaAllocateZero(Parser->Arena, sizeof(*Factor.As.Expression));
             *Factor.As.Expression = Expression;
         }
-        return Factor;
-    }
-    if (ConsumeIfNextIs(Parser, TOKEN_NOT))
+    } break;
+    case TOKEN_NOT:
     {
+        ConsumeToken(Parser);
         Factor.Type = FACTOR_NOT;
         Factor.As.NotFactor = ArenaAllocateZero(Parser->Arena, sizeof(*Factor.As.NotFactor));
         *Factor.As.NotFactor = ParseFactor(Parser);
-        return Factor;
+    } break;
+    case TOKEN_IDENTIFIER:
+    {
+        ConsumeToken(Parser);
+        PASCAL_ASSERT(!NextTokenIs(Parser, TOKEN_LEFT_PAREN), "TODO: call expression");
+
+        Factor.Type = FACTOR_VARIABLE;
+        Factor.As.Variable = Parser->Curr;
+    } break;
+
+    default: 
+    {
+        Error(Parser, "Expected expression");
+    } break;
+
     }
-
-
-    Error(Parser, "Expected expression");
     return Factor;
 }
 
@@ -454,14 +476,8 @@ static void RecoverFromError(PascalParser *Parser)
     Parser->Error = false;
     while (!IsAtEnd(Parser))
     {
-        if (!NextTokenIs(Parser, TOKEN_SEMICOLON))
-        {
-            ConsumeToken(Parser);
-            continue;
-        }
-
         /* keywords before a block */
-        switch (Parser->Curr.Type)
+        switch (Parser->Next.Type)
         {
         case TOKEN_LABEL:
         case TOKEN_CONST:
@@ -472,7 +488,11 @@ static void RecoverFromError(PascalParser *Parser)
         case TOKEN_BEGIN:
             return;
 
-        default: break;
+        default: 
+        {
+            ConsumeToken(Parser);
+        } break;
+
         }
     }
 }

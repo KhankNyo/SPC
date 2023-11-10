@@ -402,8 +402,11 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand Dest, const AstF
     {
         PVMEmitLoadI32(Compiler, Dest, Factor->As.Integer);
     } break;
-
-
+    case FACTOR_VARIABLE:
+    {
+        Operand Variable = PVMGetLocationOf(Compiler, Factor->As.Variable);
+        PVMEmitMovI32(Compiler, Dest, Variable);
+    } break;
     case FACTOR_GROUP_EXPR:
     {
         PVMCompileExprInto(Compiler, Dest, Factor->As.Expression);

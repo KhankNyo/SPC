@@ -37,6 +37,7 @@ struct AstFactor
         F64 Real;
         AstExpr *Expression;
         struct AstFactor *NotFactor;
+        Token Variable;
     } As;
 };
 

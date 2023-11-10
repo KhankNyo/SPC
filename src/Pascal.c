@@ -93,6 +93,8 @@ Cleanup:
 int PascalRunFile(const U8 *InFileName, const U8 *OutFileName)
 {
     U8 *Source = LoadFile(InFileName);
+    if (NULL == Source)
+        return PASCAL_EXIT_FAILURE;
 
     PascalArena Allocator = ArenaInit(1024 * 1024, 4);
     PascalRun(Source, &Allocator);
