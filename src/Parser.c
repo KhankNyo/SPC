@@ -50,12 +50,11 @@ PascalParser ParserInit(const U8 *Source, PascalArena *Arena, FILE *ErrorFile)
 }
 
 
-PascalAst ParserGenerateAst(PascalParser *Parser)
+PascalAst *ParserGenerateAst(PascalParser *Parser)
 {
     Parser->Next = TokenizerGetToken(&Parser->Lexer);
-    PascalAst Ast = {
-        .Block = ParseBlock(Parser),
-    };
+    PascalAst *Ast = ArenaAllocate(Parser->Arena, sizeof(*Ast));
+    Ast->Block = ParseBlock(Parser);
     return Ast;
 }
 

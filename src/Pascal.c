@@ -69,7 +69,6 @@ int PascalRepl(void)
             break;
 
         USize SourceLen = strlen(Tmp);
-        PASCAL_ASSERT(SourceLen < sizeof Tmp, "Unreachable");
         U8 *CurrentSource = ArenaAllocate(&Program, SourceLen + 1);
         memcpy(CurrentSource, Tmp, SourceLen);
         CurrentSource[SourceLen] = '\0';
@@ -119,24 +118,33 @@ void PascalPrintUsage(FILE *f, const U8 *ProgramName)
 static bool PascalRun(const U8 *Source, PascalArena *Allocator)
 {
     PascalParser Parser = ParserInit(Source, Allocator, stderr);
-    PascalAst Ast = ParserGenerateAst(&Parser);
+    PascalAst *Ast = ParserGenerateAst(&Parser);
+    if (NULL == Ast)
+        goto ParseError;
+
 
     CodeChunk Code = CodeChunkInit(1024);
-    if (!PVMCompile(&Code, &Ast))
-    {
-        fprintf(stderr, "Compile error\n");
-        return false;
-    }
+    if (!PVMCompile(&Code, Ast))
+        goto CompileError;
+
 
     PVMDisasm(stdout, &Code, "Compiled expression");
-    printf("Press any key to execute...\n");
+    printf("Press Enter to execute...\n");
     getc(stdin);
 
     PascalVM VM = PVMInit(1024, 128);
     PVMReturnValue Ret = PVMInterpret(&VM, &Code);
     PVMDumpState(stdout, &VM, 6);
+
+    ParserDestroyAst(Ast);
     CodeChunkDeinit(&Code);
     return Ret == PVM_NO_ERROR;
+
+CompileError:
+    ParserDestroyAst(Ast);
+    CodeChunkDeinit(&Code);
+ParseError:
+    return false;
 }
 
 
