@@ -3,6 +3,8 @@
 
 #include "Common.h"
 
+#define PASCAL_MEM_ALIGNMENT (sizeof(void*))
+
 /* 
  * returns a pointer to a block of memory with size of ByteCount
  * never return NULL 
@@ -38,8 +40,45 @@ void MemDeallocate(void *Pointer);
 
 
 
+
+#define PASCAL_GPA_COUNT 8
+
+
+typedef struct GPAHeader
+{
+    struct GPAHeader *Prev, *Next;
+    U32 Size;
+    U16 ID, IsFree;
+    uintptr_t Data[];
+} GPAHeader;
+
+
+typedef struct PascalGPA 
+{
+    union {
+        void *Raw;
+        U8 *Bytes;
+    } Mem[PASCAL_GPA_COUNT];
+    U32 Cap[PASCAL_GPA_COUNT];
+    U32 CurrentIdx;
+    bool CoalesceOnFree;
+
+    GPAHeader *Head[PASCAL_GPA_COUNT];
+} PascalGPA;
+
+
+PascalGPA GPAInit(U32 InitialCap, UInt SizeGrowFactor);
+void GPADeinit(PascalGPA *GPA);
+
+void *GPAAllocate(PascalGPA *GPA, U32 ByteCount);
+void *GPAReallocate(PascalGPA *GPA, void *Ptr, U32 NewSize);
+void GPADeallocate(PascalGPA *GPA, void *Ptr);
+
+
+
+
+
 #define PASCAL_ARENA_COUNT 4
-#define PASCAL_ARENA_ALIGNMENT (sizeof(void*))
 
 typedef struct PascalArena
 {
@@ -49,8 +88,7 @@ typedef struct PascalArena
     } Mem[PASCAL_ARENA_COUNT];
     U32 Used[PASCAL_ARENA_COUNT];
     U32 Cap[PASCAL_ARENA_COUNT];
-    U32 CurrentIdx;
-    U32 SizeGrowFactor;
+    UInt CurrentIdx;
 } PascalArena;
 
 /* 
@@ -59,9 +97,8 @@ typedef struct PascalArena
  * SizeGrowFactor:  the factor to multiply with the current arena's capacity 
  *                  the result of which will be the capacity of the next arena
  */
-PascalArena ArenaInit(
-        UInt InitialCap, UInt SizeGrowFactor
-);
+PascalArena ArenaInit(U32 InitialCap, UInt SizeGrowFactor);
+
 /* free all arenas and set every field in the arena to 0 */
 void ArenaDeinit(PascalArena *Arena);
 
@@ -69,8 +106,12 @@ void ArenaDeinit(PascalArena *Arena);
 void ArenaReset(PascalArena *Arena);
 
 
-void *ArenaAllocate(PascalArena *Arena, USize Bytes);
-void *ArenaAllocateZero(PascalArena *Arena, USize Bytes);
+
+/* Allocate memory from the arena, never returns NULL, crash and die instead */
+void *ArenaAllocate(PascalArena *Arena, U32 Bytes);
+
+/* Allocate memory inited to all 0's from the arena */
+void *ArenaAllocateZero(PascalArena *Arena, U32 Bytes);
 
 
 #endif /* PASCAL_MEMORY_H */
