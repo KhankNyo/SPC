@@ -9,7 +9,46 @@
 
 
 
+
+
+static PascalGPA sAllocator = { 0 };
+
+void MemInit(U32 InitialCap, UInt MemGrowFactor)
+{
+    sAllocator = GPAInit(InitialCap, MemGrowFactor);
+}
+
+void MemDeinit(void)
+{
+    GPADeinit(&sAllocator);
+}
+
+
 void *MemAllocate(USize ByteCount)
+{
+    return GPAAllocate(&sAllocator, ByteCount); 
+}
+
+void *MemReallocate(void *Ptr, USize NewSize)
+{
+    return GPAReallocate(&sAllocator, Ptr, NewSize);
+}
+
+void MemDeallocate(void *Ptr)
+{
+    GPADeallocate(&sAllocator, Ptr);
+}
+
+
+
+
+
+/*====================================================================
+ *                          UTILS ALLOCATOR
+ *====================================================================*/
+
+
+static void *sMemAllocate(USize ByteCount)
 {
     void *Pointer = malloc(ByteCount);
     if (NULL == Pointer)
@@ -21,23 +60,7 @@ void *MemAllocate(USize ByteCount)
 }
 
 
-void *MemReallocate(void *Pointer, USize NewSize)
-{
-    PASCAL_ASSERT(NewSize != 0, "Cannot call MemReallocate with NewSize of 0, use MemFree instead");
-
-    void *NewPointer = realloc(Pointer, NewSize);
-    if (NULL == NewPointer)
-    {
-        fprintf(stderr, "Out of memory while reallocating with a new size of %llu bytes\n",
-                NewSize
-        );
-        exit(PASCAL_EXIT_FAILURE);
-    }
-    return NewPointer;
-}
-
-
-void MemDeallocate(void *Pointer)
+static void sMemDeallocate(void *Pointer)
 {
     free(Pointer);
 }
@@ -65,7 +88,7 @@ static GPAHeader *GPASplitNode(GPAHeader *Node, U32 Size);
 PascalGPA GPAInit(U32 InitialCap, UInt SizeGrowFactor)
 {
     PascalGPA GPA = {
-        .Mem = { [0] = { .Raw = MemAllocate(InitialCap) } }, 
+        .Mem = { [0] = { .Raw = sMemAllocate(InitialCap) } }, 
         .CurrentIdx = 0,
         .CoalesceOnFree = true,
     };
@@ -76,6 +99,7 @@ PascalGPA GPAInit(U32 InitialCap, UInt SizeGrowFactor)
         GPA.Cap[i] = GPA.Cap[i - 1] * SizeGrowFactor;
     }
     memset(GPA.Head, 0, sizeof GPA.Head);
+    GPA.Head[0] = GPA.Mem[0].Raw;
     GPA.Head[0]->Size = InitialCap;
     GPA.Head[0]->IsFree = true;
     return GPA;
@@ -85,7 +109,7 @@ void GPADeinit(PascalGPA *GPA)
 {
     for (UInt i = 0; i < PASCAL_GPA_COUNT; i++)
     {
-        MemDeallocate(GPA->Mem[i].Raw);
+        sMemDeallocate(GPA->Mem[i].Raw);
     }
     *GPA = (PascalGPA){ 0 };
 }
@@ -175,7 +199,8 @@ static GPAHeader *GPAFindFreeNode(PascalGPA *GPA, U32 ByteCount)
             /* brand new buffer */
             if (NULL == GPA->Head[ID])
             {
-                GPA->Mem[ID].Raw = MemAllocate((USize)GPA->Cap[ID] + sizeof(GPAHeader));
+                GPA->Mem[ID].Raw = sMemAllocate((USize)GPA->Cap[ID] + sizeof(GPAHeader));
+                GPA->Head[ID] = GPA->Mem[ID].Raw;
                 GPA->Head[ID]->ID = ID;
                 GPA->Head[ID]->Size = GPA->Cap[ID];
                 GPA->Head[ID]->Prev = NULL;
@@ -221,11 +246,13 @@ static U32 GPACoalesceNode(GPAHeader *Node)
 {
     GPAHeader *Next = Node->Next;
     U32 Gained = 0;
-    while (Next != NULL && Next->IsFree)
+    while (Next != NULL && Next->IsFree 
+    && ((U8*)Node + Node->Size + sizeof(*Node) == (U8*)Node->Next))
     {
         Gained += Next->Size + sizeof(GPAHeader);
         Next->Prev = Node;
         Node->Next = Next->Next;
+        Next = Next->Next;
     }
     Node->Size += Gained;
     return Gained;
@@ -236,30 +263,29 @@ static U32 GPACoalesceNode(GPAHeader *Node)
 static GPAHeader *GPASplitNode(GPAHeader *Node, U32 Size)
 {
     PASCAL_ASSERT(Node->IsFree, "Cannot split non-free node");
-    bool NodeIsDivisible = Node->Size < Size + sizeof(GPAHeader) + GPA_MIN_CAPACITY;
-    if (NodeIsDivisible)
+    bool NodeIsDivisible = Node->Size >= Size + sizeof(GPAHeader) + GPA_MIN_CAPACITY;
+    if (!NodeIsDivisible)
         return Node;
 
 
     U8 *BytePtr = (U8*)Node->Data;
-    U32 LeftOver = Node->Size - (Size + sizeof(GPAHeader));
+    U32 Leftover = Node->Size - (Size + sizeof(GPAHeader));
 
-    GPAHeader *NewNode = ((GPAHeader*)(BytePtr + LeftOver));
-    *NewNode = (GPAHeader) {
-        .Size = Size,
-        .ID = Node->ID,
-        .Next = Node->Next,
-        .Prev = Node,
-        .IsFree = false,
-    };
 
-    /* housekeeping */
-    Node->Next = NewNode;
-    if (NULL != NewNode->Next)
+    GPAHeader *New = Node;
+    GPAHeader *Other = (GPAHeader*)(BytePtr + Size + sizeof(GPAHeader));
+
+    Other->Size = Leftover - sizeof(GPAHeader);
+    Other->Next = New->Next;
+    Other->Prev = New;
+    New->Size = Size;
+
+    New->Next = Other;
+    if (Other->Next != NULL)
     {
-        NewNode->Next->Prev = NewNode;
+        Other->Next->Prev = Other;
     }
-    return NewNode;
+    return New;
 }
 
 
@@ -285,7 +311,7 @@ static GPAHeader *GPASplitNode(GPAHeader *Node, U32 Size)
 PascalArena ArenaInit(U32 InitialCap, UInt SizeGrowFactor)
 {
     PascalArena Arena = {
-        .Mem = {[0] = { .Raw = MemAllocate(InitialCap) } },
+        .Mem = {[0] = { .Raw = sMemAllocate(InitialCap) } },
         .Used = { 0 },
     };
     Arena.Cap[0] = InitialCap;
@@ -299,7 +325,7 @@ void ArenaDeinit(PascalArena *Arena)
 {
     for (UInt i = 0; i < PASCAL_ARENA_COUNT; i++)
     {
-        MemDeallocate(Arena->Mem[i].Raw);
+        sMemDeallocate(Arena->Mem[i].Raw);
     }
     *Arena = (PascalArena){0};
 }
@@ -343,7 +369,7 @@ void *ArenaAllocate(PascalArena *Arena, U32 Bytes)
         if (NULL == Arena->Mem[i].Raw)
         {
             Arena->CurrentIdx = i;
-            Arena->Mem[i].Raw = MemAllocate(Arena->Cap[i]);
+            Arena->Mem[i].Raw = sMemAllocate(Arena->Cap[i]);
         }
     }
 

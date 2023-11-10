@@ -5,9 +5,6 @@
 #include "Memory.h"
 
 
-#if PASCAL_LITTLE_ENDIAN
-
-
 
 bool PStrIsDyn(const PascalStr *PStr)
 {
@@ -183,11 +180,6 @@ USize PStrAppendStr(PascalStr *PStr, const U8 *Str, USize Len)
 }
 
 
-
-
-
-#else
-#endif 
 
 
 

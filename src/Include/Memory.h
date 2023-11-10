@@ -5,6 +5,11 @@
 
 #define PASCAL_MEM_ALIGNMENT (sizeof(void*))
 
+
+
+void MemInit(U32 InitialCap, UInt MemGrowFactor);
+void MemDeinit(void);
+
 /* 
  * returns a pointer to a block of memory with size of ByteCount
  * never return NULL 

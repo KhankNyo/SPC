@@ -15,6 +15,7 @@
 
 #define MB 1024*1024
 
+
 static bool PascalRun(const U8 *Source, PascalArena *Allocator);
 static U8 *LoadFile(const U8 *FileName);
 static void UnloadFile(U8 *FileContents);
@@ -22,9 +23,13 @@ static void UnloadFile(U8 *FileContents);
 
 int PascalMain(int argc, const U8 *const *argv)
 {
+    MemInit(1u << 16, 3);
+
+    int ReturnValue = PASCAL_EXIT_SUCCESS;
     if (argc <= 1)
     {
-        return PascalRepl();
+        ReturnValue = PascalRepl();
+        goto Return;
     }
     if (argc < 3)
     {
@@ -33,19 +38,24 @@ int PascalMain(int argc, const U8 *const *argv)
             : argv[0];
 
         PascalPrintUsage(stderr, name);
-        return PASCAL_EXIT_FAILURE;
+        ReturnValue = PASCAL_EXIT_FAILURE;
+        goto Return;
     }
 
     const U8 *InFileName = argv[1];
     const U8 *OutFileName = argv[2];
-    return PascalRunFile(InFileName, OutFileName);
+    ReturnValue = PascalRunFile(InFileName, OutFileName);
+
+
+Return:
+    MemDeinit();
+    return ReturnValue;
 }
 
 
 
 int PascalRepl(void)
 {
-
     PascalArena Scratch = ArenaInit(1 << 15, 2);
     PascalArena Program = ArenaInit(MB, 4);
     PascalArena Permanent = ArenaInit(MB, 4);
@@ -95,9 +105,9 @@ int PascalRunFile(const U8 *InFileName, const U8 *OutFileName)
     if (NULL == Source)
         return PASCAL_EXIT_FAILURE;
 
-    PascalArena Allocator = ArenaInit(1024 * 1024, 4);
-    PascalRun(Source, &Allocator);
-    ArenaDeinit(&Allocator);
+    PascalArena Arena = ArenaInit(MB, 4);
+    PascalRun(Source, &Arena);
+    ArenaDeinit(&Arena);
 
     UnloadFile(Source);
     return PASCAL_EXIT_SUCCESS;
@@ -115,9 +125,9 @@ void PascalPrintUsage(FILE *f, const U8 *ProgramName)
 
 
 
-static bool PascalRun(const U8 *Source, PascalArena *Allocator)
+static bool PascalRun(const U8 *Source, PascalArena *Arena)
 {
-    PascalParser Parser = ParserInit(Source, Allocator, stderr);
+    PascalParser Parser = ParserInit(Source, Arena, stderr);
     PascalAst *Ast = ParserGenerateAst(&Parser);
     if (NULL == Ast)
         goto ParseError;
