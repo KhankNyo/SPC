@@ -82,6 +82,8 @@ static GPAHeader *GPAFindFreeNode(PascalGPA *GPA, U32 ByteCount);
 static void GPADeallocateNode(PascalGPA *GPA, GPAHeader *Header);
 static U32 GPACoalesceNode(GPAHeader *Node);
 
+/* returns a splitted node and set it to be not freed, 
+ * the other chunk is set to free */
 static GPAHeader *GPASplitNode(GPAHeader *Node, U32 Size);
 
 
@@ -98,8 +100,10 @@ PascalGPA GPAInit(U32 InitialCap, UInt SizeGrowFactor)
     {
         GPA.Cap[i] = GPA.Cap[i - 1] * SizeGrowFactor;
     }
-    memset(GPA.Head, 0, sizeof GPA.Head);
+
     GPA.Head[0] = GPA.Mem[0].Raw;
+
+    memset(GPA.Head[0], 0, sizeof *GPA.Head[0]);
     GPA.Head[0]->Size = InitialCap;
     GPA.Head[0]->IsFree = true;
     return GPA;
@@ -135,7 +139,9 @@ void *GPAReallocate(PascalGPA *GPA, void *Ptr, U32 NewSize)
 
     GPACoalesceNode(GPA_HEADER(Ptr));
     if (GPA_HEADER(Ptr)->Size == NewSize)
+    {
         return Ptr;
+    }
     if (GPA_HEADER(Ptr)->Size > NewSize)
     {
         GPA_HEADER(Ptr)->IsFree = true;
@@ -154,6 +160,7 @@ void GPADeallocate(PascalGPA *GPA, void *Ptr)
 {
     if (NULL != Ptr)
     {
+        PASCAL_ASSERT(!GPA_HEADER(Ptr)->IsFree, "Double free");
         GPADeallocateNode(GPA, GPA_HEADER(Ptr));
     }
 }
@@ -265,7 +272,10 @@ static GPAHeader *GPASplitNode(GPAHeader *Node, U32 Size)
     PASCAL_ASSERT(Node->IsFree, "Cannot split non-free node");
     bool NodeIsDivisible = Node->Size >= Size + sizeof(GPAHeader) + GPA_MIN_CAPACITY;
     if (!NodeIsDivisible)
+    {
+        Node->IsFree = false;
         return Node;
+    }
 
 
     U8 *BytePtr = (U8*)Node->Data;
@@ -278,9 +288,12 @@ static GPAHeader *GPASplitNode(GPAHeader *Node, U32 Size)
     Other->Size = Leftover - sizeof(GPAHeader);
     Other->Next = New->Next;
     Other->Prev = New;
-    New->Size = Size;
+    Other->IsFree = true;
 
+    New->Size = Size;
     New->Next = Other;
+    New->IsFree = false;
+
     if (Other->Next != NULL)
     {
         Other->Next->Prev = Other;
