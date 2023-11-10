@@ -95,6 +95,9 @@ Token TokenizerGetToken(PascalTokenizer *Lexer);
 /* return the string of a token type */
 const U8 *TokenTypeToStr(TokenType Type);
 
+/* compare 2 strings that are NOT null terminated without considering case */
+bool TokenEqualNoCase(const U8 *s1, const U8 *s2, USize Len);
+
 
 #endif /* PASCAL_TOKENIZER_H */
 

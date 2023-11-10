@@ -36,7 +36,7 @@ void PVMCompilerDeinit(PVMCompiler *Compiler);
 
 
 static void PVMDeclareLocal(PVMCompiler *Compiler, Token Name, Operand Dest);
-static Operand PVMGetLocationOf(const PVMCompiler *Compiler, Token Variable);
+static Operand PVMGetLocationOf(const PVMCompiler *Compiler, const Token *Variable);
 
 
 
@@ -145,15 +145,15 @@ static void PVMBindVariableToCurrentLocation(PVMCompiler *Compiler, Token Name)
     PASCAL_ASSERT(0, "TODO: PVMBindVariableToCurrentLocation()");
 }
 
-static Operand PVMGetLocationOf(const PVMCompiler *Compiler, Token Variable)
+static Operand PVMGetLocationOf(const PVMCompiler *Compiler, const Token *Variable)
 {
     for (int i = Compiler->CurrScopeDepth; i >= 0; i--)
     {
         for (int k = 0; k < Compiler->LocalCount[i]; k++)
         {
             const LocalVar *Local = &Compiler->Locals[i][k];
-            if (Variable.Len == Local->Name.Len 
-            && memcmp(Variable.Str, Local->Name.Str, Variable.Len) == 0)
+            if (Variable->Len == Local->Name.Len 
+            && TokenEqualNoCase(Variable->Str, Local->Name.Str, Variable->Len))
             {
                 return Local->Location;
             }
@@ -251,7 +251,7 @@ static void PVMCompileStmts(PVMCompiler *Compiler, const AstStmtBlock *Block)
 
 static void PVMCompileAssignStmt(PVMCompiler *Compiler, const AstAssignStmt *Assignment)
 {
-    Operand LValue = PVMGetLocationOf(Compiler, Assignment->Variable);
+    Operand LValue = PVMGetLocationOf(Compiler, &Assignment->Variable);
     PVMCompileExprInto(Compiler, LValue, &Assignment->Expr);
 }
 
@@ -291,106 +291,125 @@ static void PVMCompileReturnStmt(PVMCompiler *Compiler, const AstReturnStmt *Ret
 
 static void PVMCompileExprInto(PVMCompiler *Compiler, Operand Dest, const AstExpr *Expr)
 {
-    PVMCompileSimpleExprInto(Compiler, Dest, &Expr->Left);
     const AstOpSimpleExpr *RightSimpleExpr = Expr->Right;
-    if (NULL != RightSimpleExpr)
+    if (NULL == RightSimpleExpr)
     {
-        Operand Right = PVMAllocateRegister(Compiler);
-
-        do {
-            PVMCompileSimpleExprInto(Compiler, Right, &RightSimpleExpr->SimpleExpr);
-            PVMEmitSetCC(Compiler, RightSimpleExpr->Op, Dest, Dest, Right, sizeof(U32), true);
-            RightSimpleExpr = RightSimpleExpr->Next;
-        } while (NULL != RightSimpleExpr);
-
-        PVMFreeRegister(Compiler, Right);
+        PVMCompileSimpleExprInto(Compiler, Dest, &Expr->Left);
+        return;
     }
+
+    Operand Left = PVMAllocateRegister(Compiler);
+    PVMCompileSimpleExprInto(Compiler, Left, &Expr->Left);
+
+    Operand Right = PVMAllocateRegister(Compiler);
+    do {
+        PVMCompileSimpleExprInto(Compiler, Right, &RightSimpleExpr->SimpleExpr);
+        PVMEmitSetCC(Compiler, RightSimpleExpr->Op, Left, Left, Right, sizeof(U32), true);
+        RightSimpleExpr = RightSimpleExpr->Next;
+    } while (NULL != RightSimpleExpr);
+    PVMFreeRegister(Compiler, Right);
+
+    PVMEmitMovI32(Compiler, Dest, Left);
+    PVMFreeRegister(Compiler, Left);
 }
 
 static void PVMCompileSimpleExprInto(PVMCompiler *Compiler, Operand Dest, const AstSimpleExpr *SimpleExpr)
 {
-    PVMCompileTermInto(Compiler, Dest, &SimpleExpr->Left);
-
     const AstOpTerm *RightTerm = SimpleExpr->Right;
-    if (NULL != RightTerm)
+    if (NULL == RightTerm)
     {
-        Operand Right = PVMAllocateRegister(Compiler);
-        do {
-            PVMCompileTermInto(Compiler, Right, &RightTerm->Term);
-
-            switch (RightTerm->Op)
-            {
-            case TOKEN_PLUS:
-            {
-                PVMEmitAddI32(Compiler, Dest, Dest, Right);
-            } break;
-            case TOKEN_MINUS:
-            {
-                PVMEmitSubI32(Compiler, Dest, Dest, Right);
-            } break;
-
-            case TOKEN_NOT:
-            default: 
-            {
-                PASCAL_UNREACHABLE("CompileSimpleExpr: %s is an invalid op\n", 
-                        TokenTypeToStr(RightTerm->Op)
-                );
-            } break;
-            }
-
-            RightTerm = RightTerm->Next;
-        } while (NULL != RightTerm);
-        PVMFreeRegister(Compiler, Right);
+        PVMCompileTermInto(Compiler, Dest, &SimpleExpr->Left);
+        return;
     }
+
+    Operand Left = PVMAllocateRegister(Compiler);
+    PVMCompileTermInto(Compiler, Left, &SimpleExpr->Left);
+
+    Operand Right = PVMAllocateRegister(Compiler);
+    do {
+        PVMCompileTermInto(Compiler, Right, &RightTerm->Term);
+
+        switch (RightTerm->Op)
+        {
+        case TOKEN_PLUS:
+        {
+            PVMEmitAddI32(Compiler, Left, Left, Right);
+        } break;
+        case TOKEN_MINUS:
+        {
+            PVMEmitSubI32(Compiler, Left, Left, Right);
+        } break;
+
+        case TOKEN_NOT:
+        default: 
+        {
+            PASCAL_UNREACHABLE("CompileSimpleExpr: %s is an invalid op\n", 
+                    TokenTypeToStr(RightTerm->Op)
+            );
+        } break;
+        }
+
+        RightTerm = RightTerm->Next;
+    } while (NULL != RightTerm);
+    PVMFreeRegister(Compiler, Right);
+
+    PVMEmitMovI32(Compiler, Dest, Left);
+    PVMFreeRegister(Compiler, Left);
 }
 
 
 static void PVMCompileTermInto(PVMCompiler *Compiler, Operand Dest, const AstTerm *Term)
 {
-    PVMCompileFactorInto(Compiler, Dest, &Term->Left);
-
     const AstOpFactor *RightFactor = Term->Right;
-    if (NULL != RightFactor)
+    if (NULL == RightFactor)
     {
-        Operand Right = PVMAllocateRegister(Compiler);
-        do {
-            PVMCompileFactorInto(Compiler, Right, &RightFactor->Factor);
-
-            switch (RightFactor->Op)
-            {
-            case TOKEN_STAR:
-            {
-                PVMEmitMulI32(Compiler, Dest, Dest, Right);
-            } break;
-
-            case TOKEN_SLASH:
-            case TOKEN_DIV:
-            {
-                Operand Dummy = PVMAllocateRegister(Compiler);
-                PVMEmitDivI32(Compiler, Dest, Dummy, Dest, Right);
-                PVMFreeRegister(Compiler, Dummy);
-            } break;
-
-            case TOKEN_MOD:
-            {
-                Operand Dummy = PVMAllocateRegister(Compiler);
-                PVMEmitDivI32(Compiler, Dummy, Dest, Dest, Right);
-                PVMFreeRegister(Compiler, Dummy);
-            } break;
-
-            case TOKEN_AND:
-            default:
-            {
-                PASCAL_UNREACHABLE("CompileTerm: %s is an invalid op\n", 
-                        TokenTypeToStr(RightFactor->Op)
-                );
-            } break;
-            }
-
-            RightFactor = RightFactor->Next;
-        } while (NULL != RightFactor);
-        PVMFreeRegister(Compiler, Right);
+        PVMCompileFactorInto(Compiler, Dest, &Term->Left);
+        return;
     }
+
+    Operand Left = PVMAllocateRegister(Compiler);
+    PVMCompileFactorInto(Compiler, Left, &Term->Left);
+
+    Operand Right = PVMAllocateRegister(Compiler);
+    do {
+        PVMCompileFactorInto(Compiler, Right, &RightFactor->Factor);
+
+        switch (RightFactor->Op)
+        {
+        case TOKEN_STAR:
+        {
+            PVMEmitMulI32(Compiler, Left, Left, Right);
+        } break;
+
+        case TOKEN_SLASH:
+        case TOKEN_DIV:
+        {
+            Operand Dummy = PVMAllocateRegister(Compiler);
+            PVMEmitDivI32(Compiler, Left, Dummy, Left, Right);
+            PVMFreeRegister(Compiler, Dummy);
+        } break;
+
+        case TOKEN_MOD:
+        {
+            Operand Dummy = PVMAllocateRegister(Compiler);
+            PVMEmitDivI32(Compiler, Dummy, Left, Left, Right);
+            PVMFreeRegister(Compiler, Dummy);
+        } break;
+
+        case TOKEN_AND:
+        default:
+        {
+            PASCAL_UNREACHABLE("CompileTerm: %s is an invalid op\n", 
+                    TokenTypeToStr(RightFactor->Op)
+            );
+        } break;
+        }
+        RightFactor = RightFactor->Next;
+    } while (NULL != RightFactor);
+    PVMFreeRegister(Compiler, Right);
+
+    PVMEmitMovI32(Compiler, Dest, Left);
+    PVMFreeRegister(Compiler, Left);
 }
 
 
@@ -404,7 +423,7 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand Dest, const AstF
     } break;
     case FACTOR_VARIABLE:
     {
-        Operand Variable = PVMGetLocationOf(Compiler, Factor->As.Variable);
+        Operand Variable = PVMGetLocationOf(Compiler, &Factor->As.Variable.Name);
         PVMEmitMovI32(Compiler, Dest, Variable);
     } break;
     case FACTOR_GROUP_EXPR:

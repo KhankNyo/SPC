@@ -17,6 +17,8 @@ static AstAssignStmt *ParseAssignStmt(PascalParser *Parser);
 static AstReturnStmt *ParseReturnStmt(PascalParser *Parser);
 static AstFunctionBlock *ParseFunction(PascalParser *Parser);
 
+static PascalStr *ParserLookupTypeOfName(PascalParser *Parser, const Token *Name);
+
 
 static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser);
 static AstTerm ParseTerm(PascalParser *Parser);
@@ -43,6 +45,7 @@ PascalParser ParserInit(const U8 *Source, PascalArena *Arena, FILE *ErrorFile)
     PascalParser Parser = {
         .Lexer = TokenizerInit(Source),
         .Arena = Arena,
+        .PanicMode = false,
         .Error = false,
         .ErrorFile = ErrorFile,
     };
@@ -55,6 +58,12 @@ PascalAst *ParserGenerateAst(PascalParser *Parser)
     Parser->Next = TokenizerGetToken(&Parser->Lexer);
     PascalAst *Ast = ArenaAllocate(Parser->Arena, sizeof(*Ast));
     Ast->Block = ParseBlock(Parser);
+    if (Parser->Error)
+    {
+        ParserDestroyAst(Ast);
+        return NULL;
+    }
+
     return Ast;
 }
 
@@ -283,6 +292,14 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser)
 
 
 
+static PascalStr *ParserLookupTypeOfName(PascalParser *Parser, const Token *Name)
+{
+    return NULL;
+}
+
+
+
+
 
 
 
@@ -376,7 +393,8 @@ static AstFactor ParseFactor(PascalParser *Parser)
         PASCAL_ASSERT(!NextTokenIs(Parser, TOKEN_LEFT_PAREN), "TODO: call expression");
 
         Factor.Type = FACTOR_VARIABLE;
-        Factor.As.Variable = Parser->Curr;
+        Factor.As.Variable.Name = Parser->Curr;
+        Factor.As.Variable.Type = ParserLookupTypeOfName(Parser, &Parser->Curr);
     } break;
 
     default: 
@@ -459,11 +477,12 @@ static void Error(PascalParser *Parser, const char *Fmt, ...)
 
 static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList)
 {
-    if (!Parser->Error)
+    Parser->Error = true;
+    if (!Parser->PanicMode)
     {
-        Parser->Error = true;
+        Parser->PanicMode = true;
         fprintf(Parser->ErrorFile, "Parser [line %d]: '%.*s'\n    ", 
-                Parser->Next.Line, Parser->Next.Len, Parser->Next.Str);
+                Parser->Next.Line, Parser->Curr.Len, Parser->Curr.Str);
         vfprintf(Parser->ErrorFile, Fmt, VaList);
         fputc('\n', Parser->ErrorFile);
     }
@@ -472,7 +491,7 @@ static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList)
 
 static void RecoverFromError(PascalParser *Parser)
 {
-    Parser->Error = false;
+    Parser->PanicMode = false;
     while (!IsAtEnd(Parser))
     {
         /* keywords before a block */

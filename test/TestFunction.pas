@@ -9,6 +9,7 @@ begin
     e := a * b + d;
     c := e + d;
     a := c;
+    Exit(a);
 end
 
 

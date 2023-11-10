@@ -14,7 +14,7 @@ typedef struct PascalParser
     PascalArena *Arena;
     PascalTokenizer Lexer;
     Token Curr, Next;
-    bool Error;
+    bool Error, PanicMode;
     FILE *ErrorFile;
 } PascalParser;
 

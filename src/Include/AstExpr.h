@@ -35,9 +35,14 @@ struct AstFactor
     union {
         U64 Integer;
         F64 Real;
+
         AstExpr *Expression;
         struct AstFactor *NotFactor;
-        Token Variable;
+
+        struct {
+            Token Name;
+            const PascalStr *Type;
+        } Variable;
     } As;
 };
 

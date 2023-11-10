@@ -56,9 +56,8 @@ Return:
 
 int PascalRepl(void)
 {
-    PascalArena Scratch = ArenaInit(1 << 15, 2);
     PascalArena Program = ArenaInit(MB, 4);
-    PascalArena Permanent = ArenaInit(MB, 4);
+    PascalArena Permanent = ArenaInit(2*MB, 4);
 
 
     int RetVal = PASCAL_EXIT_SUCCESS;
@@ -83,14 +82,16 @@ int PascalRepl(void)
         memcpy(CurrentSource, Tmp, SourceLen);
         CurrentSource[SourceLen] = '\0';
 
-        PascalRun(CurrentSource, &Scratch);
+        if (!PascalRun(CurrentSource, &Permanent))
+        {
+            /* TODO: free program and its associated tokens, ast and whatnot */
+        }
 
-        ArenaReset(&Scratch);
+        ArenaReset(&Permanent);
     }
 
 
 Cleanup:
-    ArenaDeinit(&Scratch);
     ArenaDeinit(&Program);
     ArenaDeinit(&Permanent);
 

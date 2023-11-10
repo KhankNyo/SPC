@@ -221,6 +221,21 @@ const U8 *TokenTypeToStr(TokenType Type)
 
 
 
+bool TokenEqualNoCase(const U8 *s1, const U8 *s2, USize Len)
+{
+    PASCAL_ASSERT(s1 != NULL && s2 != NULL, "Cannot pass NULL to TokenEqualNoCase");
+    for (USize i = 0; i < Len; i++)
+    {
+        /* toggling bit 5 off for both, both must be equal in any case */
+        if (CHR_TO_UPPER(s1[i]) != CHR_TO_UPPER(s2[i]))
+            return false;
+    }
+    return true;
+}
+
+
+
+
 
 
 
