@@ -51,9 +51,6 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer);
 
 
 
-#define CHR_TO_UPPER(Chr) ((Chr) & ~((U8)1 << 5)) 
-
-
 
 
 
@@ -188,7 +185,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_NIL", "TOKEN_NOT",
         "TOKEN_OBJECT", "TOKEN_OF", "TOKEN_ON", "TOKEN_OPERATOR", "TOKEN_OR", 
         "TOKEN_PACKED", "TOKEN_PROCEDURE", "TOKEN_PROGRAM", 
-        "TOKEN_RECORD", "TOKEN_REPEAT", "TOKEN_RESULT", "TOKEN_REAL",
+        "TOKEN_RECORD", "TOKEN_REPEAT", "TOKEN_RESULT",
         "TOKEN_SET", "TOKEN_SHL", "TOKEN_SHR", "TOKEN_STRING", 
         "TOKEN_THEN", "TOKEN_TRUE", "TOKEN_TYPE", 
         "TOKEN_UNIT", "TOKEN_UNTIL", "TOKEN_USES", 
@@ -651,7 +648,6 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
         },
         ['Q'] = { {0} },
         ['R'] = {
-            {.Str = (const U8 *)"EAL", .Len = 3, .Type = TOKEN_REAL},
             {.Str = (const U8 *)"EPEAT", .Len = 5, .Type = TOKEN_RECORD},
             {.Str = (const U8 *)"ECORD", .Len = 5, .Type = TOKEN_REPEAT},
             {.Str = (const U8 *)"ESULT", .Len = 5, .Type = TOKEN_RESULT},

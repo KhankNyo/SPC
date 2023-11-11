@@ -7,17 +7,32 @@
 
 
 
+typedef enum ParserType 
+{
+    PARSER_TYPE_INVALID = 0,
+    PARSER_TYPE_SHORTINT,
+    PARSER_TYPE_REAL,
+} ParserType;
 
 
 
 
+static void ParseType(PascalParser *Parser);
 static AstStmtBlock *ParseBeginEnd(PascalParser *Parser);
 static AstVarBlock *ParseVar(PascalParser *Parser);
 static AstAssignStmt *ParseAssignStmt(PascalParser *Parser);
 static AstReturnStmt *ParseReturnStmt(PascalParser *Parser);
 static AstFunctionBlock *ParseFunction(PascalParser *Parser);
 
-static PascalStr *ParserLookupTypeOfName(PascalParser *Parser, const Token *Name);
+
+static ParserType ParserTokenToVarType(PascalParser *Parser, const Token *Type);
+static ParserType ParserLookupTypeOfName(PascalParser *Parser, const Token *Name);
+
+static void ParserDefineType(PascalParser *Parser, const Token *TypeName);
+static void ParserDefineVariables(PascalParser *Parser, const AstVarList *VarList);
+
+static bool ParserTypeIsDefined(PascalParser *Parser, const Token *Type);
+static bool ParserIdentifierIsDefined(PascalParser *Parser, const Token *Identifier);
 
 
 static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser);
@@ -48,7 +63,11 @@ PascalParser ParserInit(const U8 *Source, PascalArena *Arena, FILE *ErrorFile)
         .PanicMode = false,
         .Error = false,
         .ErrorFile = ErrorFile,
+        .VariablesInScope = VartabInit(1024),
+        .Types = VartabInit(128),
     };
+    VartabSet(&Parser.Types, (const U8*)"INTEGER", 7, PARSER_TYPE_SHORTINT);
+    VartabSet(&Parser.Types, (const U8*)"REAL", 4, PARSER_TYPE_REAL);
     return Parser;
 }
 
@@ -58,6 +77,10 @@ PascalAst *ParserGenerateAst(PascalParser *Parser)
     Parser->Next = TokenizerGetToken(&Parser->Lexer);
     PascalAst *Ast = ArenaAllocate(Parser->Arena, sizeof(*Ast));
     Ast->Block = ParseBlock(Parser);
+
+    VartabDeinit(&Parser->VariablesInScope);
+    VartabDeinit(&Parser->Types);
+
     if (Parser->Error)
     {
         ParserDestroyAst(Ast);
@@ -88,10 +111,31 @@ AstBlock *ParseBlock(PascalParser *Parser)
     {
         Block = (AstBlock*)ParseFunction(Parser);
     }
+    else if (ConsumeIfNextIs(Parser, TOKEN_PROCEDURE))
+    {
+        PASCAL_UNREACHABLE("TODO: ParseBlock: TOKEN_PROCEDURE");
+    }
     else if (ConsumeIfNextIs(Parser, TOKEN_VAR))
     {
         Block = (AstBlock*)ParseVar(Parser);
     }
+    else if (ConsumeIfNextIs(Parser, TOKEN_LABEL))
+    {
+        PASCAL_UNREACHABLE("TODO: ParserBlock: TOKEN_LABEL");
+    }
+    else if (ConsumeIfNextIs(Parser, TOKEN_TYPE))
+    {
+        ParseType(Parser);
+    }
+    else if (ConsumeIfNextIs(Parser, TOKEN_BEGIN))
+    {
+        return (AstBlock*)ParseBeginEnd(Parser);
+    }
+    else if (ConsumeIfNextIs(Parser, TOKEN_PROGRAM))
+    {
+        PASCAL_UNREACHABLE("TODO: ParseBlock: TOKEN_PROGRAM");
+    }
+
 
     if (NULL == Block)
     {
@@ -100,6 +144,7 @@ AstBlock *ParseBlock(PascalParser *Parser)
                 "'type', 'var', 'procedure', "
                 "'function' or 'begin' before a block."
         );
+        return NULL;
     }
 
 
@@ -109,11 +154,7 @@ AstBlock *ParseBlock(PascalParser *Parser)
     }
 
     /* consume the end of a block */
-    if (ConsumeIfNextIs(Parser, TOKEN_BEGIN))
-    {
-        Block->Next = (AstBlock*)ParseBeginEnd(Parser);
-    }
-    else if (!IsAtEnd(Parser))
+    if (!IsAtEnd(Parser))
     {
         Block->Next = ParseBlock(Parser);
     }
@@ -160,6 +201,60 @@ AstExpr ParseExpr(PascalParser *Parser)
 
 
 
+
+
+
+
+static void ParseType(PascalParser *Parser)
+{
+    if (!NextTokenIs(Parser, TOKEN_IDENTIFIER))
+    {
+        Error(Parser, "Expected identifier.");
+        return;
+    }
+
+    do {
+        ConsumeToken(Parser);
+        Token Identifier = Parser->Curr;
+
+        ConsumeOrError(Parser, TOKEN_EQUAL, "Expected '=' after '%.*s'.",
+                Identifier.Len, Identifier.Str
+        );
+        ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected type name after '='.");
+
+        //ParserPushTypeName(Parser, &Identifier, &Parser->Curr);
+
+        ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after '%.*s'.",
+                Parser->Next.Len, Parser->Next.Str
+        );
+    } while (NextTokenIs(Parser, TOKEN_IDENTIFIER));
+}
+
+
+
+
+static AstStmtBlock *ParseBeginEnd(PascalParser *Parser)
+{
+    AstStmtBlock *Statements = ArenaAllocateZero(Parser->Arena, sizeof(*Statements));
+    Statements->Base.Type = AST_BLOCK_STATEMENTS;
+    AstStmtList **CurrStmt = &Statements->Statements;
+
+    while (!IsAtEnd(Parser) && !ConsumeIfNextIs(Parser, TOKEN_END))
+    {
+        *CurrStmt = ArenaAllocateZero(Parser->Arena, sizeof(**CurrStmt));
+
+        (*CurrStmt)->Statement = ParseStmt(Parser);
+        ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after statement.");
+
+        CurrStmt = &(*CurrStmt)->Next;
+    }
+    return Statements;
+}
+
+
+
+
+
 static AstVarList *ParseVarList(PascalParser *Parser, AstVarList *List)
 {        
     /* parses declaration */
@@ -179,6 +274,13 @@ static AstVarList *ParseVarList(PascalParser *Parser, AstVarList *List)
 
     ConsumeOrError(Parser, TOKEN_COLON, "Expected ':' or ',' after variable name.");
     ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected type name after ':'.");
+
+    /* check if type name is already defined */
+    if (!ParserTypeIsDefined(Parser, &Parser->Curr))
+    {
+        Error(Parser, "Unknown type.");
+    }
+
     /* assign type to each variable */
     while (NULL != Start)
     {
@@ -203,28 +305,11 @@ static AstVarBlock *ParseVar(PascalParser *Parser)
         Decl = ParseVarList(Parser, Decl->Next);
     }
 
+    ParserDefineVariables(Parser, &BlockDeclaration->Decl);
     return BlockDeclaration;
 }
 
 
-
-static AstStmtBlock *ParseBeginEnd(PascalParser *Parser)
-{
-    AstStmtBlock *Statements = ArenaAllocateZero(Parser->Arena, sizeof(*Statements));
-    Statements->Base.Type = AST_BLOCK_STATEMENTS;
-    AstStmtList **CurrStmt = &Statements->Statements;
-
-    while (!IsAtEnd(Parser) && !ConsumeIfNextIs(Parser, TOKEN_END))
-    {
-        *CurrStmt = ArenaAllocateZero(Parser->Arena, sizeof(**CurrStmt));
-
-        (*CurrStmt)->Statement = ParseStmt(Parser);
-        ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after statement.");
-
-        CurrStmt = &(*CurrStmt)->Next;
-    }
-    return Statements;
-}
 
 
 
@@ -234,7 +319,12 @@ static AstAssignStmt *ParseAssignStmt(PascalParser *Parser)
     Assignment->Base.Type = AST_STMT_ASSIGNMENT;
 
     ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected identifier before ':='");
+    if (!ParserIdentifierIsDefined(Parser, &Parser->Curr))
+    {
+        Error(Parser, "Variable or function is not defined.");
+    }
     Assignment->Variable = Parser->Curr;
+
 
     ConsumeOrError(Parser, TOKEN_COLON_EQUAL, "TODO: assignment");
     Assignment->Expr = ParseExpr(Parser);
@@ -253,7 +343,6 @@ static AstReturnStmt *ParseReturnStmt(PascalParser *Parser)
         *RetStmt->Expr = ParseExpr(Parser);
         ConsumeOrError(Parser, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
     }
-    ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after '%.*s'.", Parser->Curr.Len, Parser->Curr.Str);
     return RetStmt;
 }
 
@@ -290,12 +379,59 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser)
 
 
 
-
-
-static PascalStr *ParserLookupTypeOfName(PascalParser *Parser, const Token *Name)
+static ParserType ParserTokenToVarType(PascalParser *Parser, const Token *Type)
 {
-    return NULL;
+    U32 *TypeNumber = VartabGet(&Parser->Types, Type->Str, Type->Len);
+    if (NULL == TypeNumber)
+        return PARSER_TYPE_INVALID;
+    return *TypeNumber;
 }
+
+
+static ParserType ParserLookupTypeOfName(PascalParser *Parser, const Token *Name)
+{
+    U32 *Type = VartabGet(&Parser->VariablesInScope, Name->Str, Name->Len);
+    if (NULL != Type)
+        return *Type;
+    return PARSER_TYPE_INVALID;
+}
+
+
+static void ParserDefineType(PascalParser *Parser, const Token *TypeName)
+{
+    ParserType Type = ParserTokenToVarType(Parser, TypeName);
+    PASCAL_ASSERT(Type != PARSER_TYPE_INVALID, "TODO: handle this");
+    VartabSet(&Parser->Types, TypeName->Str, TypeName->Len, Type);
+}
+
+
+static bool ParserTypeIsDefined(PascalParser *Parser, const Token *Type)
+{
+    return ParserTokenToVarType(Parser, Type) != PARSER_TYPE_INVALID;
+}
+
+
+static void ParserDefineVariables(PascalParser *Parser, const AstVarList *VarList)
+{
+    while (NULL != VarList)
+    {
+        const Token *Identifier = &VarList->Identifier;
+        const Token *Type = &VarList->TypeName;
+
+        VartabSet(&Parser->VariablesInScope, 
+                Identifier->Str, Identifier->Len,
+                ParserTokenToVarType(Parser, Type)
+        );
+        VarList = VarList->Next;
+    }
+}
+
+
+static bool ParserIdentifierIsDefined(PascalParser *Parser, const Token *Identifier)
+{
+    return NULL != VartabFind(&Parser->VariablesInScope, Identifier->Str, Identifier->Len);
+}
+
 
 
 
@@ -390,8 +526,15 @@ static AstFactor ParseFactor(PascalParser *Parser)
     case TOKEN_IDENTIFIER:
     {
         ConsumeToken(Parser);
-        PASCAL_ASSERT(!NextTokenIs(Parser, TOKEN_LEFT_PAREN), "TODO: call expression");
+        if (!ParserIdentifierIsDefined(Parser, &Parser->Curr))
+        {
+            Error(Parser, "Undefined Identifier.");
+        }
 
+        if (NextTokenIs(Parser, TOKEN_LEFT_PAREN))
+        {
+            PASCAL_UNREACHABLE("TODO: call expression");
+        }
         Factor.Type = FACTOR_VARIABLE;
         Factor.As.Variable.Name = Parser->Curr;
         Factor.As.Variable.Type = ParserLookupTypeOfName(Parser, &Parser->Curr);

@@ -7,6 +7,7 @@
 #include "Tokenizer.h"
 #include "Memory.h"
 #include "Ast.h"
+#include "Vartab.h"
 
 
 typedef struct PascalParser 
@@ -16,10 +17,13 @@ typedef struct PascalParser
     Token Curr, Next;
     bool Error, PanicMode;
     FILE *ErrorFile;
+    PascalVartab VariablesInScope;
+    PascalVartab Types;
 } PascalParser;
 
 
 PascalParser ParserInit(const U8 *Source, PascalArena *Arena, FILE *ErrorFile);
+
 
 PascalAst *ParserGenerateAst(PascalParser *Parser);
 AstExpr ParseExpr(PascalParser *Parser);

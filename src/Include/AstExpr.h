@@ -41,7 +41,7 @@ struct AstFactor
 
         struct {
             Token Name;
-            const PascalStr *Type;
+            U32 Type;
         } Variable;
     } As;
 };

@@ -236,7 +236,14 @@ static void DisasmBrIf(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opco
 static void DisasmBAlt(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode)
 {
     PVMWord BranchTarget = Addr + 1 + PVM_BAL_GET_IMM(Opcode);
-    fprintf(f, "%s [%u]\n", Mnemonic, BranchTarget);
+    if (PVM_GET_INS(Opcode) == PVM_BALT_SR && BranchTarget == Addr)
+    {
+        fprintf(f, "RET\n");
+    }
+    else
+    {
+        fprintf(f, "%s [%u]\n", Mnemonic, BranchTarget);
+    }
 }
 
 
