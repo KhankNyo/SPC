@@ -5,17 +5,25 @@
 
 #include "Common.h"
 
-#define CODECHUNK_GROWTH_RATE 2
+#define CODECHUNK_GROW_RATE 2
+
+typedef struct DataChunk 
+{
+    F64 *Data;
+    U32 Count, Cap;
+} DataChunk;
 typedef struct CodeChunk 
 {
-    U32 *Data;
+    U32 *Code;
+    DataChunk DataSection;
     U32 Count, Cap;
 } CodeChunk;
 
-CodeChunk CodeChunkInit(U32 InitialCap);
-void CodeChunkDeinit(CodeChunk *Chunk);
+CodeChunk ChunkInit(U32 InitialCap);
+void ChunkDeinit(CodeChunk *Chunk);
 
-U32 CodeChunkWrite(CodeChunk *Chunk, U32 Word);
+U32 ChunkWriteCode(CodeChunk *Chunk, U32 Word);
+U32 ChunkWriteData(CodeChunk *Chunk, F64 Real);
 
 
 

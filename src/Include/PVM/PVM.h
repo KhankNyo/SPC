@@ -24,12 +24,19 @@
  *                  [ 0001 ][  10  ][    Op   ][  RD  ][  RA  ][  RB  ][  00000  ] Cmp
  *                  [ 0001 ][  11  ][    Op   ][  RD  ][  RA  ][    0000000000   ] Transfer
  *
- * BranchIf:        [ 0010 ][  CC  ][    RA   ][  RB  ][           Imm16         ]
- * BranchSignedIf:  [ 0011 ][  0C  ][    RA   ][  RB  ][           Imm16         ]
+ * BranchIf:        [ 0010 ][  CC  ][    RA   ][  RB  ][          Imm16          ]
+ * BranchSignedIf:  [ 0011 ][  0C  ][    RA   ][  RB  ][          Imm16          ]
  * BranchAlways:    [ 0011 ][  1C  ][                     Imm26                  ]
  *
  * LimmRd:          [ 0100 ][ Mode ][    RD   ][              Imm20              ]
  * ImmRd:           [ 0101 ][ Mode ][    Op   ][  RD  ][          Imm16          ]
+ * 
+ *
+ * Floating point ops:
+ * FData:           [ 1000 ][ Mode ][    Op   ][  FD  ][  FA  ][  FB  ][  00000  ]
+ * FMem:            [ 1001 ][ Mode ][    FD   ][              Imm20              ]
+ *
+ * 
  * 
  * 
  * 3/ Instructions:
@@ -172,7 +179,6 @@ typedef enum PVMIns
 {
     PVM_RESV = 0,
         PVM_RE_SYS = PVM_RESV,
-        PVM_RE_COUNT,
         
 
     PVM_DI = 1 << PVM_MODE_SIZE,
@@ -180,83 +186,85 @@ typedef enum PVMIns
         PVM_DI_SPECIAL,
         PVM_DI_CMP,
         PVM_DI_TRANSFER,
-        PVM_DI_COUNT,
 
     PVM_BRIF = 2 << PVM_MODE_SIZE,
         PVM_BRIF_EQ = PVM_BRIF,
         PVM_BRIF_NE,
         PVM_BRIF_LT,
         PVM_BRIF_GT,
-        PVM_BRIF_COUNT,
 
     PVM_BALT = 3 << PVM_MODE_SIZE,
         PVM_BRIF_SGT = PVM_BALT,
         PVM_BRIF_SLT,
         PVM_BALT_AL,
         PVM_BALT_SR,
-        PVM_BALT_COUNT,
 
     PVM_IRD = 4 << PVM_MODE_SIZE,
         PVM_IRD_ARITH = PVM_IRD,
-        PVM_IRD_COUNT,
 
-    PVM_INS_COUNT,
+    PVM_FDAT = 8 << PVM_MODE_SIZE,
+        PVM_FDAT_ARITH = PVM_FDAT,
+        PVM_FDAT_SPECIAL,
+        PVM_FDAT_CMP, 
+        PVM_FDAT_TRANSFER,
+
+    PVM_FMEM = 9 << PVM_MODE_SIZE,
+        PVM_FMEM_LDF = PVM_FMEM,
 } PVMIns;
 
-typedef enum PVMDIArith 
+typedef enum PVMArith 
 {
-    PVM_DI_ADD = 0,
-    PVM_DI_SUB,
-    PVM_DI_ARITH_COUNT,
-} PVMDIArith;
+    PVM_ARITH_ADD = 0,
+    PVM_ARITH_SUB,
+} PVMArith;
 
-typedef enum PVMDISpecial
+typedef enum PVMSpecial
 {
-    PVM_DI_MUL = 0,
-    PVM_DI_DIVP,
-    PVM_DI_DIV,
-} PVMDISpecial;
+    PVM_SPECIAL_MUL = 0,
+    PVM_SPECIAL_DIVP,
+    PVM_SPECIAL_DIV,
+} PVMSpecial;
 
-typedef enum PVMDICmp 
+typedef enum PVMCmp 
 {
-    PVM_DI_SEQB = 0,
-    PVM_DI_SNEB,
-    PVM_DI_SLTB,
-    PVM_DI_SGTB,
+    PVM_CMP_SEQB = 0,
+    PVM_CMP_SNEB,
+    PVM_CMP_SLTB,
+    PVM_CMP_SGTB,
 
-    PVM_DI_SEQH,
-    PVM_DI_SNEH,
-    PVM_DI_SLTH,
-    PVM_DI_SGTH,
+    PVM_CMP_SEQH,
+    PVM_CMP_SNEH,
+    PVM_CMP_SLTH,
+    PVM_CMP_SGTH,
 
-    PVM_DI_SEQW,
-    PVM_DI_SNEW,
-    PVM_DI_SLTW,
-    PVM_DI_SGTW,
+    PVM_CMP_SEQW,
+    PVM_CMP_SNEW,
+    PVM_CMP_SLTW,
+    PVM_CMP_SGTW,
 
-    PVM_DI_SEQP,
-    PVM_DI_SNEP,
-    PVM_DI_SLTP,
-    PVM_DI_SGTP,
+    PVM_CMP_SEQP,
+    PVM_CMP_SNEP,
+    PVM_CMP_SLTP,
+    PVM_CMP_SGTP,
 
 
-    PVM_DI_SSLTB,
-    PVM_DI_SSGTB,
+    PVM_CMP_SSLTB,
+    PVM_CMP_SSGTB,
 
-    PVM_DI_SSLTH,
-    PVM_DI_SSGTH,
+    PVM_CMP_SSLTH,
+    PVM_CMP_SSGTH,
 
-    PVM_DI_SSLTW,
-    PVM_DI_SSGTW,
+    PVM_CMP_SSLTW,
+    PVM_CMP_SSGTW,
     
-    PVM_DI_SSLTP,
-    PVM_DI_SSGTP,
-} PVMDICmp;
+    PVM_CMP_SSLTP,
+    PVM_CMP_SSGTP,
+} PVMCmp;
 
-typedef enum PVMDITransfer 
+typedef enum PVMTransfer 
 {
     PVM_DI_MOV = 0,
-} PVMDITransfer;
+} PVMTransfer;
 
 typedef enum PVMIRDArith 
 {
@@ -265,7 +273,6 @@ typedef enum PVMIRDArith
     PVM_IRD_LDI,
     PVM_IRD_LUI,
     PVM_IRD_ORI,
-    PVM_IRD_ARITH_COUNT,
 } PVMIRDArith;
 
 typedef enum PVMSysOp 
@@ -299,9 +306,6 @@ typedef enum PVMArgReg
 #define PVM_MAX_SYS_COUNT ((U32)1 << 26)
 
 PASCAL_STATIC_ASSERT(PVM_RE_COUNT <= PVM_DI, "Too many Resv instructions");
-PASCAL_STATIC_ASSERT(PVM_DI_COUNT <= PVM_BRIF, "Too many Data instructions");
-PASCAL_STATIC_ASSERT(PVM_BRIF_COUNT <= PVM_BALT, "Too many BranchIf instructions");
-PASCAL_STATIC_ASSERT(PVM_BALT_COUNT <= PVM_IRD, "Too many BranchAlt instructions");
 PASCAL_STATIC_ASSERT(PVM_IRD_COUNT <= PVM_INS_COUNT, "Too many ImmRd instructions");
 
 PASCAL_STATIC_ASSERT(PVM_SYS_COUNT < PVM_MAX_SYS_COUNT, "Too many SysOp instructions");
@@ -330,7 +334,7 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
 
 #define PVM_DI_CMP_INS(Mnemonic, Rd, Ra, Rb)\
     (BIT_POS32(PVM_DI_CMP, 6, 26)\
-    | BIT_POS32(PVM_DI_ ## Mnemonic, 5, 21)\
+    | BIT_POS32(PVM_CMP_ ## Mnemonic, 5, 21)\
     | BIT_POS32(Rd, 5, 16)\
     | BIT_POS32(Ra, 5, 11)\
     | BIT_POS32(Rb, 5, 6))
@@ -373,11 +377,32 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
 
 
 
+
+#define PVM_FDAT_ARITH_INS(Mnemonic, Fd, Fa, Fb)\
+    (BIT_POS32(PVM_FDAT_ARITH, 6, 26)\
+     | BIT_POS32(PVM_FDAT_ ## Mnemonic, 5, 21)\
+     | BIT_POS32(Fd, 5, 16)\
+     | BIT_POS32(Fa, 5, 11)\
+     | BIT_POS32(Fb, 5, 10)
+
+#define PVM_FDAT_CMP_INS(Mnemonic, Rd, Fa, Fb)\
+    (BIT_POS32(PVM_FDAT_CMP, 6, 26)\
+     | BIT_POS32(PVM_FDAT_ ## Mnemonic, 5, 21)\
+     | BIT_POS32(Rd, 5, 16)\
+     | BIT_POS32(Fa, 5, 11)\
+     | BIT_POS32(Fb, 5, 6)
+
+#define PVM_FMEM_INS(Mnemonic, Fd, Offset20)\
+    (BIT_POS32(PVM_FMEM_ ## Mnemonic, 6, 26)\
+     | BIT_POS32(Fd, 5, 21)\
+     | BIT_POS32(Offset20, 20, 0)
+
+
 /* Getters */
 
 #define PVM_GET_INS(OpcodeWord) ((PVMIns)BIT_AT32(OpcodeWord, 6, 26))
 
-#define PVM_DI_GET_OP(OpcodeWord) BIT_AT32(OpcodeWord, 5, 21)
+#define PVM_DI_GET_OP(OpcodeWord) (PVMArith)BIT_AT32(OpcodeWord, 5, 21)
 #define PVM_DI_GET_RD(OpcodeWord) BIT_AT32(OpcodeWord, 5, 16)
 #define PVM_DI_GET_RA(OpcodeWord) BIT_AT32(OpcodeWord, 5, 11)
 #define PVM_DI_GET_RB(OpcodeWord) BIT_AT32(OpcodeWord, 5, 6)
@@ -397,8 +422,21 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
 #define PVM_IRD_GET_RD(OpcodeWord) PVM_DI_GET_RD(OpcodeWord)
 #define PVM_IRD_GET_IMM(OpcodeWord) BIT_AT32(OpcodeWord, 16, 0)
 
+#define PVM_LIRD_GET_RD(OpcodeWord) BIT_AT32(OpcodeWord, 5, 21)
+#define PVM_LIRD_GET_IMM(OpcodeWord) BIT_AT32(OpcodeWord, 20, 0)
+
 
 #define PVM_GET_SYS_OP(OpcodeWord) (PVMSysOp)BIT_AT32(OpcodeWord, 26, 0)
+
+
+
+#define PVM_FDAT_GET_OP(OpcodeWord) PVM_DI_GET_OP(OpcodeWord)
+#define PVM_FDAT_GET_FD(OpcodeWord) PVM_DI_GET_RD(OpcodeWord)
+#define PVM_FDAT_GET_FA(OpcodeWord) PVM_DI_GET_RA(OpcodeWord)
+#define PVM_FDAT_GET_FB(OpcodeWord) PVM_DI_GET_RB(OpcodeWord)
+
+#define PVM_FMEM_GET_FD(OpcodeWord) PVM_LIRD_GET_RD(OpcodeWord)
+#define PVM_FMEM_GET_IMM(OpcodeWord) PVM_LIRD_GET_IMM(OpcodeWord)
 
 
 
