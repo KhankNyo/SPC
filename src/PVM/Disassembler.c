@@ -147,6 +147,12 @@ static void DisasmIDatSpecial(FILE *f, PVMWord Opcode)
         else
             DisasmIDatExOper(f, "DIV", Rd, Ra, Rb, Rr);
     } break;
+
+    case PVM_SPECIAL_F2P: 
+    {
+        const char *Fa = sFloatRegName[PVM_FDAT_GET_FA(Opcode)];
+        DisasmTransferIns(f, "F2P", Rd, Fa);
+    } break;
     }
 }
 
@@ -246,6 +252,11 @@ static void DisasmFDatSpecial(FILE *f, PVMWord Opcode)
     case PVM_SPECIAL_DIVP:
     case PVM_SPECIAL_DIV: Mnemonic = "FDIV"; break;
     case PVM_SPECIAL_MUL: Mnemonic = "FMUL"; break;
+    case PVM_SPECIAL_P2F:
+    {
+        Fd = sIntRegName[PVM_IDAT_GET_RD(Opcode)];
+        Mnemonic = "P2F";
+    } break;
     }
     DisasmArithIns(f, Mnemonic, Fd, Fa, Fb);
 }

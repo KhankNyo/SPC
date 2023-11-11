@@ -223,6 +223,8 @@ typedef enum PVMSpecial
     PVM_SPECIAL_MUL = 0,
     PVM_SPECIAL_DIVP,
     PVM_SPECIAL_DIV,
+    PVM_SPECIAL_F2P,
+        PVM_SPECIAL_P2F = PVM_SPECIAL_F2P,
 } PVMSpecial;
 
 typedef enum PVMCmp 

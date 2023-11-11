@@ -143,6 +143,11 @@ do {\
                 else 
                     IDAT_DIVIDE_OP(Opcode, .Word.First);
             } break;
+
+            case PVM_SPECIAL_F2P:
+            {
+                R(Opcode, IDAT, RD).Ptr = (PVMPtr)F(Opcode, FDAT, FD);
+            } break;
             }
         } break;
 
@@ -265,6 +270,7 @@ do {\
             case PVM_SPECIAL_DIVP:
             case PVM_SPECIAL_DIV: FDAT_BINARY_OP(/, Opcode); break;
             case PVM_SPECIAL_MUL: FDAT_BINARY_OP(*, Opcode); break;
+            case PVM_SPECIAL_P2F: F(Opcode, FDAT, FD) = (F64)R(Opcode, IDAT, RA).Ptr; break;
             }
         } break;
         case PVM_FDAT_CMP:
@@ -287,6 +293,7 @@ do {\
         }
         case PVM_FMEM_LDF:
         {
+            /* TODO: check boundaries before loading */
             F(Opcode, FDAT, FD) = Chunk->DataSection.Data[PVM_FMEM_GET_IMM(Opcode)];
         } break;
 
