@@ -132,6 +132,22 @@ typedef double F64;
 typedef float F32;
 
 
+#define CHR_TO_UPPER(chr) ((U8)(chr) & ~(1u << 5))
+
+
+
+static inline U32 IsolateTopBitU32(U32 Value)
+{
+    U32 Count = 0;
+    while (Value >> 1)
+    {
+        Count++;
+        Value >>= 1;
+    }
+    return (U32)1 << Count;
+}
+
+
 
 #endif /* PASCAL_COMMON_H */
 
