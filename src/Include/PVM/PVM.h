@@ -182,10 +182,10 @@ typedef enum PVMIns
         
 
     PVM_DI = 1 << PVM_MODE_SIZE,
-        PVM_DI_ARITH = PVM_DI,
-        PVM_DI_SPECIAL,
-        PVM_DI_CMP,
-        PVM_DI_TRANSFER,
+        PVM_IDAT_ARITH = PVM_DI,
+        PVM_IDAT_SPECIAL,
+        PVM_IDAT_CMP,
+        PVM_IDAT_TRANSFER,
 
     PVM_BRIF = 2 << PVM_MODE_SIZE,
         PVM_BRIF_EQ = PVM_BRIF,
@@ -263,7 +263,7 @@ typedef enum PVMCmp
 
 typedef enum PVMTransfer 
 {
-    PVM_DI_MOV = 0,
+    PVM_TRANSFER_MOV = 0,
 } PVMTransfer;
 
 typedef enum PVMIRDArith 
@@ -278,7 +278,6 @@ typedef enum PVMIRDArith
 typedef enum PVMSysOp 
 {
     PVM_SYS_EXIT = 0,
-    PVM_SYS_COUNT,
 } PVMSysOp;
 
 
@@ -305,43 +304,37 @@ typedef enum PVMArgReg
 #define PVM_MAX_OP_COUNT ((U32)1 << 5)
 #define PVM_MAX_SYS_COUNT ((U32)1 << 26)
 
-PASCAL_STATIC_ASSERT(PVM_RE_COUNT <= PVM_DI, "Too many Resv instructions");
-PASCAL_STATIC_ASSERT(PVM_IRD_COUNT <= PVM_INS_COUNT, "Too many ImmRd instructions");
-
-PASCAL_STATIC_ASSERT(PVM_SYS_COUNT < PVM_MAX_SYS_COUNT, "Too many SysOp instructions");
-PASCAL_STATIC_ASSERT(PVM_DI_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for DataIns Arith instruction");
-PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for ImmRd Arith instruction");
 
 
 /* Setters */
 
-#define PVM_DI_ARITH_INS(Mnemonic, Rd, Ra, Rb, Sh)\
-    (BIT_POS32(PVM_DI_ARITH, 6, 26)\
-    | BIT_POS32(PVM_DI_ ## Mnemonic, 5, 21)\
+#define PVM_IDAT_ARITH_INS(Mnemonic, Rd, Ra, Rb, Sh)\
+    (BIT_POS32(PVM_IDAT_ARITH, 6, 26)\
+    | BIT_POS32(PVM_ARITH_ ## Mnemonic, 5, 21)\
     | BIT_POS32(Rd, 5, 16)\
     | BIT_POS32(Ra, 5, 11)\
     | BIT_POS32(Rb, 5, 6)\
     | BIT_POS32(Sh, 6, 0))
 
-#define PVM_DI_SPECIAL_INS(Mnemonic, Rd, Ra, Rb, Signed, Rr)\
-    (BIT_POS32(PVM_DI_SPECIAL, 6, 26)\
-    | BIT_POS32(PVM_DI_ ## Mnemonic, 5, 21)\
+#define PVM_IDAT_SPECIAL_INS(Mnemonic, Rd, Ra, Rb, Signed, Rr)\
+    (BIT_POS32(PVM_IDAT_SPECIAL, 6, 26)\
+    | BIT_POS32(PVM_SPECIAL_ ## Mnemonic, 5, 21)\
     | BIT_POS32(Rd, 5, 16)\
     | BIT_POS32(Ra, 5, 11)\
     | BIT_POS32(Rb, 5, 6)\
     | BIT_POS32(Signed, 1, 5)\
     | BIT_POS32(Rr, 5, 0))
 
-#define PVM_DI_CMP_INS(Mnemonic, Rd, Ra, Rb)\
-    (BIT_POS32(PVM_DI_CMP, 6, 26)\
+#define PVM_IDAT_CMP_INS(Mnemonic, Rd, Ra, Rb)\
+    (BIT_POS32(PVM_IDAT_CMP, 6, 26)\
     | BIT_POS32(PVM_CMP_ ## Mnemonic, 5, 21)\
     | BIT_POS32(Rd, 5, 16)\
     | BIT_POS32(Ra, 5, 11)\
     | BIT_POS32(Rb, 5, 6))
 
-#define PVM_DI_TRANSFER_INS(Mnemonic, Rd, Ra)\
-    (BIT_POS32(PVM_DI_TRANSFER, 6, 26)\
-    | BIT_POS32(PVM_DI_ ## Mnemonic, 5, 21)\
+#define PVM_IDAT_TRANSFER_INS(Mnemonic, Rd, Ra)\
+    (BIT_POS32(PVM_IDAT_TRANSFER, 6, 26)\
+    | BIT_POS32(PVM_TRANSFER_ ## Mnemonic, 5, 21)\
     | BIT_POS32(Rd, 5, 16)\
     | BIT_POS32(Ra, 5, 11))
 
@@ -380,14 +373,14 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
 
 #define PVM_FDAT_ARITH_INS(Mnemonic, Fd, Fa, Fb)\
     (BIT_POS32(PVM_FDAT_ARITH, 6, 26)\
-     | BIT_POS32(PVM_FDAT_ ## Mnemonic, 5, 21)\
+     | BIT_POS32(PVM_ARITH_ ## Mnemonic, 5, 21)\
      | BIT_POS32(Fd, 5, 16)\
      | BIT_POS32(Fa, 5, 11)\
      | BIT_POS32(Fb, 5, 10)
 
 #define PVM_FDAT_CMP_INS(Mnemonic, Rd, Fa, Fb)\
     (BIT_POS32(PVM_FDAT_CMP, 6, 26)\
-     | BIT_POS32(PVM_FDAT_ ## Mnemonic, 5, 21)\
+     | BIT_POS32(PVM_CMP_ ## Mnemonic, 5, 21)\
      | BIT_POS32(Rd, 5, 16)\
      | BIT_POS32(Fa, 5, 11)\
      | BIT_POS32(Fb, 5, 6)
@@ -401,25 +394,31 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
 /* Getters */
 
 #define PVM_GET_INS(OpcodeWord) ((PVMIns)BIT_AT32(OpcodeWord, 6, 26))
+#define PVM_GET_OP(OpcodeWord) (BIT_AT32(OpcodeWord, 5, 21))
 
-#define PVM_DI_GET_OP(OpcodeWord) (PVMArith)BIT_AT32(OpcodeWord, 5, 21)
-#define PVM_DI_GET_RD(OpcodeWord) BIT_AT32(OpcodeWord, 5, 16)
-#define PVM_DI_GET_RA(OpcodeWord) BIT_AT32(OpcodeWord, 5, 11)
-#define PVM_DI_GET_RB(OpcodeWord) BIT_AT32(OpcodeWord, 5, 6)
-#define PVM_DI_GET_SH(OpcodeWord) BIT_AT32(OpcodeWord, 6, 0)
+#define PVM_IDAT_GET_ARITH(OpcodeWord)        (PVMArith)PVM_GET_OP(OpcodeWord)
+#define PVM_IDAT_GET_SPECIAL(OpcodeWord)      (PVMSpecial)PVM_GET_OP(OpcodeWord)
+#define PVM_IDAT_GET_CMP(OpcodeWord)          (PVMCmp)PVM_GET_OP(OpcodeWord)
+#define PVM_IDAT_GET_TRANSFER(OpcodeWord)     (PVMTransfer)PVM_GET_OP(OpcodeWord)
 
-#define PVM_DI_SPECIAL_SIGNED(OpcodeWord) ((OpcodeWord) & ((U32)1 << 6))
-#define PVM_DI_SPECIAL_GET_RR(OpcodeWord) BIT_AT32(OpcodeWord, 5, 0)
+#define PVM_IDAT_GET_RD(OpcodeWord) BIT_AT32(OpcodeWord, 5, 16)
+#define PVM_IDAT_GET_RA(OpcodeWord) BIT_AT32(OpcodeWord, 5, 11)
+#define PVM_IDAT_GET_RB(OpcodeWord) BIT_AT32(OpcodeWord, 5, 6)
+#define PVM_IDAT_GET_SH(OpcodeWord) BIT_AT32(OpcodeWord, 6, 0)
 
-#define PVM_BRIF_GET_RA(OpcodeWord) PVM_DI_GET_OP(OpcodeWord)
-#define PVM_BRIF_GET_RB(OpcodeWord) PVM_DI_GET_RD(OpcodeWord)
+
+#define PVM_IDAT_SPECIAL_SIGNED(OpcodeWord) ((OpcodeWord) & ((U32)1 << 6))
+#define PVM_IDAT_SPECIAL_GET_RR(OpcodeWord) BIT_AT32(OpcodeWord, 5, 0)
+
+#define PVM_BRIF_GET_RA(OpcodeWord) PVM_GET_OP(OpcodeWord)
+#define PVM_BRIF_GET_RB(OpcodeWord) PVM_IDAT_GET_RD(OpcodeWord)
 #define PVM_BRIF_GET_IMM(OpcodeWord) BIT_SEX32(BIT_AT32(OpcodeWord, 16, 0), 15)
 
 #define PVM_BAL_GET_IMM(OpcodeWord) (I32)BIT_SEX32(BIT_AT32(OpcodeWord, 26, 0), 25)
 #define PVM_BSR_GET_IMM(OpcodeWord) PVM_BAL_GET_IMM(OpcodeWord)
 
-#define PVM_IRD_GET_OP(OpcodeWord) PVM_DI_GET_OP(OpcodeWord)
-#define PVM_IRD_GET_RD(OpcodeWord) PVM_DI_GET_RD(OpcodeWord)
+#define PVM_IRD_GET_OP(OpcodeWord) (PVMIRDArith)PVM_GET_OP(OpcodeWord)
+#define PVM_IRD_GET_RD(OpcodeWord) PVM_IDAT_GET_RD(OpcodeWord)
 #define PVM_IRD_GET_IMM(OpcodeWord) BIT_AT32(OpcodeWord, 16, 0)
 
 #define PVM_LIRD_GET_RD(OpcodeWord) BIT_AT32(OpcodeWord, 5, 21)
@@ -430,10 +429,14 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
 
 
 
-#define PVM_FDAT_GET_OP(OpcodeWord) PVM_DI_GET_OP(OpcodeWord)
-#define PVM_FDAT_GET_FD(OpcodeWord) PVM_DI_GET_RD(OpcodeWord)
-#define PVM_FDAT_GET_FA(OpcodeWord) PVM_DI_GET_RA(OpcodeWord)
-#define PVM_FDAT_GET_FB(OpcodeWord) PVM_DI_GET_RB(OpcodeWord)
+#define PVM_FDAT_GET_ARITH(OpcodeWord)        PVM_IDAT_GET_ARITH(OpcodeWord)
+#define PVM_FDAT_GET_SPECIAL(OpcodeWord)      PVM_IDAT_GET_SPECIAL(OpcodeWord)
+#define PVM_FDAT_GET_CMP(OpcodeWord)          PVM_IDAT_GET_CMP(OpcodeWord)
+#define PVM_FDAT_GET_TRANSFER(OpcodeWord)     PVM_IDAT_GET_TRANSFER(OpcodeWord)
+
+#define PVM_FDAT_GET_FD(OpcodeWord) PVM_IDAT_GET_RD(OpcodeWord)
+#define PVM_FDAT_GET_FA(OpcodeWord) PVM_IDAT_GET_RA(OpcodeWord)
+#define PVM_FDAT_GET_FB(OpcodeWord) PVM_IDAT_GET_RB(OpcodeWord)
 
 #define PVM_FMEM_GET_FD(OpcodeWord) PVM_LIRD_GET_RD(OpcodeWord)
 #define PVM_FMEM_GET_IMM(OpcodeWord) PVM_LIRD_GET_IMM(OpcodeWord)
@@ -525,6 +528,8 @@ void PVMDeinit(PascalVM *PVM);
 typedef enum PVMReturnValue 
 {
     PVM_NO_ERROR = 0,
+    PVM_ILLEGAL_INSTRUCTION,
+    PVM_DIVISION_BY_0,
     PVM_CALLSTACK_OVERFLOW,
     PVM_CALLSTACK_UNDERFLOW,
 } PVMReturnValue;

@@ -2,31 +2,39 @@
 #include "PVM/PVM.h"
 
 
-static const char *sRegName[] = 
+static const char *sIntRegName[] = 
 {
     "R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7",
     "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15",
     "R16", "R17", "R18", "R19", "R20", "R21", "R22", "R23",
     "R24", "R25", "R26", "R27", "R28", "R29", "R30", "R31",
-    "R32", "R33", "R34", "R35", "R36", "R37", "R38", "R39",
-    "R40", "R41", "R42", "R43", "R44", "R45", "R46", "R47",
-    "R48", "R49", "R50", "R51", "R52", "R53", "R54", "R55",
-    "R56", "R57", "R58", "R59", "R60", "R61", "R62", "R63",
 };
+static const char *sFloatRegName[] = 
+{
+    "F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7",
+    "F8", "F9", "F10", "F11", "F12", "F13", "F14", "F15",
+    "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23",
+    "F24", "F25", "F26", "F27", "F28", "F29", "F30", "F31",
+};
+
 static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode);
 
-static void DisasmDataInsArith(FILE *f, PVMWord Opcode);
-static void DisasmDataInsSpecial(FILE *f, PVMWord Opcode);
-static void DisasmDataInsCmp(FILE *f, PVMWord Opcode);
-static void DisasmDataInsTransfer(FILE *f, PVMWord Opcode);
-static void DisasmDataIns(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra, const char *Rb);
-static void DisasmDataExOper(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra, const char *Rb, const char *Sh);
+static void DisasmIDatArith(FILE *f, PVMWord Opcode);
+static void DisasmIDatSpecial(FILE *f, PVMWord Opcode);
+static void DisasmIDatCmp(FILE *f, PVMWord Opcode);
+static void DisasmIDatTransfer(FILE *f, PVMWord Opcode);
 
 
 static void DisasmFDatArith(FILE *f, PVMWord Opcode);
 static void DisasmFDatSpecial(FILE *f, PVMWord Opcode);
 static void DisasmFDatCmp(FILE *f, PVMWord Opcode);
 static void DisasmFDatTransfer(FILE *f, PVMWord Opcode);
+static void DisasmFMem(FILE *f, const char *Mnemonic, PVMWord Opcode);
+
+static void DisasmTransferIns(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra);
+static void DisasmArithIns(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra, const char *Rb);
+static void DisasmIDatExOper(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra, const char *Rb, const char *Sh);
+
 
 static void DisasmBrIf(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode);
 static void DisasmBAlt(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode);
@@ -62,15 +70,16 @@ static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode)
     {
     case PVM_RE_SYS: DisasmSysOp(f, Addr, Opcode); break;
 
-    case PVM_DI_ARITH: DisasmDataInsArith(f, Opcode); break;
-    case PVM_DI_SPECIAL: DisasmDataInsSpecial(f, Opcode); break;
-    case PVM_DI_CMP: DisasmDataInsCmp(f, Opcode); break;
-    case PVM_DI_TRANSFER: DisasmDataInsTransfer(f, Opcode); break;
+    case PVM_IDAT_ARITH: DisasmIDatArith(f, Opcode); break;
+    case PVM_IDAT_SPECIAL: DisasmIDatSpecial(f, Opcode); break;
+    case PVM_IDAT_CMP: DisasmIDatCmp(f, Opcode); break;
+    case PVM_IDAT_TRANSFER: DisasmIDatTransfer(f, Opcode); break;
 
     case PVM_FDAT_ARITH: DisasmFDatArith(f, Opcode); break;
     case PVM_FDAT_SPECIAL: DisasmFDatSpecial(f, Opcode); break;
     case PVM_FDAT_CMP: DisasmFDatCmp(f, Opcode); break;
     case PVM_FDAT_TRANSFER: DisasmFDatTransfer(f, Opcode); break;
+    case PVM_FMEM_LDF: DisasmFMem(f, "LDF", Opcode); break;
 
     case PVM_IRD_ARITH: DisasmImmRdArith(f, Opcode); break;
 
@@ -82,7 +91,6 @@ static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode)
     case PVM_BRIF_SGT: DisasmBrIf(f, "SGT", Addr, Opcode); break;
     case PVM_BALT_AL: DisasmBAlt(f, "BAL", Addr, Opcode); break;
     case PVM_BALT_SR: DisasmBAlt(f, "BSR", Addr, Opcode); break;
-
     }
 }
 
@@ -93,59 +101,56 @@ static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode)
 
 
 
-static void DisasmDataInsArith(FILE *f, PVMWord Opcode)
+static void DisasmIDatArith(FILE *f, PVMWord Opcode)
 {
-    const char *Rd = sRegName[PVM_DI_GET_RD(Opcode)];
-    const char *Ra = sRegName[PVM_DI_GET_RA(Opcode)];
-    const char *Rb = sRegName[PVM_DI_GET_RB(Opcode)];
-
-    switch ((PVMArith)PVM_DI_GET_OP(Opcode))
+    const char *Mnemonic = "???";
+    const char *Rd = sIntRegName[PVM_IDAT_GET_RD(Opcode)];
+    const char *Ra = sIntRegName[PVM_IDAT_GET_RA(Opcode)];
+    const char *Rb = sIntRegName[PVM_IDAT_GET_RB(Opcode)];
+    switch (PVM_IDAT_GET_ARITH(Opcode))
     {
-    case PVM_ARITH_ADD: DisasmDataIns(f, "ADD", Rd, Ra, Rb); break;
-    case PVM_ARITH_SUB: DisasmDataIns(f, "SUB", Rd, Ra, Rb); break;
-    {
-        fprintf(f, "???\n");
-    } break;
-
+    case PVM_ARITH_ADD: Mnemonic = "ADD"; break;
+    case PVM_ARITH_SUB: Mnemonic = "SUB"; break;
     }
+    DisasmArithIns(f, Mnemonic, Rd, Ra, Rb);
 }
 
-static void DisasmDataInsSpecial(FILE *f, PVMWord Opcode)
+static void DisasmIDatSpecial(FILE *f, PVMWord Opcode)
 {    
-    const char *Rd = sRegName[PVM_DI_GET_RD(Opcode)];
-    const char *Ra = sRegName[PVM_DI_GET_RA(Opcode)];
-    const char *Rb = sRegName[PVM_DI_GET_RB(Opcode)];
-    switch ((PVMSpecial)PVM_DI_GET_OP(Opcode))
+    const char *Rd = sIntRegName[PVM_IDAT_GET_RD(Opcode)];
+    const char *Ra = sIntRegName[PVM_IDAT_GET_RA(Opcode)];
+    const char *Rb = sIntRegName[PVM_IDAT_GET_RB(Opcode)];
+    switch (PVM_IDAT_GET_SPECIAL(Opcode))
     {
     case PVM_SPECIAL_MUL: 
     {
-        if (PVM_DI_SPECIAL_SIGNED(Opcode))
-            DisasmDataIns(f, "SMUL", Ra, Ra, Rb);
+        if (PVM_IDAT_SPECIAL_SIGNED(Opcode))
+            DisasmArithIns(f, "SMUL", Ra, Ra, Rb);
         else
-            DisasmDataIns(f, "MUL", Ra, Ra, Rb);
+            DisasmArithIns(f, "MUL", Ra, Ra, Rb);
     } break;
 
     case PVM_SPECIAL_DIVP:
     {
-        const char *Rr = sRegName[PVM_DI_SPECIAL_GET_RR(Opcode)];
-        if (PVM_DI_SPECIAL_SIGNED(Opcode))
-            DisasmDataExOper(f, "SDIVP", Rd, Ra, Rb, Rr);
+        const char *Rr = sIntRegName[PVM_IDAT_SPECIAL_GET_RR(Opcode)];
+        if (PVM_IDAT_SPECIAL_SIGNED(Opcode))
+            DisasmIDatExOper(f, "SDIVP", Rd, Ra, Rb, Rr);
         else
-            DisasmDataExOper(f, "DIVP", Rd, Ra, Rb, Rr);
+            DisasmIDatExOper(f, "DIVP", Rd, Ra, Rb, Rr);
     } break;
 
     case PVM_SPECIAL_DIV:
     {
-        const char *Rr = sRegName[PVM_DI_SPECIAL_GET_RR(Opcode)];
-        if (PVM_DI_SPECIAL_SIGNED(Opcode))
-            DisasmDataExOper(f, "SDIV", Rd, Ra, Rb, Rr);
+        const char *Rr = sIntRegName[PVM_IDAT_SPECIAL_GET_RR(Opcode)];
+        if (PVM_IDAT_SPECIAL_SIGNED(Opcode))
+            DisasmIDatExOper(f, "SDIV", Rd, Ra, Rb, Rr);
         else
-            DisasmDataExOper(f, "DIV", Rd, Ra, Rb, Rr);
+            DisasmIDatExOper(f, "DIV", Rd, Ra, Rb, Rr);
     } break;
     }
 }
 
-static void DisasmDataInsCmp(FILE *f, PVMWord Opcode)
+static void DisasmIDatCmp(FILE *f, PVMWord Opcode)
 {
     const char *MnemonicTable[] = {
         [PVM_CMP_SEQB] = "SEQB",
@@ -180,34 +185,33 @@ static void DisasmDataInsCmp(FILE *f, PVMWord Opcode)
         [PVM_CMP_SSLTP] = "SSLTP",
         [PVM_CMP_SSGTP] = "SSGTP",
     };
-    PVMCmp Op = PVM_DI_GET_OP(Opcode);
-    if ((UInt)Op < STATIC_ARRAY_SIZE(MnemonicTable))
+    const char *Mnemonic = "???";
+    const char *Rd = sIntRegName[PVM_IDAT_GET_RD(Opcode)];
+    const char *Ra = sIntRegName[PVM_IDAT_GET_RA(Opcode)];
+    const char *Rb = sIntRegName[PVM_IDAT_GET_RB(Opcode)];
+
+    UInt Op = PVM_GET_OP(Opcode);
+    if (Op < STATIC_ARRAY_SIZE(MnemonicTable))
     {
-        const char *Rd = sRegName[PVM_DI_GET_RD(Opcode)];
-        const char *Ra = sRegName[PVM_DI_GET_RA(Opcode)];
-        const char *Rb = sRegName[PVM_DI_GET_RB(Opcode)];
-        DisasmDataIns(f, MnemonicTable[Op], Rd, Ra, Rb);
+        Mnemonic = MnemonicTable[Op];
     }
-    else
-    {
-        fprintf(f, "???\n");
-    }
+    DisasmArithIns(f, Mnemonic, Rd, Ra, Rb);
 }
 
 
 
-static void DisasmDataInsTransfer(FILE *f, PVMWord Opcode)
+static void DisasmIDatTransfer(FILE *f, PVMWord Opcode)
 {
     const char *Mnemonic = "???";
-    const char *Rd = sRegName[PVM_DI_GET_RD(Opcode)];
-    const char *Ra = sRegName[PVM_DI_GET_RA(Opcode)];
+    const char *Rd = sIntRegName[PVM_IDAT_GET_RD(Opcode)];
+    const char *Ra = sIntRegName[PVM_IDAT_GET_RA(Opcode)];
 
-    switch ((PVMTransfer)PVM_DI_GET_OP(Opcode))
+    switch (PVM_IDAT_GET_TRANSFER(Opcode))
     {
-    case PVM_DI_MOV: Mnemonic = "MOV"; break;
+    case PVM_TRANSFER_MOV: Mnemonic = "MOV"; break;
     }
 
-    fprintf(f, "%s %s, %s\n", Mnemonic, Rd, Ra);
+    DisasmTransferIns(f, Mnemonic, Rd, Ra);
 }
 
 
@@ -219,27 +223,70 @@ static void DisasmDataInsTransfer(FILE *f, PVMWord Opcode)
 static void DisasmFDatArith(FILE *f, PVMWord Opcode)
 {
     const char *Mnemonic = "???";
-    const char *Rd = sRegName[PVM_FDAT_GET_FD(Opcode)];
-    const char *Ra = sRegName[PVM_FDAT_GET_FA(Opcode)];
-    const char *Rs = sRegName[PVM_FDAT_GET_FB(Opcode)];
-
-    switch (PVM_FDAT_GET_OP(Opcode))
+    const char *Fd = sFloatRegName[PVM_FDAT_GET_FD(Opcode)];
+    const char *Fa = sFloatRegName[PVM_FDAT_GET_FA(Opcode)];
+    const char *Fb = sFloatRegName[PVM_FDAT_GET_FB(Opcode)];
+    switch (PVM_FDAT_GET_ARITH(Opcode))
     {
-    case PVM_ARITH_ADD: Mnemonic = "ADD"; break;
-    case PVM_ARITH_SUB: Mnemonic = "SUB"; break;
+    case PVM_ARITH_ADD: Mnemonic = "FADD"; break;
+    case PVM_ARITH_SUB: Mnemonic = "FSUB"; break;
     }
+    DisasmArithIns(f, Mnemonic, Fd, Fa, Fb);
 }
 
 static void DisasmFDatSpecial(FILE *f, PVMWord Opcode)
 {
+    const char *Mnemonic = "???";
+    const char *Fd = sFloatRegName[PVM_FDAT_GET_FD(Opcode)];
+    const char *Fa = sFloatRegName[PVM_FDAT_GET_FA(Opcode)];
+    const char *Fb = sFloatRegName[PVM_FDAT_GET_FB(Opcode)];
+
+    switch (PVM_FDAT_GET_SPECIAL(Opcode))
+    {
+    case PVM_SPECIAL_DIVP:
+    case PVM_SPECIAL_DIV: Mnemonic = "FDIV"; break;
+    case PVM_SPECIAL_MUL: Mnemonic = "FMUL"; break;
+    }
+    DisasmArithIns(f, Mnemonic, Fd, Fa, Fb);
 }
 
 static void DisasmFDatCmp(FILE *f, PVMWord Opcode)
 {
+    const char *Mnemonic = "???";
+    const char *Fd = sFloatRegName[PVM_FDAT_GET_FD(Opcode)];
+    const char *Fa = sFloatRegName[PVM_FDAT_GET_FA(Opcode)];
+    const char *Fb = sFloatRegName[PVM_FDAT_GET_FB(Opcode)];
+    switch (PVM_FDAT_GET_CMP(Opcode))
+    {
+    case PVM_CMP_SNEP: Mnemonic = "FSNE"; break;
+    case PVM_CMP_SEQP: Mnemonic = "FSEQ"; break;
+    case PVM_CMP_SLTP: Mnemonic = "FSLT"; break;
+    case PVM_CMP_SGTP: Mnemonic = "FSGT"; break;
+    default: break;
+    }
+
+    DisasmArithIns(f, Mnemonic, Fd, Fa, Fb);
 }
 
 static void DisasmFDatTransfer(FILE *f, PVMWord Opcode)
 {
+    const char *Mnemonic = "???";
+    const char *Fd = sFloatRegName[PVM_FDAT_GET_FD(Opcode)];
+    const char *Fa = sFloatRegName[PVM_FDAT_GET_FA(Opcode)];
+
+    switch (PVM_FDAT_GET_TRANSFER(Opcode))
+    {
+    case PVM_TRANSFER_MOV: Mnemonic = "FMOV"; break;
+    }
+
+    DisasmTransferIns(f, Mnemonic, Fd, Fa);
+}
+
+
+static void DisasmFMem(FILE *f, const char *Mnemonic, PVMWord Opcode)
+{
+    const char *Fd = sFloatRegName[PVM_FMEM_GET_FD(Opcode)];
+    fprintf(f, "%s %s, %s\n", Mnemonic, Fd, "TODO: Operand of LDF");
 }
 
 
@@ -247,20 +294,19 @@ static void DisasmFDatTransfer(FILE *f, PVMWord Opcode)
 
 
 
+static void DisasmTransferIns(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra)
+{
+    fprintf(f, "%s %s, %s\n", Mnemonic, Rd, Ra);
+}
 
-
-
-
-
-
-static void DisasmDataIns(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra, const char *Rb)
+static void DisasmArithIns(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra, const char *Rb)
 {
     fprintf(f, "%s %s, %s, %s\n", 
             Mnemonic, Rd, Ra, Rb
     );
 }
 
-static void DisasmDataExOper(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra, const char *Rb, const char *Sh)
+static void DisasmIDatExOper(FILE *f, const char *Mnemonic, const char *Rd, const char *Ra, const char *Rb, const char *Sh)
 {
     fprintf(f, "%s %s, %s, %s, %s\n", 
             Mnemonic, Rd, Ra, Rb, Sh
@@ -269,8 +315,8 @@ static void DisasmDataExOper(FILE *f, const char *Mnemonic, const char *Rd, cons
 
 static void DisasmBrIf(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode)
 {
-    const char *Ra = sRegName[PVM_BRIF_GET_RA(Opcode)];
-    const char *Rb = sRegName[PVM_BRIF_GET_RB(Opcode)];
+    const char *Ra = sIntRegName[PVM_BRIF_GET_RA(Opcode)];
+    const char *Rb = sIntRegName[PVM_BRIF_GET_RB(Opcode)];
     PVMWord BranchTarget = Addr + 1 + PVM_BRIF_GET_IMM(Opcode);
 
     fprintf(f, "B%s %s, %s, [%u]\n", 
@@ -311,7 +357,7 @@ static void DisasmImmRdArith(FILE *f, PVMWord Opcode)
 
 static void DisasmImmRd(FILE *f, const char *Mnemonic, PVMWord Opcode, bool IsSigned)
 {
-    const char *Rd = sRegName[PVM_IRD_GET_RD(Opcode)];
+    const char *Rd = sIntRegName[PVM_IRD_GET_RD(Opcode)];
     int Immediate = IsSigned 
         ? (int)(I16)PVM_IRD_GET_IMM(Opcode)
         : (int)PVM_IRD_GET_IMM(Opcode);
@@ -326,6 +372,7 @@ static void DisasmImmRd(FILE *f, const char *Mnemonic, PVMWord Opcode, bool IsSi
 static void DisasmSysOp(FILE *f, PVMWord Addr, PVMWord Opcode)
 {
     PVMSysOp SysOp = PVM_GET_SYS_OP(Opcode);
+    (void)Addr;
 
     switch (SysOp)
     {

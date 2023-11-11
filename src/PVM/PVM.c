@@ -29,6 +29,12 @@ void PVMDeinit(PascalVM *PVM)
 }
 
 
+
+/*============================================================================================
+ *                                          WARNING:
+ * The following code has the ability to cause cancer, eye sore, and even death to the soul.
+ *                                  Viewer discretion advised.
+ *============================================================================================*/
 PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk)
 {
 
@@ -39,26 +45,29 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk)
 
 #define IRD_SIGNED_IMM(Opcode) (I32)(I16)PVM_IRD_GET_IMM(Opcode)
 
+
 #define BINARY_OP(Operation, Opcode, InstructionType, RegisterSet, RegType)\
     RegisterSet(Opcode, InstructionType, RegisterSet ## D)RegType = \
         RegisterSet(Opcode, InstructionType, RegisterSet ## A)RegType \
         Operation \
         RegisterSet(Opcode, InstructionType, RegisterSet ## B)RegType
-#define DI_BINARY_OP(Operation, Opcode, RegType) BINARY_OP(Operation, Opcode, DI, R, RegType)
-#define FDAT_BINARY_OP(Operation, Opcode) BINARY_OP(Operation, Opcode, FDAT, F, NOTHING)
-#define DI_DIVIDE_OP(Opcode, RegType)\
+#define IDAT_BINARY_OP(Operation, Opcode, RegType) BINARY_OP(Operation, Opcode, IDAT, R, RegType)
+#define IDAT_DIVIDE_OP(Opcode, RegType)\
     do {\
-        DI_BINARY_OP(/, Opcode, RegType);\
-        R(Opcode, DI_SPECIAL, RR)RegType = R(Opcode, DI, RA)RegType % R(Opcode, DI, RB)RegType;\
+        IDAT_BINARY_OP(/, Opcode, RegType);\
+        R(Opcode, IDAT_SPECIAL, RR)RegType = R(Opcode, IDAT, RA)RegType % R(Opcode, IDAT, RB)RegType;\
     } while(0)
+#define FDAT_BINARY_OP(Operation, Opcode) BINARY_OP(Operation, Opcode, FDAT, F, NOTHING)
+
 
 #define TEST_AND_SET(Operation, Opcode, InstructionType, RegisterSet, RegType)\
-    R(Opcode, DI, RD).Ptr = \
+    R(Opcode, IDAT, RD).Ptr = \
         RegisterSet(Opcode, InstructionType, RegisterSet ## A)RegType \
         Operation \
         RegisterSet(Opcode, InstructionType, RegisterSet ## B)RegType
-#define DI_TEST_AND_SET(Operation, Opcode, RegType) TEST_AND_SET(Operation, Opcode, DI, R, RegType)
+#define IDAT_TEST_AND_SET(Operation, Opcode, RegType) TEST_AND_SET(Operation, Opcode, IDAT, R, RegType)
 #define FDAT_TEST_AND_SET(Operation, Opcode) TEST_AND_SET(Operation, Opcode, FDAT, F, NOTHING)
+
 
 #define BRANCH_IF(Operation, IP, Opcode, RegType)\
 do {\
@@ -83,112 +92,104 @@ do {\
             switch (SysOp)
             {
             case PVM_SYS_EXIT: goto Out;
-            case PVM_SYS_COUNT:
-            {
-                PASCAL_UNREACHABLE("PVM: SYS_COUNT is not an instruction\n");
-            } break;
             }
         } break;
 
-        case PVM_DI_ARITH:
+        case PVM_IDAT_ARITH:
         {
-            switch ((PVMArith)PVM_DI_GET_OP(Opcode))
+            switch (PVM_IDAT_GET_ARITH(Opcode))
             {
-            case PVM_ARITH_ADD: DI_BINARY_OP(+, Opcode, .Word.First); break;
-            case PVM_ARITH_SUB: DI_BINARY_OP(-, Opcode, .Word.First); break;
+            case PVM_ARITH_ADD: IDAT_BINARY_OP(+, Opcode, .Word.First); break;
+            case PVM_ARITH_SUB: IDAT_BINARY_OP(-, Opcode, .Word.First); break;
             }
         } break;
 
-        case PVM_DI_SPECIAL:
+        case PVM_IDAT_SPECIAL:
         {
-            switch ((PVMSpecial)PVM_DI_GET_OP(Opcode))
+            switch (PVM_IDAT_GET_SPECIAL(Opcode))
             {            
             case PVM_SPECIAL_MUL:
             {
-                if (PVM_DI_SPECIAL_SIGNED(Opcode))
+                if (PVM_IDAT_SPECIAL_SIGNED(Opcode))
                 {
-                    R(Opcode, DI, RD).SPtr = 
-                        R(Opcode, DI, RA).SWord.First * R(Opcode, DI, RB).SWord.First;
+                    R(Opcode, IDAT, RD).SPtr = 
+                        R(Opcode, IDAT, RA).SWord.First * R(Opcode, IDAT, RB).SWord.First;
                 }
                 else
                 {
-                    R(Opcode, DI, RD).Ptr = 
-                        R(Opcode, DI, RA).Word.First * R(Opcode, DI, RB).Word.First;
+                    R(Opcode, IDAT, RD).Ptr = 
+                        R(Opcode, IDAT, RA).Word.First * R(Opcode, IDAT, RB).Word.First;
                 }
             } break;
 
             case PVM_SPECIAL_DIVP:
             {
-                if (0 == R(Opcode, DI, RB).Ptr)
-                {
-                    /* TODO division by 0 exception */
-                }
+                if (0 == R(Opcode, IDAT, RB).Ptr)
+                    goto DivisionBy0;
 
-                if (PVM_DI_SPECIAL_SIGNED(Opcode))
-                    DI_DIVIDE_OP(Opcode, .SPtr);
+                if (PVM_IDAT_SPECIAL_SIGNED(Opcode))
+                    IDAT_DIVIDE_OP(Opcode, .SPtr);
                 else 
-                    DI_DIVIDE_OP(Opcode, .Ptr);
+                    IDAT_DIVIDE_OP(Opcode, .Ptr);
             } break;
 
             case PVM_SPECIAL_DIV:
             {
-                if (0 == R(Opcode, DI, RB).Word.First)
-                {
-                    /* TODO division by 0 exception */
-                }
+                if (0 == R(Opcode, IDAT, RB).Word.First)
+                    goto DivisionBy0;
 
-                if (PVM_DI_SPECIAL_SIGNED(Opcode))
-                    DI_DIVIDE_OP(Opcode, .SWord.First);
+                if (PVM_IDAT_SPECIAL_SIGNED(Opcode))
+                    IDAT_DIVIDE_OP(Opcode, .SWord.First);
                 else 
-                    DI_DIVIDE_OP(Opcode, .Word.First);
+                    IDAT_DIVIDE_OP(Opcode, .Word.First);
             } break;
             }
         } break;
 
-        case PVM_DI_CMP:
+        case PVM_IDAT_CMP:
         {
-            switch ((PVMCmp)PVM_DI_GET_OP(Opcode))
+            switch (PVM_IDAT_GET_CMP(Opcode))
             {
-            case PVM_CMP_SEQB: DI_TEST_AND_SET(==, Opcode, .Byte[0]); break;
-            case PVM_CMP_SNEB: DI_TEST_AND_SET(!=, Opcode, .Byte[0]); break;
-            case PVM_CMP_SLTB: DI_TEST_AND_SET(<, Opcode, .Byte[0]); break;
-            case PVM_CMP_SGTB: DI_TEST_AND_SET(>, Opcode, .Byte[0]); break;
+            case PVM_CMP_SEQB: IDAT_TEST_AND_SET(==, Opcode, .Byte[0]); break;
+            case PVM_CMP_SNEB: IDAT_TEST_AND_SET(!=, Opcode, .Byte[0]); break;
+            case PVM_CMP_SLTB: IDAT_TEST_AND_SET(<, Opcode, .Byte[0]); break;
+            case PVM_CMP_SGTB: IDAT_TEST_AND_SET(>, Opcode, .Byte[0]); break;
 
-            case PVM_CMP_SEQH: DI_TEST_AND_SET(==, Opcode, .Half.First); break;
-            case PVM_CMP_SNEH: DI_TEST_AND_SET(!=, Opcode, .Half.First); break;
-            case PVM_CMP_SLTH: DI_TEST_AND_SET(<, Opcode, .Half.First); break;
-            case PVM_CMP_SGTH: DI_TEST_AND_SET(>, Opcode, .Half.First); break;
+            case PVM_CMP_SEQH: IDAT_TEST_AND_SET(==, Opcode, .Half.First); break;
+            case PVM_CMP_SNEH: IDAT_TEST_AND_SET(!=, Opcode, .Half.First); break;
+            case PVM_CMP_SLTH: IDAT_TEST_AND_SET(<, Opcode, .Half.First); break;
+            case PVM_CMP_SGTH: IDAT_TEST_AND_SET(>, Opcode, .Half.First); break;
 
-            case PVM_CMP_SEQW: DI_TEST_AND_SET(==, Opcode, .Word.First); break;
-            case PVM_CMP_SNEW: DI_TEST_AND_SET(!=, Opcode, .Word.First); break;
-            case PVM_CMP_SLTW: DI_TEST_AND_SET(<, Opcode, .Word.First); break;
-            case PVM_CMP_SGTW: DI_TEST_AND_SET(>, Opcode, .Word.First); break;
+            case PVM_CMP_SEQW: IDAT_TEST_AND_SET(==, Opcode, .Word.First); break;
+            case PVM_CMP_SNEW: IDAT_TEST_AND_SET(!=, Opcode, .Word.First); break;
+            case PVM_CMP_SLTW: IDAT_TEST_AND_SET(<, Opcode, .Word.First); break;
+            case PVM_CMP_SGTW: IDAT_TEST_AND_SET(>, Opcode, .Word.First); break;
 
-            case PVM_CMP_SEQP: DI_TEST_AND_SET(==, Opcode, .Ptr); break;
-            case PVM_CMP_SNEP: DI_TEST_AND_SET(!=, Opcode, .Ptr); break;
-            case PVM_CMP_SLTP: DI_TEST_AND_SET(<, Opcode, .Ptr); break;
-            case PVM_CMP_SGTP: DI_TEST_AND_SET(>, Opcode, .Ptr); break;
+            case PVM_CMP_SEQP: IDAT_TEST_AND_SET(==, Opcode, .Ptr); break;
+            case PVM_CMP_SNEP: IDAT_TEST_AND_SET(!=, Opcode, .Ptr); break;
+            case PVM_CMP_SLTP: IDAT_TEST_AND_SET(<, Opcode, .Ptr); break;
+            case PVM_CMP_SGTP: IDAT_TEST_AND_SET(>, Opcode, .Ptr); break;
 
 
-            case PVM_CMP_SSLTB: DI_TEST_AND_SET(<, Opcode, .SByte[0]); break;
-            case PVM_CMP_SSGTB: DI_TEST_AND_SET(>, Opcode, .SByte[0]); break;
+            case PVM_CMP_SSLTB: IDAT_TEST_AND_SET(<, Opcode, .SByte[0]); break;
+            case PVM_CMP_SSGTB: IDAT_TEST_AND_SET(>, Opcode, .SByte[0]); break;
 
-            case PVM_CMP_SSLTH: DI_TEST_AND_SET(<, Opcode, .SHalf.First); break;
-            case PVM_CMP_SSGTH: DI_TEST_AND_SET(>, Opcode, .SHalf.First); break;
+            case PVM_CMP_SSLTH: IDAT_TEST_AND_SET(<, Opcode, .SHalf.First); break;
+            case PVM_CMP_SSGTH: IDAT_TEST_AND_SET(>, Opcode, .SHalf.First); break;
 
-            case PVM_CMP_SSLTW: DI_TEST_AND_SET(<, Opcode, .SWord.First); break;
-            case PVM_CMP_SSGTW: DI_TEST_AND_SET(>, Opcode, .SWord.First); break;
+            case PVM_CMP_SSLTW: IDAT_TEST_AND_SET(<, Opcode, .SWord.First); break;
+            case PVM_CMP_SSGTW: IDAT_TEST_AND_SET(>, Opcode, .SWord.First); break;
 
-            case PVM_CMP_SSLTP: DI_TEST_AND_SET(<, Opcode, .SPtr); break;
-            case PVM_CMP_SSGTP: DI_TEST_AND_SET(>, Opcode, .SPtr); break;
+            case PVM_CMP_SSLTP: IDAT_TEST_AND_SET(<, Opcode, .SPtr); break;
+            case PVM_CMP_SSGTP: IDAT_TEST_AND_SET(>, Opcode, .SPtr); break;
             }
         } break;
 
-        case PVM_DI_TRANSFER:
+        case PVM_IDAT_TRANSFER:
         {
-            switch ((PVMTransfer)PVM_DI_GET_OP(Opcode))
+            switch (PVM_IDAT_GET_TRANSFER(Opcode))
             {
-            case PVM_DI_MOV: R(Opcode, DI, RD).Word.First = R(Opcode, DI, RA).Word.First; break;
+            case PVM_TRANSFER_MOV: R(Opcode, IDAT, RD).Word.First = R(Opcode, IDAT, RA).Word.First; break;
             }
         } break;
 
@@ -251,67 +252,50 @@ do {\
 
         case PVM_FDAT_ARITH:
         {
-            switch ((PVMArith)PVM_FDAT_GET_OP(Opcode))
+            switch (PVM_FDAT_GET_ARITH(Opcode))
             {
             case PVM_ARITH_ADD: FDAT_BINARY_OP(+, Opcode); break;
             case PVM_ARITH_SUB: FDAT_BINARY_OP(-, Opcode); break;
             }
         } break;
+        case PVM_FDAT_SPECIAL:
+        {
+            switch (PVM_FDAT_GET_SPECIAL(Opcode))
+            {
+            case PVM_SPECIAL_DIVP:
+            case PVM_SPECIAL_DIV: FDAT_BINARY_OP(/, Opcode); break;
+            case PVM_SPECIAL_MUL: FDAT_BINARY_OP(*, Opcode); break;
+            }
+        } break;
         case PVM_FDAT_CMP:
         {
-            switch ((PVMCmp)PVM_FDAT_GET_OP(Opcode))
+            switch (PVM_FDAT_GET_CMP(Opcode))
             {
-            case PVM_CMP_SEQB: FDAT_TEST_AND_SET(==, Opcode); break;
-            case PVM_CMP_SNEB: FDAT_TEST_AND_SET(!=, Opcode); break;
-            case PVM_CMP_SLTB: FDAT_TEST_AND_SET(<, Opcode); break;
-            case PVM_CMP_SGTB: FDAT_TEST_AND_SET(>, Opcode); break;
-
-            case PVM_CMP_SEQH: FDAT_TEST_AND_SET(==, Opcode); break;
-            case PVM_CMP_SNEH: FDAT_TEST_AND_SET(!=, Opcode); break;
-            case PVM_CMP_SLTH: FDAT_TEST_AND_SET(<, Opcode); break;
-            case PVM_CMP_SGTH: FDAT_TEST_AND_SET(>, Opcode); break;
-
-            case PVM_CMP_SEQW: FDAT_TEST_AND_SET(==, Opcode); break;
-            case PVM_CMP_SNEW: FDAT_TEST_AND_SET(!=, Opcode); break;
-            case PVM_CMP_SLTW: FDAT_TEST_AND_SET(<, Opcode); break;
-            case PVM_CMP_SGTW: FDAT_TEST_AND_SET(>, Opcode); break;
-
+            default: goto IllegalInstruction;
             case PVM_CMP_SEQP: FDAT_TEST_AND_SET(==, Opcode); break;
             case PVM_CMP_SNEP: FDAT_TEST_AND_SET(!=, Opcode); break;
             case PVM_CMP_SLTP: FDAT_TEST_AND_SET(<, Opcode); break;
             case PVM_CMP_SGTP: FDAT_TEST_AND_SET(>, Opcode); break;
-
-
-            case PVM_CMP_SSLTB: FDAT_TEST_AND_SET(<, Opcode); break;
-            case PVM_CMP_SSGTB: FDAT_TEST_AND_SET(>, Opcode); break;
-
-            case PVM_CMP_SSLTH: FDAT_TEST_AND_SET(<, Opcode); break;
-            case PVM_CMP_SSGTH: FDAT_TEST_AND_SET(>, Opcode); break;
-
-            case PVM_CMP_SSLTW: FDAT_TEST_AND_SET(<, Opcode); break;
-            case PVM_CMP_SSGTW: FDAT_TEST_AND_SET(>, Opcode); break;
-
-            case PVM_CMP_SSLTP: FDAT_TEST_AND_SET(<, Opcode); break;
-            case PVM_CMP_SSGTP: FDAT_TEST_AND_SET(>, Opcode); break;
             }
         } break;
         case PVM_FDAT_TRANSFER:
         {
-            switch ((PVMTransfer)PVM_FDAT_GET_OP(Opcode))
+            switch (PVM_FDAT_GET_TRANSFER(Opcode))
             {
-            case PVM_DI_MOV: F(Opcode, FDAT, FD) = F(Opcode, FDAT, FA); break;
+            case PVM_TRANSFER_MOV: F(Opcode, FDAT, FD) = F(Opcode, FDAT, FA); break;
             }
         }
         case PVM_FMEM_LDF:
         {
-            F(Opcode, FDAT, FD) = Chunk->DataSection[PVM_FMEM_GET_IMM(Opcode)];
-        } break;
-        case PVM_FDAT_SPECIAL:
-        {
+            F(Opcode, FDAT, FD) = Chunk->DataSection.Data[PVM_FMEM_GET_IMM(Opcode)];
         } break;
 
         }
     }
+IllegalInstruction:
+    return PVM_ILLEGAL_INSTRUCTION;
+DivisionBy0:
+    return PVM_DIVISION_BY_0;
 CallstackUnderflow:
     return PVM_CALLSTACK_UNDERFLOW;
 CallstackOverflow:
@@ -322,9 +306,9 @@ Out:
 
 #undef IRD_SIGNED_IMM
 #undef BINARY_OP
-#undef DI_BINARY_OP
-#undef DI_DIVIDE_OP
-#undef DI_TEST_AND_SET
+#undef IDAT_BINARY_OP
+#undef IDAT_DIVIDE_OP
+#undef IDAT_TEST_AND_SET
 #undef BRANCH_IF
 #undef FDAT_TEST_AND_SET
 #undef FDAT_BINARY_OP
