@@ -37,9 +37,31 @@ typedef struct PascalVartab
 PascalVartab VartabInit(U32 InitialCap);
 void VartabDeinit(PascalVartab *Vartab);
 
-PascalVar *VartabFind(PascalVartab *Vartab, const U8 *Key, UInt Len);
-VarType *VartabGet(PascalVartab *Vartab, const U8 *Key, UInt Len);
-bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, VarType Type);
+/* Find the entry that has the given key,
+ * returns  NULL if no such entry exists,
+ *          the pointer to the entry containing the key */
+PascalVar *VartabFind(PascalVartab *Vartab, 
+        const U8 *Key, UInt Len
+);
+
+/* Get the pointer to the value of an entry,
+ * returns  NULL if no entry with the given key exists, or was deleted,
+ *          poiter to the type of the entry if the key exists */
+VarType *VartabGet(PascalVartab *Vartab, 
+        const U8 *Key, UInt Len
+);
+
+/* Override an entry with the key and type 
+ * returns  true if the entry already exist before,
+ *          false if a brand new entry is created */
+bool VartabSet(PascalVartab *Vartab, 
+        const U8 *Key, UInt Len, 
+        VarType Type
+);
+
+/* Deletes an entry from the table,
+ * returns  true if the entry exists before deletion,
+ *          or false otherwise */
 bool VartabDelete(PascalVartab *Vartab, const U8 *Key, UInt Len);
 
 

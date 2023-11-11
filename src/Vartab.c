@@ -74,10 +74,9 @@ bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, VarType Type)
     PascalVar *Slot = VartabFindValidSlot(Vartab->Table, Vartab->Cap, 
             Key, Len, Hash
     );
-    bool IsNewKey = IS_TOMBSTONED(Slot);
-    if (IsNewKey || IS_EMPTY(Slot))
+    bool IsNewKey = IS_EMPTY(Slot);
+    if (IsNewKey)
     {
-        /* brand new, or a repurposed slot */
         Vartab->Count++;
     }
 
@@ -112,10 +111,9 @@ static PascalVar *VartabFindValidSlot(PascalVar *Table, U32 Cap, const U8 *Key, 
     for (U32 i = 0; i < Cap; i++)
     {
         PascalVar *Slot = &Table[Index];
-        if (IS_TOMBSTONED(Slot))
+        if (NULL == Tombstoned && IS_TOMBSTONED(Slot))
         {
-            if (NULL == Tombstoned)
-                Tombstoned = Slot;
+            Tombstoned = Slot;
         }
         else if (IS_EMPTY(Slot))
         {
