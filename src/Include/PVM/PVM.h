@@ -390,7 +390,7 @@ PASCAL_STATIC_ASSERT(PVM_IRD_ARITH_COUNT < PVM_MAX_OP_COUNT, "Too many op for Im
 #define PVM_BRIF_GET_RB(OpcodeWord) PVM_DI_GET_RD(OpcodeWord)
 #define PVM_BRIF_GET_IMM(OpcodeWord) BIT_SEX32(BIT_AT32(OpcodeWord, 16, 0), 15)
 
-#define PVM_BAL_GET_IMM(OpcodeWord) BIT_SEX32(BIT_AT32(OpcodeWord, 26, 0), 25)
+#define PVM_BAL_GET_IMM(OpcodeWord) (I32)BIT_SEX32(BIT_AT32(OpcodeWord, 26, 0), 25)
 #define PVM_BSR_GET_IMM(OpcodeWord) PVM_BAL_GET_IMM(OpcodeWord)
 
 #define PVM_IRD_GET_OP(OpcodeWord) PVM_DI_GET_OP(OpcodeWord)
