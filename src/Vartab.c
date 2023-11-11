@@ -1,6 +1,8 @@
 
 
 #include <string.h> /* memset */
+
+#include "Tokenizer.h"
 #include "Common.h"
 #include "Memory.h"
 #include "Vartab.h"
@@ -43,25 +45,36 @@ PascalVartab VartabInit(U32 InitialCap)
 
 void VartabDeinit(PascalVartab *Vartab)
 {
-    MemDeallocateArray(Vartab);
+    MemDeallocateArray(Vartab->Table);
+    memset(Vartab, 0, sizeof(*Vartab));
 }
 
 
 
 
 
-VarType *VartabGet(PascalVartab *Vartab, const U8 *Key, UInt Len)
+PascalVar *VartabFind(PascalVartab *Vartab, const U8 *Key, UInt Len)
+{
+    PascalVar *Slot = VartabFindValidSlot(Vartab->Table, Vartab->Cap, Key, Len, HashStr(Key, Len));
+    if (IS_EMPTY(Slot) || IS_TOMBSTONED(Slot))
+        return NULL;
+    return Slot;
+}
+
+
+
+U32 *VartabGet(PascalVartab *Vartab, const U8 *Key, UInt Len)
 {
     PascalVar *Slot = VartabFindValidSlot(Vartab->Table, Vartab->Cap, 
             Key, Len, HashStr(Key, Len)
     );
     if (IS_TOMBSTONED(Slot) || IS_EMPTY(Slot))
         return NULL;
-    return &Slot->Type;
+    return &Slot->Value;
 }
 
 
-bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, VarType Type)
+bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, U32 Value)
 {
     bool ExceededMaxLoad = Vartab->Count + 1 > Vartab->Cap * VARTAB_MAX_LOAD;
     if (ExceededMaxLoad)
@@ -82,7 +95,7 @@ bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, VarType Type)
 
     Slot->Str = Key;
     Slot->Len = Len;
-    Slot->Type = Type;
+    Slot->Value = Value;
     Slot->Hash = Hash;
     return IsNewKey;
 }
@@ -106,7 +119,7 @@ bool VartabDelete(PascalVartab *Vartab, const U8 *Key, UInt Len)
 static PascalVar *VartabFindValidSlot(PascalVar *Table, U32 Cap, const U8 *Key, UInt Len, U32 Hash)
 {
     PascalVar *Tombstoned = NULL;
-    U32 Index = Hash;
+    U32 Index = Hash & (Cap - 1);
 
     for (U32 i = 0; i < Cap; i++)
     {
@@ -123,7 +136,7 @@ static PascalVar *VartabFindValidSlot(PascalVar *Table, U32 Cap, const U8 *Key, 
         }
         else if (Len == Slot->Len
             && Hash == Slot->Hash
-            && 0 == memcmp(Key, Slot->Str, Len))
+            && TokenEqualNoCase(Key, Slot->Str, Len))
         {
             return Slot;
         }
@@ -167,7 +180,8 @@ static U32 HashStr(const U8 *Key, UInt Len)
     U32 Hash = 2166136261u;
     for (UInt i = 0; i < Len; i++)
     {
-        Hash = (Hash ^ Key[i]) * 16777619;
+        /* all strings will have the 5th bit off during hashing */
+        Hash = (Hash ^ CHR_TO_UPPER(Key[i])) * 16777619;
     }
     return Hash;
 }

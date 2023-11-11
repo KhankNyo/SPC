@@ -11,20 +11,12 @@
 #define VARTAB_MAX_LOAD 3/4
 #define VARTAB_GROW_FACTOR 2 /* should be powers of 2 */
 
-
-typedef enum VarType 
-{
-    VARTYPE_DEAD = 0,
-    VARTYPE_SHORT_INT,
-    VARTYPE_F32,
-} VarType;
-
 typedef struct PascalVar
 {
     const U8 *Str;
     UInt Len;
     U32 Hash;
-    VarType Type;
+    U32 Value;
 } PascalVar;
 
 typedef struct PascalVartab 
@@ -47,7 +39,7 @@ PascalVar *VartabFind(PascalVartab *Vartab,
 /* Get the pointer to the value of an entry,
  * returns  NULL if no entry with the given key exists, or was deleted,
  *          poiter to the type of the entry if the key exists */
-VarType *VartabGet(PascalVartab *Vartab, 
+U32 *VartabGet(PascalVartab *Vartab, 
         const U8 *Key, UInt Len
 );
 
@@ -56,7 +48,7 @@ VarType *VartabGet(PascalVartab *Vartab,
  *          false if a brand new entry is created */
 bool VartabSet(PascalVartab *Vartab, 
         const U8 *Key, UInt Len, 
-        VarType Type
+        U32 Value
 );
 
 /* Deletes an entry from the table,
