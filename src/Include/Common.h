@@ -8,6 +8,26 @@
 #include <stdio.h>
 
 
+typedef uint8_t U8;
+typedef uint16_t U16;
+typedef uint32_t U32;
+typedef uint64_t U64;
+typedef size_t USize;
+typedef unsigned UInt;
+
+typedef int8_t I8;
+typedef int16_t I16;
+typedef int32_t I32;
+typedef int64_t I64;
+typedef ptrdiff_t ISize;
+
+
+
+typedef double F64;
+typedef float F32;
+typedef long double LargeType;
+
+
 /* this is a cry for help */
 #define _strfy(x) #x
 #define STRFY(x) _strfy(x)
@@ -69,7 +89,7 @@
 #define BIT_MASK32(Size, Index) (((U32)1 << (Size)) - 1)
 #define BIT_POS32(Value, Size, Index) (((U32)(Value) & BIT_MASK32(Size, 0)) << (Index))
 #define BIT_AT32(U32_Value, Size, Index) (((U32)(U32_Value) >> (Index)) & BIT_MASK32(Size, 0))
-/* not a safe macro, but better than a static function in a header file */
+/* not a safe macro */
 #define BIT_SEX32(Value, SignBitIndex) \
     (((Value) & ((U32)1 << (SignBitIndex))) \
         ? (U32)(Value) | ~(((U32)1 << (SignBitIndex)) - 1)\
@@ -110,28 +130,6 @@
 
 
 #define IN_I32(x) ((I64)INT32_MIN <= (I64)(x)) && ((I64)(x) <= (I64)INT32_MAX)
-
-
-typedef uint8_t U8;
-typedef uint16_t U16;
-typedef uint32_t U32;
-typedef uint64_t U64;
-typedef size_t USize;
-typedef unsigned UInt;
-
-typedef int8_t I8;
-typedef int16_t I16;
-typedef int32_t I32;
-typedef int64_t I64;
-typedef ptrdiff_t ISize;
-
-
-
-PASCAL_STATIC_ASSERT(sizeof(double) == sizeof(U64), "Unsupported double size");
-typedef double F64;
-typedef float F32;
-
-
 #define CHR_TO_UPPER(chr) ((U8)(chr) & ~(1u << 5))
 
 
@@ -147,6 +145,8 @@ static inline U32 IsolateTopBitU32(U32 Value)
     return (U32)1 << Count;
 }
 
+
+PASCAL_STATIC_ASSERT(sizeof(F64) == sizeof(U64), "Unsupported double size");
 
 
 #endif /* PASCAL_COMMON_H */
