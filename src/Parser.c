@@ -9,10 +9,18 @@
 
 typedef enum ParserType 
 {
-    PARSER_TYPE_INVALID = 0,
-    PARSER_TYPE_SHORTINT,
-    PARSER_TYPE_REAL,
+    TYPE_INVALID = 0,
+    TYPE_SHORTINT,
+    TYPE_REAL,
+    TYPE_COUNT,
 } ParserType;
+
+static ParserType sCoercionRules[TYPE_COUNT][TYPE_COUNT] = {
+    /*  Invalid        ShortInt         Real      */
+    { TYPE_INVALID, TYPE_INVALID,     TYPE_INVALID },   /* Invalid */
+    { TYPE_INVALID, TYPE_SHORTINT,    TYPE_REAL },      /* ShortInt */
+    { TYPE_INVALID, TYPE_REAL,        TYPE_REAL },      /* Real */
+};
 
 
 
@@ -66,8 +74,8 @@ PascalParser ParserInit(const U8 *Source, PascalArena *Arena, FILE *ErrorFile)
         .VariablesInScope = VartabInit(1024),
         .Types = VartabInit(128),
     };
-    VartabSet(&Parser.Types, (const U8*)"INTEGER", 7, PARSER_TYPE_SHORTINT);
-    VartabSet(&Parser.Types, (const U8*)"REAL", 4, PARSER_TYPE_REAL);
+    VartabSet(&Parser.Types, (const U8*)"INTEGER", 7, TYPE_SHORTINT);
+    VartabSet(&Parser.Types, (const U8*)"REAL", 4, TYPE_REAL);
     return Parser;
 }
 
@@ -383,7 +391,7 @@ static ParserType ParserTokenToVarType(PascalParser *Parser, const Token *Type)
 {
     U32 *TypeNumber = VartabGet(&Parser->Types, Type->Str, Type->Len);
     if (NULL == TypeNumber)
-        return PARSER_TYPE_INVALID;
+        return TYPE_INVALID;
     return *TypeNumber;
 }
 
@@ -393,21 +401,21 @@ static ParserType ParserLookupTypeOfName(PascalParser *Parser, const Token *Name
     U32 *Type = VartabGet(&Parser->VariablesInScope, Name->Str, Name->Len);
     if (NULL != Type)
         return *Type;
-    return PARSER_TYPE_INVALID;
+    return TYPE_INVALID;
 }
 
 
 static void ParserDefineType(PascalParser *Parser, const Token *TypeName)
 {
     ParserType Type = ParserTokenToVarType(Parser, TypeName);
-    PASCAL_ASSERT(Type != PARSER_TYPE_INVALID, "TODO: handle this");
+    PASCAL_ASSERT(Type != TYPE_INVALID, "TODO: handle this");
     VartabSet(&Parser->Types, TypeName->Str, TypeName->Len, Type);
 }
 
 
 static bool ParserTypeIsDefined(PascalParser *Parser, const Token *Type)
 {
-    return ParserTokenToVarType(Parser, Type) != PARSER_TYPE_INVALID;
+    return ParserTokenToVarType(Parser, Type) != TYPE_INVALID;
 }
 
 
