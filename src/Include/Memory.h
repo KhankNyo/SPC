@@ -3,11 +3,11 @@
 
 #include "Common.h"
 
-#define PASCAL_MEM_ALIGNMENT (sizeof(void*))
+#define PASCAL_MEM_ALIGNMENT (sizeof(LargeType))
 
 
 
-void MemInit(U32 InitialCap, UInt MemGrowFactor);
+void MemInit(U32 InitialCap);
 void MemDeinit(void);
 
 /* 
@@ -46,15 +46,12 @@ void MemDeallocate(void *Pointer);
 
 
 
-#define PASCAL_GPA_COUNT 8
-
 
 typedef struct GPAHeader
 {
     struct GPAHeader *Prev, *Next;
-    U32 Size;
-    U16 ID, IsFree;
-    uintptr_t Data[];
+    USize Size;
+    LargeType Data[];
 } GPAHeader;
 
 
@@ -62,17 +59,15 @@ typedef struct PascalGPA
 {
     union {
         void *Raw;
+        GPAHeader *Head;
         U8 *Bytes;
-    } Mem[PASCAL_GPA_COUNT];
-    U32 Cap[PASCAL_GPA_COUNT];
-    U32 CurrentIdx;
+    } Mem;
+    USize Cap;
     bool CoalesceOnFree;
-
-    GPAHeader *Head[PASCAL_GPA_COUNT];
 } PascalGPA;
 
 
-PascalGPA GPAInit(U32 InitialCap, UInt SizeGrowFactor);
+PascalGPA GPAInit(U32 InitialCap);
 void GPADeinit(PascalGPA *GPA);
 
 void *GPAAllocate(PascalGPA *GPA, U32 ByteCount);
