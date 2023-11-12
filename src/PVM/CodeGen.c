@@ -452,34 +452,34 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand Dest, const AstF
 
 static void PVMEmitMovI32(PVMCompiler *Compiler, Operand Dest, Operand Src)
 {
-    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_TRANSFER_INS(MOV, Dest, Src));
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_TRANSFER_INS(MOV, Dest, Src));
 }
 
 static void PVMEmitLoadI32(PVMCompiler *Compiler, Operand Dest, I32 Integer)
 {
-    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_IRD_ARITH_INS(LDI, Dest, Integer));
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_ARITH_INS(LDI, Dest, Integer));
 }
 
 
 static void PVMEmitAddI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right)
 {
-    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_ARITH_INS(ADD, Dest, Left, Right, 0));
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_ARITH_INS(ADD, Dest, Left, Right, 0));
 }
 
 
 static void PVMEmitSubI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right)
 {
-    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_ARITH_INS(SUB, Dest, Left, Right, 0));
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_ARITH_INS(SUB, Dest, Left, Right, 0));
 }
 
 static void PVMEmitMulI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right)
 {
-    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_SPECIAL_INS(MUL, Dest, Left, Right, true, 0));
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_SPECIAL_INS(MUL, Dest, Left, Right, true, 0));
 }
 
 static void PVMEmitDivI32(PVMCompiler *Compiler, Operand Dividend, Operand Remainder, Operand Left, Operand Right)
 {
-    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_SPECIAL_INS(DIV, Dividend, Left, Right, true, Remainder));
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_SPECIAL_INS(DIV, Dividend, Left, Right, true, Remainder));
 }
 
 static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, Operand Dest, Operand Left, Operand Right, UInt OperandSize, bool IsSigned)
@@ -487,12 +487,12 @@ static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, Operand Dest, Oper
 #define SET(Size, ...)\
     do {\
         switch (Op) {\
-        case TOKEN_EQUAL:           CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SEQ ## Size, Dest, Left, Right)); break;\
-        case TOKEN_LESS_GREATER:    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SNE ## Size, Dest, Left, Right)); break;\
-        case TOKEN_LESS:            CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SLT ## Size, Dest, Left, Right)); break;\
-        case TOKEN_GREATER:         CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SGT ## Size, Dest, Left, Right)); break;\
-        case TOKEN_GREATER_EQUAL:   CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SLT ## Size, Dest, Right, Left)); break;\
-        case TOKEN_LESS_EQUAL:      CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SGT ## Size, Dest, Right, Left)); break;\
+        case TOKEN_EQUAL:           ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SEQ ## Size, Dest, Left, Right)); break;\
+        case TOKEN_LESS_GREATER:    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SNE ## Size, Dest, Left, Right)); break;\
+        case TOKEN_LESS:            ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SLT ## Size, Dest, Left, Right)); break;\
+        case TOKEN_GREATER:         ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SGT ## Size, Dest, Left, Right)); break;\
+        case TOKEN_GREATER_EQUAL:   ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SLT ## Size, Dest, Right, Left)); break;\
+        case TOKEN_LESS_EQUAL:      ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SGT ## Size, Dest, Right, Left)); break;\
         default: {\
             PASCAL_UNREACHABLE(__VA_ARGS__);\
         } break;\
@@ -502,12 +502,12 @@ static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, Operand Dest, Oper
 #define SIGNEDSET(Size, ...)\
     do {\
         switch (Op) {\
-        case TOKEN_EQUAL:           CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SEQ ## Size, Dest, Left, Right)); break;\
-        case TOKEN_LESS_GREATER:    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SNE ## Size, Dest, Left, Right)); break;\
-        case TOKEN_LESS:            CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SSLT ## Size, Dest, Left, Right)); break;\
-        case TOKEN_GREATER:         CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SSGT ## Size, Dest, Left, Right)); break;\
-        case TOKEN_GREATER_EQUAL:   CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SSLT ## Size, Dest, Right, Left)); break;\
-        case TOKEN_LESS_EQUAL:      CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_DI_CMP_INS(SSGT ## Size, Dest, Right, Left)); break;\
+        case TOKEN_EQUAL:           ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SEQ ## Size, Dest, Left, Right)); break;\
+        case TOKEN_LESS_GREATER:    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SNE ## Size, Dest, Left, Right)); break;\
+        case TOKEN_LESS:            ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSLT ## Size, Dest, Left, Right)); break;\
+        case TOKEN_GREATER:         ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSGT ## Size, Dest, Left, Right)); break;\
+        case TOKEN_GREATER_EQUAL:   ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSLT ## Size, Dest, Right, Left)); break;\
+        case TOKEN_LESS_EQUAL:      ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSGT ## Size, Dest, Right, Left)); break;\
         default: {\
             PASCAL_UNREACHABLE(__VA_ARGS__);\
         } break;\
@@ -544,13 +544,13 @@ static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, Operand Dest, Oper
 
 static void PVMEmitReturn(PVMCompiler *Compiler)
 {
-    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_RET_INS);
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_RET_INS);
 }
 
 
 static void PVMEmitExit(PVMCompiler *Compiler)
 {
-    CodeChunkWrite(PVMCurrentChunk(Compiler), PVM_SYS_INS(EXIT));
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_SYS_INS(EXIT));
 }
 
 

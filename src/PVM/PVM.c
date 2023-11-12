@@ -290,7 +290,7 @@ do {\
             {
             case PVM_TRANSFER_MOV: F(Opcode, FDAT, FD) = F(Opcode, FDAT, FA); break;
             }
-        }
+        } break;
         case PVM_FMEM_LDF:
         {
             /* TODO: check boundaries before loading */
