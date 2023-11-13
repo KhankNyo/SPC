@@ -65,7 +65,7 @@ static void RecoverFromError(PascalParser *Parser);
 
 
 
-PascalParser ParserInit(const U8 *Source, PascalArena *Arena, FILE *ErrorFile)
+PascalParser ParserInit(const U8 *Source, PascalVartab *PredefinedIdentifiers, PascalArena *Arena, FILE *ErrorFile)
 {
     PascalParser Parser = {
         .Lexer = TokenizerInit(Source),
@@ -73,10 +73,8 @@ PascalParser ParserInit(const U8 *Source, PascalArena *Arena, FILE *ErrorFile)
         .PanicMode = false,
         .Error = false,
         .ErrorFile = ErrorFile,
-        .IdentifiersInScope = VartabInit(1024),
+        .IdentifiersInScope = PredefinedIdentifiers,
     };
-    VartabSet(&Parser.IdentifiersInScope, (const U8*)"INTEGER", 7, TYPE_I16);
-    VartabSet(&Parser.IdentifiersInScope, (const U8*)"REAL", 4, TYPE_F32);
     return Parser;
 }
 
@@ -86,15 +84,11 @@ PascalAst *ParserGenerateAst(PascalParser *Parser)
     Parser->Next = TokenizerGetToken(&Parser->Lexer);
     PascalAst *Ast = ArenaAllocate(Parser->Arena, sizeof(*Ast));
     Ast->Block = ParseBlock(Parser);
-
-    VartabDeinit(&Parser->IdentifiersInScope);
-
     if (Parser->Error)
     {
         ParserDestroyAst(Ast);
         return NULL;
     }
-
     return Ast;
 }
 

@@ -17,11 +17,11 @@ typedef struct PascalParser
     Token Curr, Next;
     bool Error, PanicMode;
     FILE *ErrorFile;
-    PascalVartab IdentifiersInScope;
+    PascalVartab *IdentifiersInScope;
 } PascalParser;
 
 
-PascalParser ParserInit(const U8 *Source, PascalArena *Arena, FILE *ErrorFile);
+PascalParser ParserInit(const U8 *Source, PascalVartab *PredefinedIdentifiers, PascalArena *Arena, FILE *ErrorFile);
 
 
 PascalAst *ParserGenerateAst(PascalParser *Parser);
