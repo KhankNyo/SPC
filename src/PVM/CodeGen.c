@@ -170,6 +170,8 @@ static Operand *PVMGetLocationOf(PVMCompiler *Compiler, const Token *Variable)
     {
         for (int k = 0; k < Compiler->LocalCount[i]; k++)
         {
+            /* TODO: not compare strings because parser already has info for variables, 
+             * cmp hash and index or smth */
             LocalVar *Local = &Compiler->Locals[i][k];
             if (Variable->Len == Local->Name.Len 
             && TokenEqualNoCase(Variable->Str, Local->Name.Str, Variable->Len))
@@ -178,7 +180,8 @@ static Operand *PVMGetLocationOf(PVMCompiler *Compiler, const Token *Variable)
             }
         }
     }
-    PASCAL_ASSERT(0, "TODO: static analysis to prevent undef variable");
+
+    PASCAL_UNREACHABLE("TODO: static analysis to prevent undef variable");
     return NULL;
 }
 

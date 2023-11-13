@@ -383,7 +383,7 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser)
 
 static ParserType ParserTokenToVarType(PascalParser *Parser, const Token *Type)
 {
-    U32 *TypeNumber = VartabGet(&Parser->IdentifiersInScope, Type->Str, Type->Len);
+    U32 *TypeNumber = VartabGet(Parser->IdentifiersInScope, Type->Str, Type->Len);
     if (NULL == TypeNumber)
         return TYPE_INVALID;
     return *TypeNumber;
@@ -392,7 +392,7 @@ static ParserType ParserTokenToVarType(PascalParser *Parser, const Token *Type)
 
 static ParserType ParserLookupTypeOfName(PascalParser *Parser, const Token *Name)
 {
-    U32 *Type = VartabGet(&Parser->IdentifiersInScope, Name->Str, Name->Len);
+    U32 *Type = VartabGet(Parser->IdentifiersInScope, Name->Str, Name->Len);
     if (NULL != Type)
         return *Type;
     return TYPE_INVALID;
@@ -403,7 +403,7 @@ static void ParserDefineType(PascalParser *Parser, const Token *TypeName)
 {
     ParserType Type = ParserTokenToVarType(Parser, TypeName);
     PASCAL_ASSERT(Type != TYPE_INVALID, "TODO: handle this");
-    VartabSet(&Parser->IdentifiersInScope, TypeName->Str, TypeName->Len, Type);
+    VartabSet(Parser->IdentifiersInScope, TypeName->Str, TypeName->Len, Type);
 }
 
 
@@ -420,7 +420,7 @@ static void ParserDefineVariables(PascalParser *Parser, const AstVarList *VarLis
         const Token *Identifier = &VarList->Identifier;
 
         /* TODO: shadowing globals */
-        VartabSet(&Parser->IdentifiersInScope, 
+        VartabSet(Parser->IdentifiersInScope, 
                 Identifier->Str, Identifier->Len,
                 VarList->Type
         );
@@ -431,7 +431,7 @@ static void ParserDefineVariables(PascalParser *Parser, const AstVarList *VarLis
 
 static bool ParserIdentifierIsDefined(PascalParser *Parser, const Token *Identifier)
 {
-    return NULL != VartabFind(&Parser->IdentifiersInScope, Identifier->Str, Identifier->Len);
+    return NULL != VartabFind(Parser->IdentifiersInScope, Identifier->Str, Identifier->Len);
 }
 
 
