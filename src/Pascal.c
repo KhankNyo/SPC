@@ -1,20 +1,5 @@
 
-#include <string.h>
-
-#include "Common.h"
 #include "Pascal.h"
-#include "Memory.h"
-#include "Tokenizer.h"
-#include "Parser.h"
-
-#include "PVM/Disassembler.h"
-#include "PVM/PVM.h"
-#include "PVM/CodeChunk.h"
-#include "PVM/Codegen.h"
-
-
-#define MB 1024*1024
-
 
 
 int PascalMain(int argc, const U8 *const *argv)
@@ -46,6 +31,7 @@ void PascalPrintUsage(FILE *f, const U8 *ProgramName)
             ProgramName
     );
 }
+
 
 
 

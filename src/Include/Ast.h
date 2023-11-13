@@ -20,6 +20,8 @@ typedef struct AstStmtBlock AstStmtBlock;
 
 
 typedef struct AstAssignStmt AstAssignStmt;
+typedef struct AstWhileStmt AstWhileStmt;
+typedef struct AstBeginEndStmt AstBeginEndStmt;
 
 
 
@@ -34,6 +36,8 @@ typedef enum AstBlockType
 typedef enum AstStmtType 
 {
     AST_STMT_INVALID = 0,
+    AST_STMT_BEGINEND,
+    AST_STMT_WHILE,
     AST_STMT_ASSIGNMENT,
     AST_STMT_RETURN,
 } AstStmtType;
@@ -65,7 +69,7 @@ struct AstStmt
 
 struct AstVarList
 {
-    Token Identifier;
+    U32 ID;
     ParserType Type;
     struct AstVarList *Next;
 };
@@ -88,10 +92,13 @@ struct AstStmtList
 struct AstFunctionBlock 
 {
     AstBlock Base;
-    Token Identifier;
+    AstVarList *Params;
     AstBlock *Block;
+    U32 ID;
+    int ArgCount;
+    ParserType ReturnType;
+    bool HasReturnType;
 };
-
 
 struct AstVarBlock
 {
@@ -110,10 +117,26 @@ struct AstStmtBlock
  *                 STATEMENTS
  *-----------------------------------------*/
 
+struct AstBeginEndStmt 
+{
+    AstStmt Base;
+    AstStmtList *Statements;
+};
+
+struct AstWhileStmt 
+{
+    AstStmt Base;
+    AstExpr Expr;
+    AstStmt *Stmt;
+};
+
 struct AstAssignStmt 
 {
     AstStmt Base;
-    Token Variable;
+
+    /* TODO: assigning to things other than variables */
+    U32 VariableID;
+    TokenType TypeOfAssignment;
     AstExpr Expr;
 };
 

@@ -21,7 +21,7 @@ typedef struct Operand
 
 typedef struct LocalVar 
 {
-    Token Name;
+    U32 ID;
     Operand Location;
 } LocalVar;
 
@@ -54,18 +54,21 @@ void PVMCompilerDeinit(PVMCompiler *Compiler);
 
 
 
-static void PVMDeclareLocal(PVMCompiler *Compiler, Token Name, Operand Dest);
-static Operand *PVMGetLocationOf(PVMCompiler *Compiler, const Token *Variable);
+static void PVMDeclareLocal(PVMCompiler *Compiler, U32 ID, Operand Dest);
+static Operand *PVMGetLocationOf(PVMCompiler *Compiler, U32 LocationID);
 
 
 
 static void PVMCompileBlock(PVMCompiler *Compiler, const AstBlock *Block);
-static void PVMCompileVar(PVMCompiler *Compiler, const AstVarBlock *Declarations);
-static void PVMCompileFunction(PVMCompiler *Compiler, const AstFunctionBlock *Function);
-static void PVMCompileStmts(PVMCompiler *Compiler, const AstStmtBlock *Block);
+static void PVMCompileVarBlock(PVMCompiler *Compiler, const AstVarBlock *Declarations);
+static void PVMCompileFunctionBlock(PVMCompiler *Compiler, const AstFunctionBlock *Function);
+static void PVMCompileStmtBlock(PVMCompiler *Compiler, const AstStmtBlock *Block);
+
+static void PVMCompileStmt(PVMCompiler *Compiler, const AstStmt *Statement);
+static void PVMCompileBeginEndStmt(PVMCompiler *Compiler, const AstBeginEndStmt *BeginEnd);
+static void PVMCompileWhileStmt(PVMCompiler *Compiler, const AstWhileStmt *WhileStmt);
 static void PVMCompileAssignStmt(PVMCompiler *Compiler, const AstAssignStmt *Assignment);
 static void PVMCompileReturnStmt(PVMCompiler *Compiler, const AstReturnStmt *RetStmt);
-
 
 
 
@@ -74,6 +77,11 @@ static void PVMCompileSimpleExprInto(PVMCompiler *Compiler, Operand *Dest, const
 static void PVMCompileTermInto(PVMCompiler *Compiler, Operand *Dest, const AstTerm *Term);
 static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand *Dest, const AstFactor *Factor);
 
+
+
+static U64 PVMEmitBrIfFalse(PVMCompiler *Compiler, Operand *Dest);
+static void PVMPatchBranch(PVMCompiler *Compiler, U64 StreamOffset, UInt ImmSize); 
+static void PVMEmitBranch(PVMCompiler *Compiler, U64 Location);
 static void PVMEmitMov(PVMCompiler *Compiler, Operand *Dest, Operand *Src);
 static void PVMEmitLoadI32(PVMCompiler *Compiler, Operand *Dest, I32 Integer);
 static void PVMEmitAdd(PVMCompiler *Compiler, Operand *Dest, Operand *Left, Operand *Right);
@@ -87,6 +95,7 @@ static void PVMEmitSetCC(
 );
 static void PVMEmitReturn(PVMCompiler *Compiler);
 static void PVMEmitExit(PVMCompiler *Compiler);
+
 
 static Operand PVMAllocateRegister(PVMCompiler *Compiler, ParserType Type);
 static void PVMFreeRegister(PVMCompiler *Compiler, Operand *Register);
@@ -145,14 +154,14 @@ void PVMCompilerDeinit(PVMCompiler *Compiler)
 
 
 
-static void PVMDeclareLocal(PVMCompiler *Compiler, Token Name, Operand Dest)
+static void PVMDeclareLocal(PVMCompiler *Compiler, U32 ID, Operand Dest)
 {
     int CurrScope = Compiler->CurrScopeDepth;
     int LocalCount = Compiler->LocalCount[CurrScope];
     PASCAL_ASSERT(LocalCount < PVM_MAX_LOCAL_COUNT, "TODO: more locals\n");
 
     LocalVar *NewLocal = &Compiler->Locals[CurrScope][LocalCount];
-    NewLocal->Name = Name;
+    NewLocal->ID = ID;
     NewLocal->Location = Dest;
     Compiler->LocalCount[CurrScope]++;
 }
@@ -164,7 +173,7 @@ static void PVMBindVariableToCurrentLocation(PVMCompiler *Compiler, Token Name)
     PASCAL_ASSERT(0, "TODO: PVMBindVariableToCurrentLocation()");
 }
 
-static Operand *PVMGetLocationOf(PVMCompiler *Compiler, const Token *Variable)
+static Operand *PVMGetLocationOf(PVMCompiler *Compiler, U32 LocationID)
 {
     for (int i = Compiler->CurrScopeDepth; i >= 0; i--)
     {
@@ -173,8 +182,7 @@ static Operand *PVMGetLocationOf(PVMCompiler *Compiler, const Token *Variable)
             /* TODO: not compare strings because parser already has info for variables, 
              * cmp hash and index or smth */
             LocalVar *Local = &Compiler->Locals[i][k];
-            if (Variable->Len == Local->Name.Len 
-            && TokenEqualNoCase(Variable->Str, Local->Name.Str, Variable->Len))
+            if (LocationID == Local->ID)
             {
                 return &Local->Location;
             }
@@ -204,16 +212,16 @@ static void PVMCompileBlock(PVMCompiler *Compiler, const AstBlock *Block)
     {
     case AST_BLOCK_VAR:
     {
-        PVMCompileVar(Compiler, (const AstVarBlock*)Block);
+        PVMCompileVarBlock(Compiler, (const AstVarBlock*)Block);
     } break;
     case AST_BLOCK_FUNCTION:
     {
-        PVMCompileFunction(Compiler, (const AstFunctionBlock*)Block);
+        PVMCompileFunctionBlock(Compiler, (const AstFunctionBlock*)Block);
     } break;
     case AST_BLOCK_STATEMENTS:
     {
         PVMBeginScope(Compiler);
-        PVMCompileStmts(Compiler, (const AstStmtBlock*)Block);
+        PVMCompileStmtBlock(Compiler, (const AstStmtBlock*)Block);
         PVMEndScope(Compiler);
     } break;
 
@@ -231,49 +239,98 @@ static void PVMCompileBlock(PVMCompiler *Compiler, const AstBlock *Block)
 
 
 
-static void PVMCompileVar(PVMCompiler *Compiler, const AstVarBlock *Declarations)
+static void PVMCompileVarBlock(PVMCompiler *Compiler, const AstVarBlock *Declarations)
 {
     const AstVarList *I = &Declarations->Decl;
 
     /* TODO: global variables */
     do {
         Operand Register = PVMAllocateRegister(Compiler, I->Type);
-        PVMDeclareLocal(Compiler, I->Identifier, Register);
+        PVMDeclareLocal(Compiler, I->ID, Register);
         I = I->Next;
     } while (NULL != I);
 }
 
 
-static void PVMCompileFunction(PVMCompiler *Compiler, const AstFunctionBlock *Function)
+static void PVMCompileFunctionBlock(PVMCompiler *Compiler, const AstFunctionBlock *Function)
 {
     //PVMBindVariableToCurrentLocation(Compiler, Function->Identifier);
+    const AstVarList *I = Function->Params;
+    while (NULL != I)
+    {
+        Operand Register = PVMAllocateRegister(Compiler, I->Type);
+        PVMDeclareLocal(Compiler, I->ID, Register);
+        I = I->Next;
+    }
     PVMCompileBlock(Compiler, Function->Block);
 }
 
-static void PVMCompileStmts(PVMCompiler *Compiler, const AstStmtBlock *Block)
+static void PVMCompileStmtBlock(PVMCompiler *Compiler, const AstStmtBlock *Block)
 {
     const AstStmtList *I = Block->Statements;
     while (NULL != I)
     {
-        switch (I->Statement->Type)
-        {
-        case AST_STMT_ASSIGNMENT:   PVMCompileAssignStmt(Compiler, (const AstAssignStmt*)I->Statement); break;
-        case AST_STMT_RETURN:       PVMCompileReturnStmt(Compiler, (const AstReturnStmt*)I->Statement); break;
-
-        case AST_STMT_INVALID:
-        {
-            PASCAL_UNREACHABLE("PVMCompileStmts: AST_STMT_INVALID encountered\n");
-        } break;
-        }
-
+        PVMCompileStmt(Compiler, I->Statement);
         I = I->Next;
     }
 }
 
 
+
+
+
+
+
+
+
+
+
+static void PVMCompileStmt(PVMCompiler *Compiler, const AstStmt *Statement)
+{
+    switch (Statement->Type)
+    {
+    case AST_STMT_ASSIGNMENT:   PVMCompileAssignStmt(Compiler, (const AstAssignStmt*)Statement); break;
+    case AST_STMT_RETURN:       PVMCompileReturnStmt(Compiler, (const AstReturnStmt*)Statement); break;
+    case AST_STMT_WHILE:        PVMCompileWhileStmt(Compiler, (const AstWhileStmt*)Statement); break;
+    case AST_STMT_BEGINEND:     PVMCompileBeginEndStmt(Compiler, (const AstBeginEndStmt*)Statement); break;
+
+    case AST_STMT_INVALID:
+    {
+        PASCAL_UNREACHABLE("PVMCompileStmts: AST_STMT_INVALID encountered\n");
+    } break;
+    }
+}
+
+
+
+static void PVMCompileBeginEndStmt(PVMCompiler *Compiler, const AstBeginEndStmt *BeginEnd)
+{
+    const AstStmtList *I = BeginEnd->Statements;
+    while (NULL != I)
+    {
+        PVMCompileStmt(Compiler, I->Statement);
+        I = I->Next;
+    }
+}
+
+
+static void PVMCompileWhileStmt(PVMCompiler *Compiler, const AstWhileStmt *WhileStmt)
+{
+    Operand Register = PVMAllocateRegister(Compiler, WhileStmt->Expr.Type);
+
+    U64 Test = PVMCurrentChunk(Compiler)->Count;
+    PVMCompileExprInto(Compiler, &Register, &WhileStmt->Expr);
+    U64 Location = PVMEmitBrIfFalse(Compiler, &Register);
+    PVMCompileStmt(Compiler, WhileStmt->Stmt);
+
+    PVMEmitBranch(Compiler, Test);
+    PVMPatchBranch(Compiler, Location, 21);
+}
+
+
 static void PVMCompileAssignStmt(PVMCompiler *Compiler, const AstAssignStmt *Assignment)
 {
-    Operand *LValue = PVMGetLocationOf(Compiler, &Assignment->Variable);
+    Operand *LValue = PVMGetLocationOf(Compiler, Assignment->VariableID);
     PVMCompileExprInto(Compiler, LValue, &Assignment->Expr);
 }
 
@@ -451,7 +508,7 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand *Dest, const Ast
     } break;
     case FACTOR_VARIABLE:
     {
-        Operand *Variable = PVMGetLocationOf(Compiler, &Factor->As.Variable.Name);
+        Operand *Variable = PVMGetLocationOf(Compiler, Factor->As.Variable.ID);
         PVMEmitMov(Compiler, Dest, Variable);
     } break;
     case FACTOR_GROUP_EXPR:
@@ -476,6 +533,35 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand *Dest, const Ast
 
 
 
+static U64 PVMEmitBrIfFalse(PVMCompiler *Compiler, Operand *Reg)
+{
+    if (Reg->InRegister)
+    {
+        return ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_BRIF_INS(EZ, Reg->RegID, -1));
+    }
+    else 
+    {
+        PASCAL_UNREACHABLE("TODO: BrIfFalse mem");
+    }
+    return 0;
+}
+
+static void PVMEmitBranch(PVMCompiler *Compiler, U64 Location)
+{
+    I64 BrOffset = Location - PVMCurrentChunk(Compiler)->Count - 1;
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_BRAL_INS(BrOffset));
+}
+
+static void PVMPatchBranch(PVMCompiler *Compiler, U64 StreamOffset, UInt ImmSize)
+{
+    CodeChunk *Chunk = PVMCurrentChunk(Compiler);
+    U32 Instruction = Chunk->Code[StreamOffset];
+    U32 Mask = ((U32)1 << ImmSize) - 1;
+
+    I32 Offset = (Chunk->Count - StreamOffset - 1) & Mask;
+    Instruction &= ~Mask;
+    Chunk->Code[StreamOffset] = Instruction | Offset;
+}
 
 
 static void PVMEmitMov(PVMCompiler *Compiler, Operand *Dest, Operand *Src)

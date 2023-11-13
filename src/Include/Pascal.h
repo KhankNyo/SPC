@@ -26,5 +26,9 @@ int PascalRepl(void);
 
 void PascalPrintUsage(FILE *f, const U8 *ProgramName);
 
+
+
+
+
 #endif /* PASCAL_H */
 

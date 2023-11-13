@@ -71,7 +71,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk)
 
 #define BRANCH_IF(Operation, IP, Opcode, RegType)\
 do {\
-    if (R(Opcode, BRIF, RA)RegType Operation R(Opcode, BRIF, RB)RegType) {\
+    if (R(Opcode, BRIF, RA)RegType Operation 0) {\
         (IP) += (PVMSPtr)(I32)PVM_BRIF_GET_IMM(Opcode);\
         /* TODO: verify jump target */\
     }\
@@ -101,6 +101,7 @@ do {\
             {
             case PVM_ARITH_ADD: IDAT_BINARY_OP(+, Opcode, .Word.First); break;
             case PVM_ARITH_SUB: IDAT_BINARY_OP(-, Opcode, .Word.First); break;
+            case PVM_ARITH_NEG: R(Opcode, IDAT, RD).Word.First = R(Opcode, IDAT, RA).Word.First; break;
             }
         } break;
 
@@ -229,12 +230,9 @@ do {\
 
 
 
-        case PVM_BRIF_EQ: BRANCH_IF(==, IP, Opcode, .Word.First); break;
-        case PVM_BRIF_NE: BRANCH_IF(!=, IP, Opcode, .Word.First); break;
-        case PVM_BRIF_GT: BRANCH_IF(>, IP, Opcode, .Word.First); break;
-        case PVM_BRIF_LT: BRANCH_IF(<, IP, Opcode, .Word.First); break;
-        case PVM_BRIF_SGT: BRANCH_IF(>, IP, Opcode, .SWord.First); break;
-        case PVM_BRIF_SLT: BRANCH_IF(<, IP, Opcode, .SWord.First); break;
+
+        case PVM_BRIF_EZ: BRANCH_IF(==, IP, Opcode, .Word.First); break;
+        case PVM_BRIF_NZ: BRANCH_IF(!=, IP, Opcode, .Word.First); break;
         case PVM_BALT_AL: 
         {
             IP += (PVMSPtr)(I32)PVM_BAL_GET_IMM(Opcode);
@@ -275,6 +273,7 @@ do {\
             {
             case PVM_ARITH_ADD: FDAT_BINARY_OP(+, Opcode, .Double); break;
             case PVM_ARITH_SUB: FDAT_BINARY_OP(-, Opcode, .Double); break;
+            case PVM_ARITH_NEG: F(Opcode, FDAT, FD).Double = F(Opcode, FDAT, FA).Double; break;
             }
         } break;
         case PVM_FDAT_SPECIAL:

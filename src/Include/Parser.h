@@ -10,14 +10,25 @@
 #include "Vartab.h"
 
 
+#define VAR_ID_TYPE UINT32_MAX
+#define VAR_ID_INVALID (UINT32_MAX - 1)
+#define PARSER_MAX_SCOPE 8
+#define PARSER_VAR_PER_SCOPE 256
+
 typedef struct PascalParser 
 {
     PascalArena *Arena;
+    PascalGPA Allocator;
+
     PascalTokenizer Lexer;
     Token Curr, Next;
     bool Error, PanicMode;
     FILE *ErrorFile;
-    PascalVartab *IdentifiersInScope;
+
+    PascalVartab *Global;
+    PascalVartab Scope[PARSER_MAX_SCOPE];
+    int ScopeCount;
+    U32 VariableID;
 } PascalParser;
 
 

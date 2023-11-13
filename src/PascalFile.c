@@ -73,20 +73,7 @@ static void UnloadFile(U8 *FileContent)
 
 static bool PascalRun(const U8 *Source, PascalArena *Arena)
 {
-    PascalVartab Identifiers = VartabInit(1024);
-    VartabSet(&Identifiers, (const U8*)"INTEGER", 7, TYPE_I16);
-    VartabSet(&Identifiers, (const U8*)"REAL", 4, TYPE_F32);
-
-    VartabSet(&Identifiers, (const U8*)"int8", 4, TYPE_I8);
-    VartabSet(&Identifiers, (const U8*)"int16", 5, TYPE_I16);
-    VartabSet(&Identifiers, (const U8*)"int32", 5, TYPE_I32);
-    VartabSet(&Identifiers, (const U8*)"int64", 5, TYPE_I64);
-
-    VartabSet(&Identifiers, (const U8*)"uint8", 4, TYPE_U8);
-    VartabSet(&Identifiers, (const U8*)"uint16", 5, TYPE_U16);
-    VartabSet(&Identifiers, (const U8*)"uint32", 5, TYPE_U32);
-    VartabSet(&Identifiers, (const U8*)"uint64", 5, TYPE_U64);
-
+    PascalVartab Identifiers = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);    
     PascalParser Parser = ParserInit(Source, &Identifiers, Arena, stderr);
     PascalAst *Ast = ParserGenerateAst(&Parser);
     if (NULL == Ast)

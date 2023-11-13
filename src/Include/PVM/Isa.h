@@ -24,11 +24,10 @@
  *                  [ 0001 ][  10  ][    Op   ][  RD  ][  RA  ][  RB  ][  00000  ] Cmp
  *                  [ 0001 ][  11  ][    Op   ][  RD  ][  RA  ][    0000000000   ] Transfer
  *
- * BranchIf:        [ 0010 ][  CC  ][    RA   ][  RB  ][          Imm16          ]
- * BranchSignedIf:  [ 0011 ][  0C  ][    RA   ][  RB  ][          Imm16          ]
- * BranchAlways:    [ 0011 ][  1C  ][                     Imm26                  ]
+ * BranchIf:        [ 0010 ][  CC  ][    RA   ][              Imm21              ]
+ * BranchAlways:    [ 0011 ][  CC  ][                     Imm26                  ]
  *
- * LimmRd:          [ 0100 ][ Mode ][    RD   ][              Imm20              ]
+ * LimmRd:          [ 0100 ][ Mode ][    RD   ][              Imm21              ]
  * ImmRd:           [ 0101 ][ Mode ][    Op   ][  RD  ][          Imm16          ]
  * 
  *
@@ -83,35 +82,22 @@
  *                  else 
  *                      RD.Word  := RA.Word / RB.Word
  *                  RR.Word  := Remainder
+ *          00101:  NEG RD, RA
+ *                  RD := -RA
  *      01: 
  *      10:
  *      11:
  *
  *  3.2/BranchIf:
- *      CC:
- *      00: BLT RA, RB, Offset16
- *          if (RA < RB)
- *              PC += SExPtr(Offset16)
- *      01: BGT RA, RB, Offset16
- *          if (RA > RB)
- *              PC += SExPtr(Offset16)
- *      10: BEQ RA, RB, Offset16
- *          if (RA == RB)
- *              PC += SExPtr(Offset16)
- *      11: BNE RA, RB, Offset16
- *          if (RA != RB)
- *              PC += SExPtr(Offset16)
- *
- *  3.3/BranchSignedIf:
  *      Mode:
- *      00: BSLT RA, RB, Offset16
- *          if (SExWord(RA) < SExWord(RB))
- *              PC += SExPtr(Offset16)
- *      01: BSGT RA, RB, Offset16 
- *          if (SExWord(RA) > SExWord(RB))
- *              PC += SExPtr(Offset16)
+ *      00: BEZ RA, Offset20
+ *          if (RA == 0)
+ *              PC += SExPtr(Offset20)
+ *      01: BNZ RA, Offset20
+ *          if (RA != 0)
+ *              PC += SExPtr(Offset20)
  *
- *  3.3.5/BranchAlways, Ret:
+ *  3.3/BranchAlways, Ret:
  *      Mode:
  *      10: B Offset26
  *          PC += SExPtr(Offset26)
@@ -183,15 +169,11 @@ typedef enum PVMIns
         PVM_IDAT_TRANSFER,
 
     PVM_BRIF = 2 << PVM_MODE_SIZE,
-        PVM_BRIF_EQ = PVM_BRIF,
-        PVM_BRIF_NE,
-        PVM_BRIF_LT,
-        PVM_BRIF_GT,
+        PVM_BRIF_EZ = PVM_BRIF,
+        PVM_BRIF_NZ,
 
     PVM_BALT = 3 << PVM_MODE_SIZE,
-        PVM_BRIF_SGT = PVM_BALT,
-        PVM_BRIF_SLT,
-        PVM_BALT_AL,
+        PVM_BALT_AL = PVM_BALT,
         PVM_BALT_SR,
 
     PVM_IRD = 4 << PVM_MODE_SIZE,
@@ -212,6 +194,7 @@ typedef enum PVMArith
 {
     PVM_ARITH_ADD = 0,
     PVM_ARITH_SUB,
+    PVM_ARITH_NEG,
 } PVMArith;
 
 typedef enum PVMSpecial
@@ -359,14 +342,13 @@ typedef enum PVMArgReg
      | BIT_POS32(Imm16, 16, 0))
 
 
-#define PVM_BRANCH_IF_INS(CC, Ra, Rb, Offset16)\
+#define PVM_BRIF_INS(CC, Ra, Offset21)\
     (BIT_POS32(PVM_BRIF_ ## CC, 6, 26)\
      | BIT_POS32(Ra, 5, 21)\
-     | BIT_POS32(Rb, 5, 16)\
-     | BIT_POS32(Offset16, 16, 0))
+     | BIT_POS32(Offset21, 21, 0))
 
 
-#define PVM_LONGBRANCH_INS(Offset26)\
+#define PVM_BRAL_INS(Offset26)\
     (BIT_POS32(PVM_BALT_AL, 6, 26)\
      | BIT_POS32(Offset26, 26, 0))
 
@@ -423,8 +405,7 @@ typedef enum PVMArgReg
 #define PVM_IDAT_SPECIAL_GET_RR(OpcodeWord) BIT_AT32(OpcodeWord, 5, 0)
 
 #define PVM_BRIF_GET_RA(OpcodeWord) PVM_GET_OP(OpcodeWord)
-#define PVM_BRIF_GET_RB(OpcodeWord) PVM_IDAT_GET_RD(OpcodeWord)
-#define PVM_BRIF_GET_IMM(OpcodeWord) BIT_SEX32(BIT_AT32(OpcodeWord, 16, 0), 15)
+#define PVM_BRIF_GET_IMM(OpcodeWord) BIT_SEX32(BIT_AT32(OpcodeWord, 21, 0), 20)
 
 #define PVM_BAL_GET_IMM(OpcodeWord) (I32)BIT_SEX32(BIT_AT32(OpcodeWord, 26, 0), 25)
 #define PVM_BSR_GET_IMM(OpcodeWord) PVM_BAL_GET_IMM(OpcodeWord)

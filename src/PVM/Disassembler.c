@@ -86,12 +86,8 @@ static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode)
     case PVM_IRD_ARITH: DisasmImmRdArith(f, Opcode); break;
     case PVM_IRD_MEM: DisasmImmRdMem(f, Opcode); break;
 
-    case PVM_BRIF_EQ: DisasmBrIf(f, "EQ", Addr, Opcode); break;
-    case PVM_BRIF_NE: DisasmBrIf(f, "NE", Addr, Opcode); break;
-    case PVM_BRIF_LT: DisasmBrIf(f, "LT", Addr, Opcode); break;
-    case PVM_BRIF_GT: DisasmBrIf(f, "GT", Addr, Opcode); break;
-    case PVM_BRIF_SLT: DisasmBrIf(f, "SLT", Addr, Opcode); break;
-    case PVM_BRIF_SGT: DisasmBrIf(f, "SGT", Addr, Opcode); break;
+    case PVM_BRIF_EZ: DisasmBrIf(f, "EZ", Addr, Opcode); break;
+    case PVM_BRIF_NZ: DisasmBrIf(f, "NZ", Addr, Opcode); break;
     case PVM_BALT_AL: DisasmBAlt(f, "BAL", Addr, Opcode); break;
     case PVM_BALT_SR: DisasmBAlt(f, "BSR", Addr, Opcode); break;
     }
@@ -114,6 +110,7 @@ static void DisasmIDatArith(FILE *f, PVMWord Opcode)
     {
     case PVM_ARITH_ADD: Mnemonic = "ADD"; break;
     case PVM_ARITH_SUB: Mnemonic = "SUB"; break;
+    case PVM_ARITH_NEG: fprintf(f, "NEG %s, %s\n", Rd, Ra); return;
     }
     DisasmArithIns(f, Mnemonic, Rd, Ra, Rb);
 }
@@ -239,6 +236,7 @@ static void DisasmFDatArith(FILE *f, PVMWord Opcode)
     {
     case PVM_ARITH_ADD: Mnemonic = "FADD"; break;
     case PVM_ARITH_SUB: Mnemonic = "FSUB"; break;
+    case PVM_ARITH_NEG: fprintf(f, "FNEG %s, %s\n", Fd, Fa); return;
     }
     DisasmArithIns(f, Mnemonic, Fd, Fa, Fb);
 }
@@ -330,11 +328,10 @@ static void DisasmIDatExOper(FILE *f, const char *Mnemonic, const char *Rd, cons
 static void DisasmBrIf(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode)
 {
     const char *Ra = sIntRegName[PVM_BRIF_GET_RA(Opcode)];
-    const char *Rb = sIntRegName[PVM_BRIF_GET_RB(Opcode)];
     PVMWord BranchTarget = Addr + 1 + PVM_BRIF_GET_IMM(Opcode);
 
-    fprintf(f, "B%s %s, %s, [%u]\n", 
-            Mnemonic, Ra, Rb, BranchTarget
+    fprintf(f, "B%s %s, [%u]\n", 
+            Mnemonic, Ra, BranchTarget
     );
 }
 
