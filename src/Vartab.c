@@ -124,15 +124,15 @@ static PascalVar *VartabFindValidSlot(PascalVar *Table, U32 Cap, const U8 *Key, 
     for (U32 i = 0; i < Cap; i++)
     {
         PascalVar *Slot = &Table[Index];
-        if (NULL == Tombstoned && IS_TOMBSTONED(Slot))
-        {
-            Tombstoned = Slot;
-        }
-        else if (IS_EMPTY(Slot))
+        if (IS_EMPTY(Slot))
         {
             if (NULL == Tombstoned)
                 return Slot;
             return Tombstoned;
+        }
+        if (NULL == Tombstoned && IS_TOMBSTONED(Slot))
+        {
+            Tombstoned = Slot;
         }
         else if (Len == Slot->Len
             && Hash == Slot->Hash

@@ -7,19 +7,20 @@
 
 
 
-typedef enum ParserType 
-{
-    TYPE_INVALID = 0,
-    TYPE_SHORTINT,
-    TYPE_REAL,
-    TYPE_COUNT,
-} ParserType;
 
 static ParserType sCoercionRules[TYPE_COUNT][TYPE_COUNT] = {
-    /*  Invalid        ShortInt         Real      */
-    { TYPE_INVALID, TYPE_INVALID,     TYPE_INVALID },   /* Invalid */
-    { TYPE_INVALID, TYPE_SHORTINT,    TYPE_REAL },      /* ShortInt */
-    { TYPE_INVALID, TYPE_REAL,        TYPE_REAL },      /* Real */
+    /*Invalid       I8            I16           I32           I64           U8            U16           U32           U64           F32           F64           */
+    { TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID },   /* Invalid */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I64,     TYPE_F32,     TYPE_F64 },       /* I8 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I64,     TYPE_F32,     TYPE_F64 },       /* I16 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I64,     TYPE_F32,     TYPE_F64 },       /* I32 */
+    { TYPE_INVALID, TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_F32,     TYPE_F64 },       /* I64 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_U64,     TYPE_F32,     TYPE_F64 },       /* U8 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_U64,     TYPE_F32,     TYPE_F64 },       /* U16 */
+    { TYPE_INVALID, TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_U32,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_F32,     TYPE_F64 },       /* U32 */
+    { TYPE_INVALID, TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_F32,     TYPE_F64 },       /* U64 */
+    { TYPE_INVALID, TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F64 },       /* F32 */
+    { TYPE_INVALID, TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64 },       /* F64 */
 };
 
 
@@ -41,6 +42,7 @@ static void ParserDefineVariables(PascalParser *Parser, const AstVarList *VarLis
 
 static bool ParserTypeIsDefined(PascalParser *Parser, const Token *Type);
 static bool ParserIdentifierIsDefined(PascalParser *Parser, const Token *Identifier);
+static ParserType ParserCoerceTypes(PascalParser *Parser, ParserType Left, ParserType Right);
 
 
 static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser);
@@ -71,11 +73,10 @@ PascalParser ParserInit(const U8 *Source, PascalArena *Arena, FILE *ErrorFile)
         .PanicMode = false,
         .Error = false,
         .ErrorFile = ErrorFile,
-        .VariablesInScope = VartabInit(1024),
-        .Types = VartabInit(128),
+        .IdentifiersInScope = VartabInit(1024),
     };
-    VartabSet(&Parser.Types, (const U8*)"INTEGER", 7, TYPE_SHORTINT);
-    VartabSet(&Parser.Types, (const U8*)"REAL", 4, TYPE_REAL);
+    VartabSet(&Parser.IdentifiersInScope, (const U8*)"INTEGER", 7, TYPE_I16);
+    VartabSet(&Parser.IdentifiersInScope, (const U8*)"REAL", 4, TYPE_F32);
     return Parser;
 }
 
@@ -86,8 +87,7 @@ PascalAst *ParserGenerateAst(PascalParser *Parser)
     PascalAst *Ast = ArenaAllocate(Parser->Arena, sizeof(*Ast));
     Ast->Block = ParseBlock(Parser);
 
-    VartabDeinit(&Parser->VariablesInScope);
-    VartabDeinit(&Parser->Types);
+    VartabDeinit(&Parser->IdentifiersInScope);
 
     if (Parser->Error)
     {
@@ -292,7 +292,7 @@ static AstVarList *ParseVarList(PascalParser *Parser, AstVarList *List)
     /* assign type to each variable */
     while (NULL != Start)
     {
-        Start->TypeName = Parser->Curr;
+        Start->Type = ParserLookupTypeOfName(Parser, &Parser->Curr);
         Start = Start->Next;
     }
     ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after type name.");
@@ -389,7 +389,7 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser)
 
 static ParserType ParserTokenToVarType(PascalParser *Parser, const Token *Type)
 {
-    U32 *TypeNumber = VartabGet(&Parser->Types, Type->Str, Type->Len);
+    U32 *TypeNumber = VartabGet(&Parser->IdentifiersInScope, Type->Str, Type->Len);
     if (NULL == TypeNumber)
         return TYPE_INVALID;
     return *TypeNumber;
@@ -398,7 +398,7 @@ static ParserType ParserTokenToVarType(PascalParser *Parser, const Token *Type)
 
 static ParserType ParserLookupTypeOfName(PascalParser *Parser, const Token *Name)
 {
-    U32 *Type = VartabGet(&Parser->VariablesInScope, Name->Str, Name->Len);
+    U32 *Type = VartabGet(&Parser->IdentifiersInScope, Name->Str, Name->Len);
     if (NULL != Type)
         return *Type;
     return TYPE_INVALID;
@@ -409,7 +409,7 @@ static void ParserDefineType(PascalParser *Parser, const Token *TypeName)
 {
     ParserType Type = ParserTokenToVarType(Parser, TypeName);
     PASCAL_ASSERT(Type != TYPE_INVALID, "TODO: handle this");
-    VartabSet(&Parser->Types, TypeName->Str, TypeName->Len, Type);
+    VartabSet(&Parser->IdentifiersInScope, TypeName->Str, TypeName->Len, Type);
 }
 
 
@@ -424,11 +424,11 @@ static void ParserDefineVariables(PascalParser *Parser, const AstVarList *VarLis
     while (NULL != VarList)
     {
         const Token *Identifier = &VarList->Identifier;
-        const Token *Type = &VarList->TypeName;
 
-        VartabSet(&Parser->VariablesInScope, 
+        /* TODO: shadowing globals */
+        VartabSet(&Parser->IdentifiersInScope, 
                 Identifier->Str, Identifier->Len,
-                ParserTokenToVarType(Parser, Type)
+                VarList->Type
         );
         VarList = VarList->Next;
     }
@@ -437,7 +437,21 @@ static void ParserDefineVariables(PascalParser *Parser, const AstVarList *VarLis
 
 static bool ParserIdentifierIsDefined(PascalParser *Parser, const Token *Identifier)
 {
-    return NULL != VartabFind(&Parser->VariablesInScope, Identifier->Str, Identifier->Len);
+    return NULL != VartabFind(&Parser->IdentifiersInScope, Identifier->Str, Identifier->Len);
+}
+
+
+
+
+static ParserType ParserCoerceTypes(PascalParser *Parser, ParserType Left, ParserType Right)
+{
+    PASCAL_ASSERT(Left >= TYPE_INVALID && Right >= TYPE_INVALID, "Unreachable");
+    if (Left > TYPE_COUNT || Right > TYPE_COUNT)
+    {
+        Error(Parser, "Invalid combination of type %d and %d", Left, Right);
+        return TYPE_INVALID;
+    }
+    return sCoercionRules[Left][Right];
 }
 
 
@@ -457,6 +471,7 @@ static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser)
     AstSimpleExpr SimpleExpression = {0};
 
     /* prefixes */
+    /* TODO: handle prefixes properly */
     static const TokenType PrefixOps[] = { TOKEN_PLUS, TOKEN_MINUS };
     if (ConsumeIfNextIsOneOf(Parser, STATIC_ARRAY_SIZE(PrefixOps), PrefixOps))
     {
@@ -465,6 +480,7 @@ static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser)
 
     /* left */
     SimpleExpression.Left = ParseTerm(Parser);
+    ParserType LastType = SimpleExpression.Left.Type;
     AstOpTerm **Right = &SimpleExpression.Right;
 
     static const TokenType Ops[] = { TOKEN_MINUS, TOKEN_PLUS, TOKEN_OR };
@@ -473,8 +489,10 @@ static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser)
         (*Right) = ArenaAllocateZero(Parser->Arena, sizeof(**Right));
         (*Right)->Op = Parser->Curr.Type;
         (*Right)->Term = ParseTerm(Parser);
+        (*Right)->Type = ParserCoerceTypes(Parser, LastType, (*Right)->Term.Type);
         Right = &(*Right)->Next;
     }
+    SimpleExpression.Type = LastType;
     return SimpleExpression;
 }
 
@@ -483,6 +501,7 @@ static AstTerm ParseTerm(PascalParser *Parser)
     AstTerm CurrentTerm = {0};
     /* left oper */
     CurrentTerm.Left = ParseFactor(Parser);
+    ParserType LastType = CurrentTerm.Left.Type;
     AstOpFactor **Right = &CurrentTerm.Right;
 
     static const TokenType InfixOps[] = { TOKEN_STAR, TOKEN_SLASH, TOKEN_DIV, TOKEN_MOD, TOKEN_AND };
@@ -491,8 +510,10 @@ static AstTerm ParseTerm(PascalParser *Parser)
         (*Right) = ArenaAllocateZero(Parser->Arena, sizeof(**Right));
         (*Right)->Op = Parser->Curr.Type;
         (*Right)->Factor = ParseFactor(Parser);
+        (*Right)->Type = ParserCoerceTypes(Parser, LastType, (*Right)->Factor.Type);
         Right = &(*Right)->Next;
     }
+    CurrentTerm.Type = LastType;
     return CurrentTerm;
 }
 
@@ -504,13 +525,15 @@ static AstFactor ParseFactor(PascalParser *Parser)
     case TOKEN_INTEGER_LITERAL:
     {
         ConsumeToken(Parser);
-        Factor.Type = FACTOR_INTEGER;
+        Factor.FactorType = FACTOR_INTEGER;
+        Factor.Type = TYPE_I16;
         Factor.As.Integer = Parser->Curr.Literal.Int;
     } break;
     case TOKEN_NUMBER_LITERAL:
     {
         ConsumeToken(Parser);
-        Factor.Type = FACTOR_REAL;
+        Factor.FactorType = FACTOR_REAL;
+        Factor.Type = TYPE_F32;
         Factor.As.Real = Parser->Curr.Literal.Real;
     } break;
     case TOKEN_LEFT_PAREN:
@@ -519,7 +542,8 @@ static AstFactor ParseFactor(PascalParser *Parser)
         AstExpr Expression = ParseExpr(Parser);
         if (ConsumeOrError(Parser, TOKEN_RIGHT_PAREN, "Expected ')' after expression."))
         {
-            Factor.Type = FACTOR_GROUP_EXPR;
+            Factor.FactorType = FACTOR_GROUP_EXPR;
+            Factor.Type = Expression.Type;
             Factor.As.Expression = ArenaAllocateZero(Parser->Arena, sizeof(*Factor.As.Expression));
             *Factor.As.Expression = Expression;
         }
@@ -527,9 +551,10 @@ static AstFactor ParseFactor(PascalParser *Parser)
     case TOKEN_NOT:
     {
         ConsumeToken(Parser);
-        Factor.Type = FACTOR_NOT;
+        Factor.FactorType = FACTOR_NOT;
         Factor.As.NotFactor = ArenaAllocateZero(Parser->Arena, sizeof(*Factor.As.NotFactor));
         *Factor.As.NotFactor = ParseFactor(Parser);
+        Factor.Type = Factor.As.NotFactor->Type;
     } break;
     case TOKEN_IDENTIFIER:
     {
@@ -543,9 +568,9 @@ static AstFactor ParseFactor(PascalParser *Parser)
         {
             PASCAL_UNREACHABLE("TODO: call expression");
         }
-        Factor.Type = FACTOR_VARIABLE;
+        Factor.FactorType = FACTOR_VARIABLE;
         Factor.As.Variable.Name = Parser->Curr;
-        Factor.As.Variable.Type = ParserLookupTypeOfName(Parser, &Parser->Curr);
+        Factor.Type = ParserLookupTypeOfName(Parser, &Parser->Curr);
     } break;
 
     default: 

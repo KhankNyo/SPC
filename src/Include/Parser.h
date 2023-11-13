@@ -17,8 +17,7 @@ typedef struct PascalParser
     Token Curr, Next;
     bool Error, PanicMode;
     FILE *ErrorFile;
-    PascalVartab VariablesInScope;
-    PascalVartab Types;
+    PascalVartab IdentifiersInScope;
 } PascalParser;
 
 

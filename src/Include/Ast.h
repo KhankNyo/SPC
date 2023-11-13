@@ -66,7 +66,7 @@ struct AstStmt
 struct AstVarList
 {
     Token Identifier;
-    Token TypeName;
+    ParserType Type;
     struct AstVarList *Next;
 };
 
