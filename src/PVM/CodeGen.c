@@ -1,5 +1,7 @@
 
 #include <string.h> /* memcmp */
+
+#include "Parser.h"
 #include "PVM/PVM.h"
 #include "PVM/CodeGen.h"
 
@@ -7,7 +9,14 @@
 #define PVM_SCOPE_COUNT 128
 #define PVM_MAX_LOCAL_COUNT PVM_REG_COUNT
 
-typedef UInt Operand;
+typedef struct Operand 
+{
+    ParserType IntegralType;
+    union {
+        UInt Size, RegID;
+    };
+    bool InRegister;
+} Operand;
 
 
 typedef struct LocalVar 
@@ -29,6 +38,16 @@ typedef struct PVMCompiler
 } PVMCompiler;
 
 
+
+static Operand sReturnRegister = {
+    .IntegralType = TYPE_U64,
+    .InRegister = true,
+    .RegID = PVM_REG_RET,
+};
+
+
+
+
 PVMCompiler PVMCompilerInit(CodeChunk *Code, const PascalAst *Ast);
 void PVMCompilerDeinit(PVMCompiler *Compiler);
 
@@ -36,7 +55,7 @@ void PVMCompilerDeinit(PVMCompiler *Compiler);
 
 
 static void PVMDeclareLocal(PVMCompiler *Compiler, Token Name, Operand Dest);
-static Operand PVMGetLocationOf(const PVMCompiler *Compiler, const Token *Variable);
+static Operand *PVMGetLocationOf(PVMCompiler *Compiler, const Token *Variable);
 
 
 
@@ -50,27 +69,27 @@ static void PVMCompileReturnStmt(PVMCompiler *Compiler, const AstReturnStmt *Ret
 
 
 
-static void PVMCompileExprInto(PVMCompiler *Compiler, Operand Dest, const AstExpr *Expr);
-static void PVMCompileSimpleExprInto(PVMCompiler *Compiler, Operand Dest, const AstSimpleExpr *SimpleExpr);
-static void PVMCompileTermInto(PVMCompiler *Compiler, Operand Dest, const AstTerm *Term);
-static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand Dest, const AstFactor *Factor);
+static void PVMCompileExprInto(PVMCompiler *Compiler, Operand *Dest, const AstExpr *Expr);
+static void PVMCompileSimpleExprInto(PVMCompiler *Compiler, Operand *Dest, const AstSimpleExpr *SimpleExpr);
+static void PVMCompileTermInto(PVMCompiler *Compiler, Operand *Dest, const AstTerm *Term);
+static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand *Dest, const AstFactor *Factor);
 
-static void PVMEmitMovI32(PVMCompiler *Compiler, Operand Dest, Operand Src);
-static void PVMEmitLoadI32(PVMCompiler *Compiler, Operand Dest, I32 Integer);
-static void PVMEmitAddI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right);
-static void PVMEmitSubI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right);
-static void PVMEmitMulI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right);
-static void PVMEmitDivI32(PVMCompiler *Compiler, Operand Dividend, Operand Remainder, Operand Left, Operand Right);
+static void PVMEmitMov(PVMCompiler *Compiler, Operand *Dest, Operand *Src);
+static void PVMEmitLoadI32(PVMCompiler *Compiler, Operand *Dest, I32 Integer);
+static void PVMEmitAdd(PVMCompiler *Compiler, Operand *Dest, Operand *Left, Operand *Right);
+static void PVMEmitSub(PVMCompiler *Compiler, Operand *Dest, Operand *Left, Operand *Right);
+static void PVMEmitMul(PVMCompiler *Compiler, Operand *Dest, Operand *Left, Operand *Right);
+static void PVMEmitDiv(PVMCompiler *Compiler, Operand *Dividend, Operand *Remainder, Operand *Left, Operand *Right);
 static void PVMEmitSetCC(
         PVMCompiler *Compiler, TokenType Op, 
-        Operand Dest, Operand Left, Operand Right, 
+        Operand *Dest, Operand *Left, Operand *Right, 
         UInt OperandSize, bool IsSigned
 );
 static void PVMEmitReturn(PVMCompiler *Compiler);
 static void PVMEmitExit(PVMCompiler *Compiler);
 
-static Operand PVMAllocateRegister(PVMCompiler *Compiler);
-static void PVMFreeRegister(PVMCompiler *Compiler, Operand Register);
+static Operand PVMAllocateRegister(PVMCompiler *Compiler, ParserType Type);
+static void PVMFreeRegister(PVMCompiler *Compiler, Operand *Register);
 static CodeChunk *PVMCurrentChunk(PVMCompiler *Compiler);
 
 static void PVMBeginScope(PVMCompiler *Compiler);
@@ -145,22 +164,22 @@ static void PVMBindVariableToCurrentLocation(PVMCompiler *Compiler, Token Name)
     PASCAL_ASSERT(0, "TODO: PVMBindVariableToCurrentLocation()");
 }
 
-static Operand PVMGetLocationOf(const PVMCompiler *Compiler, const Token *Variable)
+static Operand *PVMGetLocationOf(PVMCompiler *Compiler, const Token *Variable)
 {
     for (int i = Compiler->CurrScopeDepth; i >= 0; i--)
     {
         for (int k = 0; k < Compiler->LocalCount[i]; k++)
         {
-            const LocalVar *Local = &Compiler->Locals[i][k];
+            LocalVar *Local = &Compiler->Locals[i][k];
             if (Variable->Len == Local->Name.Len 
             && TokenEqualNoCase(Variable->Str, Local->Name.Str, Variable->Len))
             {
-                return Local->Location;
+                return &Local->Location;
             }
         }
     }
     PASCAL_ASSERT(0, "TODO: static analysis to prevent undef variable");
-    return 0;
+    return NULL;
 }
 
 
@@ -215,7 +234,7 @@ static void PVMCompileVar(PVMCompiler *Compiler, const AstVarBlock *Declarations
 
     /* TODO: global variables */
     do {
-        Operand Register = PVMAllocateRegister(Compiler);
+        Operand Register = PVMAllocateRegister(Compiler, I->Type);
         PVMDeclareLocal(Compiler, I->Identifier, Register);
         I = I->Next;
     } while (NULL != I);
@@ -251,7 +270,7 @@ static void PVMCompileStmts(PVMCompiler *Compiler, const AstStmtBlock *Block)
 
 static void PVMCompileAssignStmt(PVMCompiler *Compiler, const AstAssignStmt *Assignment)
 {
-    Operand LValue = PVMGetLocationOf(Compiler, &Assignment->Variable);
+    Operand *LValue = PVMGetLocationOf(Compiler, &Assignment->Variable);
     PVMCompileExprInto(Compiler, LValue, &Assignment->Expr);
 }
 
@@ -260,7 +279,7 @@ static void PVMCompileReturnStmt(PVMCompiler *Compiler, const AstReturnStmt *Ret
 {
     if (NULL != RetStmt->Expr)
     {
-        PVMCompileExprInto(Compiler, PVM_REG_RET, RetStmt->Expr);
+        PVMCompileExprInto(Compiler, &sReturnRegister, RetStmt->Expr);
     }
     PVMEmitReturn(Compiler);
 }
@@ -289,7 +308,7 @@ static void PVMCompileReturnStmt(PVMCompiler *Compiler, const AstReturnStmt *Ret
 
 
 
-static void PVMCompileExprInto(PVMCompiler *Compiler, Operand Dest, const AstExpr *Expr)
+static void PVMCompileExprInto(PVMCompiler *Compiler, Operand *Dest, const AstExpr *Expr)
 {
     const AstOpSimpleExpr *RightSimpleExpr = Expr->Right;
     if (NULL == RightSimpleExpr)
@@ -298,22 +317,25 @@ static void PVMCompileExprInto(PVMCompiler *Compiler, Operand Dest, const AstExp
         return;
     }
 
-    Operand Left = PVMAllocateRegister(Compiler);
-    PVMCompileSimpleExprInto(Compiler, Left, &Expr->Left);
+    Operand Left = PVMAllocateRegister(Compiler, Expr->Type);
+    PVMCompileSimpleExprInto(Compiler, &Left, &Expr->Left);
 
-    Operand Right = PVMAllocateRegister(Compiler);
+    Operand Right = PVMAllocateRegister(Compiler, Expr->Type);
     do {
-        PVMCompileSimpleExprInto(Compiler, Right, &RightSimpleExpr->SimpleExpr);
-        PVMEmitSetCC(Compiler, RightSimpleExpr->Op, Left, Left, Right, sizeof(U32), true);
+        PVMCompileSimpleExprInto(Compiler, &Right, &RightSimpleExpr->SimpleExpr);
+        PVMEmitSetCC(Compiler, RightSimpleExpr->Op, 
+                &Left, &Left, &Right, 
+                sizeof(U32), true
+        );
         RightSimpleExpr = RightSimpleExpr->Next;
     } while (NULL != RightSimpleExpr);
-    PVMFreeRegister(Compiler, Right);
+    PVMFreeRegister(Compiler, &Right);
 
-    PVMEmitMovI32(Compiler, Dest, Left);
-    PVMFreeRegister(Compiler, Left);
+    PVMEmitMov(Compiler, Dest, &Left);
+    PVMFreeRegister(Compiler, &Left);
 }
 
-static void PVMCompileSimpleExprInto(PVMCompiler *Compiler, Operand Dest, const AstSimpleExpr *SimpleExpr)
+static void PVMCompileSimpleExprInto(PVMCompiler *Compiler, Operand *Dest, const AstSimpleExpr *SimpleExpr)
 {
     const AstOpTerm *RightTerm = SimpleExpr->Right;
     if (NULL == RightTerm)
@@ -322,22 +344,22 @@ static void PVMCompileSimpleExprInto(PVMCompiler *Compiler, Operand Dest, const 
         return;
     }
 
-    Operand Left = PVMAllocateRegister(Compiler);
-    PVMCompileTermInto(Compiler, Left, &SimpleExpr->Left);
+    Operand Left = PVMAllocateRegister(Compiler, SimpleExpr->Type);
+    PVMCompileTermInto(Compiler, &Left, &SimpleExpr->Left);
 
-    Operand Right = PVMAllocateRegister(Compiler);
+    Operand Right = PVMAllocateRegister(Compiler, SimpleExpr->Type);
     do {
-        PVMCompileTermInto(Compiler, Right, &RightTerm->Term);
+        PVMCompileTermInto(Compiler, &Right, &RightTerm->Term);
 
         switch (RightTerm->Op)
         {
         case TOKEN_PLUS:
         {
-            PVMEmitAddI32(Compiler, Left, Left, Right);
+            PVMEmitAdd(Compiler, &Left, &Left, &Right);
         } break;
         case TOKEN_MINUS:
         {
-            PVMEmitSubI32(Compiler, Left, Left, Right);
+            PVMEmitSub(Compiler, &Left, &Left, &Right);
         } break;
 
         case TOKEN_NOT:
@@ -351,14 +373,14 @@ static void PVMCompileSimpleExprInto(PVMCompiler *Compiler, Operand Dest, const 
 
         RightTerm = RightTerm->Next;
     } while (NULL != RightTerm);
-    PVMFreeRegister(Compiler, Right);
+    PVMFreeRegister(Compiler, &Right);
 
-    PVMEmitMovI32(Compiler, Dest, Left);
-    PVMFreeRegister(Compiler, Left);
+    PVMEmitMov(Compiler, Dest, &Left);
+    PVMFreeRegister(Compiler, &Left);
 }
 
 
-static void PVMCompileTermInto(PVMCompiler *Compiler, Operand Dest, const AstTerm *Term)
+static void PVMCompileTermInto(PVMCompiler *Compiler, Operand *Dest, const AstTerm *Term)
 {
     const AstOpFactor *RightFactor = Term->Right;
     if (NULL == RightFactor)
@@ -367,33 +389,33 @@ static void PVMCompileTermInto(PVMCompiler *Compiler, Operand Dest, const AstTer
         return;
     }
 
-    Operand Left = PVMAllocateRegister(Compiler);
-    PVMCompileFactorInto(Compiler, Left, &Term->Left);
+    Operand Left = PVMAllocateRegister(Compiler, Term->Type);
+    PVMCompileFactorInto(Compiler, &Left, &Term->Left);
 
-    Operand Right = PVMAllocateRegister(Compiler);
+    Operand Right = PVMAllocateRegister(Compiler, Term->Type);
     do {
-        PVMCompileFactorInto(Compiler, Right, &RightFactor->Factor);
+        PVMCompileFactorInto(Compiler, &Right, &RightFactor->Factor);
 
         switch (RightFactor->Op)
         {
         case TOKEN_STAR:
         {
-            PVMEmitMulI32(Compiler, Left, Left, Right);
+            PVMEmitMul(Compiler, &Left, &Left, &Right);
         } break;
 
         case TOKEN_SLASH:
         case TOKEN_DIV:
         {
-            Operand Dummy = PVMAllocateRegister(Compiler);
-            PVMEmitDivI32(Compiler, Left, Dummy, Left, Right);
-            PVMFreeRegister(Compiler, Dummy);
+            Operand Dummy = PVMAllocateRegister(Compiler, RightFactor->Type);
+            PVMEmitDiv(Compiler, &Left, &Dummy, &Left, &Right);
+            PVMFreeRegister(Compiler, &Dummy);
         } break;
 
         case TOKEN_MOD:
         {
-            Operand Dummy = PVMAllocateRegister(Compiler);
-            PVMEmitDivI32(Compiler, Dummy, Left, Left, Right);
-            PVMFreeRegister(Compiler, Dummy);
+            Operand Dummy = PVMAllocateRegister(Compiler, RightFactor->Type);
+            PVMEmitDiv(Compiler, &Dummy, &Left, &Left, &Right);
+            PVMFreeRegister(Compiler, &Dummy);
         } break;
 
         case TOKEN_AND:
@@ -406,25 +428,28 @@ static void PVMCompileTermInto(PVMCompiler *Compiler, Operand Dest, const AstTer
         }
         RightFactor = RightFactor->Next;
     } while (NULL != RightFactor);
-    PVMFreeRegister(Compiler, Right);
+    PVMFreeRegister(Compiler, &Right);
 
-    PVMEmitMovI32(Compiler, Dest, Left);
-    PVMFreeRegister(Compiler, Left);
+    PVMEmitMov(Compiler, Dest, &Left);
+    PVMFreeRegister(Compiler, &Left);
 }
 
 
-static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand Dest, const AstFactor *Factor)
+static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand *Dest, const AstFactor *Factor)
 {
-    switch (Factor->Type)
+    switch (Factor->FactorType)
     {
     case FACTOR_INTEGER:
     {
         PVMEmitLoadI32(Compiler, Dest, Factor->As.Integer);
     } break;
+    case FACTOR_REAL:
+    {
+    } break;
     case FACTOR_VARIABLE:
     {
-        Operand Variable = PVMGetLocationOf(Compiler, &Factor->As.Variable.Name);
-        PVMEmitMovI32(Compiler, Dest, Variable);
+        Operand *Variable = PVMGetLocationOf(Compiler, &Factor->As.Variable.Name);
+        PVMEmitMov(Compiler, Dest, Variable);
     } break;
     case FACTOR_GROUP_EXPR:
     {
@@ -450,49 +475,93 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand Dest, const AstF
 
 
 
-static void PVMEmitMovI32(PVMCompiler *Compiler, Operand Dest, Operand Src)
+static void PVMEmitMov(PVMCompiler *Compiler, Operand *Dest, Operand *Src)
 {
-    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_TRANSFER_INS(MOV, Dest, Src));
+    if (Dest->InRegister && Src->InRegister)
+    {
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_TRANSFER_INS(MOV, Dest->RegID, Src->RegID));
+    }
+    else 
+    {
+        PASCAL_UNREACHABLE("TODO Mov mem/reg, reg/mem");
+    }
 }
 
-static void PVMEmitLoadI32(PVMCompiler *Compiler, Operand Dest, I32 Integer)
+static void PVMEmitLoadI32(PVMCompiler *Compiler, Operand *Dest, I32 Integer)
 {
-    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_ARITH_INS(LDI, Dest, Integer));
+    if (Dest->InRegister)
+    {
+        Dest->IntegralType = TYPE_I32;
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_ARITH_INS(LDI, Dest->RegID, Integer));
+    }
+    else 
+    {
+        PASCAL_UNREACHABLE("TODO Load mem, imm");
+    }
 }
 
 
-static void PVMEmitAddI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right)
+static void PVMEmitAdd(PVMCompiler *Compiler, Operand *Dest, Operand *Left, Operand *Right)
 {
-    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_ARITH_INS(ADD, Dest, Left, Right, 0));
+    if (Dest->InRegister && Left->InRegister && Right->InRegister)
+    {
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_ARITH_INS(ADD, Dest->RegID, Left->RegID, Right->RegID, 0));
+    }
+    else 
+    {
+        PASCAL_UNREACHABLE("TODO Add dest, left, right");
+    }
 }
 
 
-static void PVMEmitSubI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right)
+static void PVMEmitSub(PVMCompiler *Compiler, Operand *Dest, Operand *Left, Operand *Right)
 {
-    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_ARITH_INS(SUB, Dest, Left, Right, 0));
+    if (Dest->InRegister && Left->InRegister && Right->InRegister)
+    {
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_ARITH_INS(SUB, Dest->RegID, Left->RegID, Right->RegID, 0));
+    }
+    else 
+    {
+        PASCAL_UNREACHABLE("TODO Sub dest, left, right");
+    }
 }
 
-static void PVMEmitMulI32(PVMCompiler *Compiler, Operand Dest, Operand Left, Operand Right)
+static void PVMEmitMul(PVMCompiler *Compiler, Operand *Dest, Operand *Left, Operand *Right)
 {
-    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_SPECIAL_INS(MUL, Dest, Left, Right, true, 0));
+    if (Dest->InRegister && Left->InRegister && Right->InRegister)
+    {
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_SPECIAL_INS(MUL, Dest->RegID, Left->RegID, Right->RegID, true, 0));
+    }
+    else 
+    {
+        PASCAL_UNREACHABLE("TODO Mul dest, left, right");
+    }
 }
 
-static void PVMEmitDivI32(PVMCompiler *Compiler, Operand Dividend, Operand Remainder, Operand Left, Operand Right)
+static void PVMEmitDiv(PVMCompiler *Compiler, Operand *Dividend, Operand *Remainder, Operand *Left, Operand *Right)
 {
-    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_SPECIAL_INS(DIV, Dividend, Left, Right, true, Remainder));
+    if (Dividend->InRegister && Remainder->InRegister && Left->InRegister && Right->InRegister)
+    {
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_SPECIAL_INS(DIV, Dividend->RegID, Left->RegID, Right->RegID, true, Remainder->RegID));
+    }
+    else 
+    {
+        PASCAL_UNREACHABLE("TODO Div dest, left, right, rem");
+    }
 }
 
-static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, Operand Dest, Operand Left, Operand Right, UInt OperandSize, bool IsSigned)
+static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, Operand *Dest, Operand *Left, Operand *Right, UInt OperandSize, bool IsSigned)
 {
+    PASCAL_ASSERT(Dest->InRegister && Left->InRegister && Right->InRegister, "TODO: SetCC Dest, Left, Right");
 #define SET(Size, ...)\
     do {\
         switch (Op) {\
-        case TOKEN_EQUAL:           ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SEQ ## Size, Dest, Left, Right)); break;\
-        case TOKEN_LESS_GREATER:    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SNE ## Size, Dest, Left, Right)); break;\
-        case TOKEN_LESS:            ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SLT ## Size, Dest, Left, Right)); break;\
-        case TOKEN_GREATER:         ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SGT ## Size, Dest, Left, Right)); break;\
-        case TOKEN_GREATER_EQUAL:   ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SLT ## Size, Dest, Right, Left)); break;\
-        case TOKEN_LESS_EQUAL:      ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SGT ## Size, Dest, Right, Left)); break;\
+        case TOKEN_EQUAL:           ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SEQ ## Size, Dest->RegID, Left->RegID, Right->RegID)); break;\
+        case TOKEN_LESS_GREATER:    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SNE ## Size, Dest->RegID, Left->RegID, Right->RegID)); break;\
+        case TOKEN_LESS:            ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SLT ## Size, Dest->RegID, Left->RegID, Right->RegID)); break;\
+        case TOKEN_GREATER:         ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SGT ## Size, Dest->RegID, Left->RegID, Right->RegID)); break;\
+        case TOKEN_GREATER_EQUAL:   ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SLT ## Size, Dest->RegID, Right->RegID, Left->RegID)); break;\
+        case TOKEN_LESS_EQUAL:      ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SGT ## Size, Dest->RegID, Right->RegID, Left->RegID)); break;\
         default: {\
             PASCAL_UNREACHABLE(__VA_ARGS__);\
         } break;\
@@ -502,12 +571,12 @@ static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, Operand Dest, Oper
 #define SIGNEDSET(Size, ...)\
     do {\
         switch (Op) {\
-        case TOKEN_EQUAL:           ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SEQ ## Size, Dest, Left, Right)); break;\
-        case TOKEN_LESS_GREATER:    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SNE ## Size, Dest, Left, Right)); break;\
-        case TOKEN_LESS:            ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSLT ## Size, Dest, Left, Right)); break;\
-        case TOKEN_GREATER:         ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSGT ## Size, Dest, Left, Right)); break;\
-        case TOKEN_GREATER_EQUAL:   ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSLT ## Size, Dest, Right, Left)); break;\
-        case TOKEN_LESS_EQUAL:      ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSGT ## Size, Dest, Right, Left)); break;\
+        case TOKEN_EQUAL:           ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SEQ ## Size, Dest->RegID, Left->RegID, Right->RegID)); break;\
+        case TOKEN_LESS_GREATER:    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SNE ## Size, Dest->RegID, Left->RegID, Right->RegID)); break;\
+        case TOKEN_LESS:            ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSLT ## Size, Dest->RegID, Left->RegID, Right->RegID)); break;\
+        case TOKEN_GREATER:         ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSGT ## Size, Dest->RegID, Left->RegID, Right->RegID)); break;\
+        case TOKEN_GREATER_EQUAL:   ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSLT ## Size, Dest->RegID, Right->RegID, Left->RegID)); break;\
+        case TOKEN_LESS_EQUAL:      ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSGT ## Size, Dest->RegID, Right->RegID, Left->RegID)); break;\
         default: {\
             PASCAL_UNREACHABLE(__VA_ARGS__);\
         } break;\
@@ -557,8 +626,9 @@ static void PVMEmitExit(PVMCompiler *Compiler)
 
 
 
-static Operand PVMAllocateRegister(PVMCompiler *Compiler)
+static Operand PVMAllocateRegister(PVMCompiler *Compiler, ParserType Type)
 {
+    PASCAL_ASSERT(Type != TYPE_INVALID, "Compiler received invalid type");
     for (UInt i = 0; i < PVM_REG_COUNT; i++)
     {
         /* found free reg */
@@ -566,16 +636,20 @@ static Operand PVMAllocateRegister(PVMCompiler *Compiler)
         {
             /* mark reg as allocated */
             Compiler->RegisterList[Compiler->CurrScopeDepth] |= 1u << i;
-            return i;
+            return (Operand) {
+                .RegID = i,
+                .InRegister = true,
+                .IntegralType = Type,
+            };
         }
     }
     PASCAL_UNREACHABLE("TODO: Register spilling");
-    return 0;
+    return (Operand) { 0 };
 }
 
-static void PVMFreeRegister(PVMCompiler *Compiler, Operand Register)
+static void PVMFreeRegister(PVMCompiler *Compiler, Operand *Register)
 {
-    Compiler->RegisterList[Compiler->CurrScopeDepth] &= ~(1u << Register);
+    Compiler->RegisterList[Compiler->CurrScopeDepth] &= ~(1u << Register->RegID);
 }
 
 
@@ -589,7 +663,8 @@ static CodeChunk *PVMCurrentChunk(PVMCompiler *Compiler)
 
 static void PVMBeginScope(PVMCompiler *Compiler)
 {
-    Compiler->RegisterList[Compiler->CurrScopeDepth + 1] = Compiler->RegisterList[Compiler->CurrScopeDepth];
+    Compiler->RegisterList[Compiler->CurrScopeDepth + 1] = 
+        Compiler->RegisterList[Compiler->CurrScopeDepth];
     Compiler->CurrScopeDepth++;
 }
 

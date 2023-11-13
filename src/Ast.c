@@ -61,7 +61,7 @@ static void PAstPrintTerm(FILE *f, const AstTerm *Term)
 
 static void PAstPrintFactor(FILE *f, const AstFactor *Factor)
 {
-    switch (Factor->Type)
+    switch (Factor->FactorType)
     {
     case FACTOR_GROUP_EXPR:
     {

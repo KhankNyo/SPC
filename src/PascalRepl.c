@@ -43,6 +43,7 @@ int PascalRepl(void)
             RunVM(&PVM, &Chunk, Ast);
         }
         ArenaReset(&Scratch);
+        Chunk.Count = 0;
     }
 
 

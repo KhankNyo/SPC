@@ -57,7 +57,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk)
         IDAT_BINARY_OP(/, Opcode, RegType);\
         R(Opcode, IDAT_SPECIAL, RR)RegType = R(Opcode, IDAT, RA)RegType % R(Opcode, IDAT, RB)RegType;\
     } while(0)
-#define FDAT_BINARY_OP(Operation, Opcode) BINARY_OP(Operation, Opcode, FDAT, F, NOTHING)
+#define FDAT_BINARY_OP(Operation, Opcode, RegType) BINARY_OP(Operation, Opcode, FDAT, F, RegType)
 
 
 #define TEST_AND_SET(Operation, Opcode, InstructionType, RegisterSet, RegType)\
@@ -66,7 +66,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk)
         Operation \
         RegisterSet(Opcode, InstructionType, RegisterSet ## B)RegType
 #define IDAT_TEST_AND_SET(Operation, Opcode, RegType) TEST_AND_SET(Operation, Opcode, IDAT, R, RegType)
-#define FDAT_TEST_AND_SET(Operation, Opcode) TEST_AND_SET(Operation, Opcode, FDAT, F, NOTHING)
+#define FDAT_TEST_AND_SET(Operation, Opcode, RegType) TEST_AND_SET(Operation, Opcode, FDAT, F, RegType)
 
 
 #define BRANCH_IF(Operation, IP, Opcode, RegType)\
@@ -144,9 +144,9 @@ do {\
                     IDAT_DIVIDE_OP(Opcode, .Word.First);
             } break;
 
-            case PVM_SPECIAL_F2P:
+            case PVM_SPECIAL_D2P:
             {
-                R(Opcode, IDAT, RD).Ptr = (PVMPtr)F(Opcode, FDAT, FD);
+                R(Opcode, IDAT, RD).Ptr = (PVMPtr)F(Opcode, FDAT, FD).Double;
             } break;
             }
         } break;
@@ -202,14 +202,28 @@ do {\
 
         case PVM_IRD_ARITH:
         {
-            PVMIRDArith Op = PVM_IRD_GET_OP(Opcode);
-            switch (Op)
+            switch (PVM_IRD_GET_ARITH(Opcode))
             {
             case PVM_IRD_ADD: R(Opcode, IRD, RD).Word.First += IRD_SIGNED_IMM(Opcode); break;
             case PVM_IRD_SUB: R(Opcode, IRD, RD).Word.First -= IRD_SIGNED_IMM(Opcode); break;
             case PVM_IRD_LDI: R(Opcode, IRD, RD).Word.First = IRD_SIGNED_IMM(Opcode); break;
             case PVM_IRD_LUI: R(Opcode, IRD, RD).Word.First = PVM_IRD_GET_IMM(Opcode) << 16; break;
             case PVM_IRD_ORI: R(Opcode, IRD, RD).Word.First |= PVM_IRD_GET_IMM(Opcode); break;
+            }
+        } break;
+        case PVM_IRD_MEM:
+        {
+            PVMPtr *Addr = FP + (PVMPtr)PVM_IRD_GET_IMM(Opcode);
+            if (Addr > PVM->Stack.End)
+            {
+                /* TODO: invalid access */
+            }
+            switch (PVM_IRD_GET_MEM(Opcode))
+            {
+            case PVM_IRD_LDRS: R(Opcode, IRD, RD).Ptr = *Addr; break;
+            case PVM_IRD_LDFS: F(Opcode, IRD, FD).Ptr = *Addr; break;
+            case PVM_IRD_STRS: *Addr = R(Opcode, IRD, RD).Ptr; break;
+            case PVM_IRD_STFS: *Addr = F(Opcode, IRD, FD).Ptr; break;
             }
         } break;
 
@@ -259,8 +273,8 @@ do {\
         {
             switch (PVM_FDAT_GET_ARITH(Opcode))
             {
-            case PVM_ARITH_ADD: FDAT_BINARY_OP(+, Opcode); break;
-            case PVM_ARITH_SUB: FDAT_BINARY_OP(-, Opcode); break;
+            case PVM_ARITH_ADD: FDAT_BINARY_OP(+, Opcode, .Double); break;
+            case PVM_ARITH_SUB: FDAT_BINARY_OP(-, Opcode, .Double); break;
             }
         } break;
         case PVM_FDAT_SPECIAL:
@@ -268,9 +282,9 @@ do {\
             switch (PVM_FDAT_GET_SPECIAL(Opcode))
             {
             case PVM_SPECIAL_DIVP:
-            case PVM_SPECIAL_DIV: FDAT_BINARY_OP(/, Opcode); break;
-            case PVM_SPECIAL_MUL: FDAT_BINARY_OP(*, Opcode); break;
-            case PVM_SPECIAL_P2F: F(Opcode, FDAT, FD) = (F64)R(Opcode, IDAT, RA).Ptr; break;
+            case PVM_SPECIAL_DIV: FDAT_BINARY_OP(/, Opcode, .Double); break;
+            case PVM_SPECIAL_MUL: FDAT_BINARY_OP(*, Opcode, .Double); break;
+            case PVM_SPECIAL_P2D: F(Opcode, FDAT, FD).Double = R(Opcode, IDAT, RA).Ptr; break;
             }
         } break;
         case PVM_FDAT_CMP:
@@ -278,10 +292,10 @@ do {\
             switch (PVM_FDAT_GET_CMP(Opcode))
             {
             default: goto IllegalInstruction;
-            case PVM_CMP_SEQP: FDAT_TEST_AND_SET(==, Opcode); break;
-            case PVM_CMP_SNEP: FDAT_TEST_AND_SET(!=, Opcode); break;
-            case PVM_CMP_SLTP: FDAT_TEST_AND_SET(<, Opcode); break;
-            case PVM_CMP_SGTP: FDAT_TEST_AND_SET(>, Opcode); break;
+            case PVM_CMP_SEQP: FDAT_TEST_AND_SET(==, Opcode, .Double); break;
+            case PVM_CMP_SNEP: FDAT_TEST_AND_SET(!=, Opcode, .Double); break;
+            case PVM_CMP_SLTP: FDAT_TEST_AND_SET(<, Opcode, .Double); break;
+            case PVM_CMP_SGTP: FDAT_TEST_AND_SET(>, Opcode, .Double); break;
             }
         } break;
         case PVM_FDAT_TRANSFER:
@@ -294,7 +308,7 @@ do {\
         case PVM_FMEM_LDF:
         {
             /* TODO: check boundaries before loading */
-            F(Opcode, FDAT, FD) = Chunk->DataSection.Data[PVM_FMEM_GET_IMM(Opcode)];
+            F(Opcode, FDAT, FD).Double = Chunk->DataSection.Data[PVM_FMEM_GET_IMM(Opcode)];
         } break;
 
         }
@@ -346,7 +360,7 @@ void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
         {
             fprintf(f, "\n");
         }
-        fprintf(f, "[F%02d: %g]", i, PVM->F[i]);
+        fprintf(f, "[F%02d: %g]", i, PVM->F[i].Double);
     }
 
     fprintf(f, "\n===================== STACK ======================");

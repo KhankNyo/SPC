@@ -40,7 +40,9 @@ static void DisasmBrIf(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opco
 static void DisasmBAlt(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opcode);
 
 static void DisasmImmRdArith(FILE *f, PVMWord Opcode);
+static void DisasmImmRdMem(FILE *f, PVMWord Opcode);
 static void DisasmImmRd(FILE *f, const char *Mnemonic, PVMWord Opcode, bool IsSigned);
+static void DisasmImmFd(FILE *f, const char *Mnemonic, PVMWord Opcode, bool IsSigned);
 
 static void DisasmSysOp(FILE *f, PVMWord Addr, PVMWord Opcode);
 static void PrintAddr(FILE *f, PVMWord Addr);
@@ -82,6 +84,7 @@ static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode)
     case PVM_FMEM_LDF: DisasmFMem(f, "LDF", Opcode); break;
 
     case PVM_IRD_ARITH: DisasmImmRdArith(f, Opcode); break;
+    case PVM_IRD_MEM: DisasmImmRdMem(f, Opcode); break;
 
     case PVM_BRIF_EQ: DisasmBrIf(f, "EQ", Addr, Opcode); break;
     case PVM_BRIF_NE: DisasmBrIf(f, "NE", Addr, Opcode); break;
@@ -148,10 +151,10 @@ static void DisasmIDatSpecial(FILE *f, PVMWord Opcode)
             DisasmIDatExOper(f, "DIV", Rd, Ra, Rb, Rr);
     } break;
 
-    case PVM_SPECIAL_F2P: 
+    case PVM_SPECIAL_D2P: 
     {
         const char *Fa = sFloatRegName[PVM_FDAT_GET_FA(Opcode)];
-        DisasmTransferIns(f, "F2P", Rd, Fa);
+        DisasmTransferIns(f, "D2P", Rd, Fa);
     } break;
     }
 }
@@ -252,10 +255,10 @@ static void DisasmFDatSpecial(FILE *f, PVMWord Opcode)
     case PVM_SPECIAL_DIVP:
     case PVM_SPECIAL_DIV: Mnemonic = "FDIV"; break;
     case PVM_SPECIAL_MUL: Mnemonic = "FMUL"; break;
-    case PVM_SPECIAL_P2F:
+    case PVM_SPECIAL_P2D:
     {
         Fd = sIntRegName[PVM_IDAT_GET_RD(Opcode)];
-        Mnemonic = "P2F";
+        Mnemonic = "P2D";
     } break;
     }
     DisasmArithIns(f, Mnemonic, Fd, Fa, Fb);
@@ -354,13 +357,24 @@ static void DisasmBAlt(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opco
 
 static void DisasmImmRdArith(FILE *f, PVMWord Opcode)
 {
-    switch ((PVMIRDArith)PVM_IRD_GET_OP(Opcode))
+    switch (PVM_IRD_GET_ARITH(Opcode))
     {
     case PVM_IRD_ADD: DisasmImmRd(f, "ADD", Opcode, true); break;
     case PVM_IRD_SUB: DisasmImmRd(f, "SUB", Opcode, true); break;
     case PVM_IRD_LDI: DisasmImmRd(f, "LDI", Opcode, true); break;
     case PVM_IRD_LUI: DisasmImmRd(f, "LUI", Opcode, false); break;
     case PVM_IRD_ORI: DisasmImmRd(f, "ORI", Opcode, false); break;
+    }
+}
+
+static void DisasmImmRdMem(FILE *f, PVMWord Opcode)
+{
+    switch (PVM_IRD_GET_MEM(Opcode))
+    {
+    case PVM_IRD_LDRS: DisasmImmRd(f, "LDRS", Opcode, false); break;
+    case PVM_IRD_LDFS: DisasmImmFd(f, "LDFS", Opcode, false); break;
+    case PVM_IRD_STRS: DisasmImmRd(f, "STRS", Opcode, false); break;
+    case PVM_IRD_STFS: DisasmImmFd(f, "STFS", Opcode, false); break;
     }
 }
 
@@ -377,6 +391,20 @@ static void DisasmImmRd(FILE *f, const char *Mnemonic, PVMWord Opcode, bool IsSi
             Mnemonic, Rd, Immediate
     );
 }
+
+
+static void DisasmImmFd(FILE *f, const char *Mnemonic, PVMWord Opcode, bool IsSigned)
+{
+    const char *Rd = sFloatRegName[PVM_IRD_GET_RD(Opcode)];
+    int Immediate = IsSigned 
+        ? (int)(I16)PVM_IRD_GET_IMM(Opcode)
+        : (int)PVM_IRD_GET_IMM(Opcode);
+
+    fprintf(f, "%s %s, %d\n", 
+            Mnemonic, Rd, Immediate
+    );
+}
+
 
 
 
