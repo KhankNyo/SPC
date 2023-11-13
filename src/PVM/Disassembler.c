@@ -330,7 +330,7 @@ static void DisasmBrIf(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opco
     const char *Ra = sIntRegName[PVM_BRIF_GET_RA(Opcode)];
     PVMWord BranchTarget = Addr + 1 + PVM_BRIF_GET_IMM(Opcode);
 
-    fprintf(f, "B%s %s, [%u]\n", 
+    fprintf(f, "B%s %s, [%x]\n", 
             Mnemonic, Ra, BranchTarget
     );
 }
@@ -345,7 +345,7 @@ static void DisasmBAlt(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opco
     }
     else
     {
-        fprintf(f, "%s [%u]\n", Mnemonic, BranchTarget);
+        fprintf(f, "%s [%x]\n", Mnemonic, BranchTarget);
     }
 }
 
@@ -428,6 +428,6 @@ static void PrintAddr(FILE *f, PVMWord Addr)
 
 static void PrintHexCode(FILE *f, PVMWord Opcode)
 {
-    fprintf(f, "%08x  ", Opcode);
+    fprintf(f, "%08X  ", Opcode);
 }
 

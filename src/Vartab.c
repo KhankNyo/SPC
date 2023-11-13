@@ -54,10 +54,10 @@ PascalVartab VartabPredefinedIdentifiers(PascalGPA *Allocator, ISize InitialCap)
     VartabSet(&Identifiers, (const U8*)"int32", 5, TYPE_I32, VAR_ID_TYPE, NULL);
     VartabSet(&Identifiers, (const U8*)"int64", 5, TYPE_I64, VAR_ID_TYPE, NULL);
 
-    VartabSet(&Identifiers, (const U8*)"uint8", 4, TYPE_U8, VAR_ID_TYPE, NULL);
-    VartabSet(&Identifiers, (const U8*)"uint16", 5, TYPE_U16, VAR_ID_TYPE, NULL);
-    VartabSet(&Identifiers, (const U8*)"uint32", 5, TYPE_U32, VAR_ID_TYPE, NULL);
-    VartabSet(&Identifiers, (const U8*)"uint64", 5, TYPE_U64, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"uint8", 5, TYPE_U8, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"uint16", 6, TYPE_U16, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"uint32", 6, TYPE_U32, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"uint64", 6, TYPE_U64, VAR_ID_TYPE, NULL);
     return Identifiers;
 }
 

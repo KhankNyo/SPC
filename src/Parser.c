@@ -330,12 +330,13 @@ static AstVarBlock *ParseVar(PascalParser *Parser)
     AstVarList *Decl = &BlockDeclaration->Decl;
 
     Decl = ParseVarList(Parser, Decl);
+    ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after type name.");
     while (NextTokenIs(Parser, TOKEN_IDENTIFIER))
     {
         Decl->Next = ArenaAllocateZero(Parser->Arena, sizeof(*Decl));
         Decl = ParseVarList(Parser, Decl->Next);
+        ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after type name.");
     }
-    ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after type name.");
     return BlockDeclaration;
 }
 
@@ -371,11 +372,11 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type)
         AstVarList *ArgList = Function->Params;
         do {
             ArgList = ParseVarList(Parser, ArgList);
-            if (ConsumeIfNextIs(Parser, TOKEN_RIGHT_PAREN))
+            if (ConsumeIfNextIs(Parser, TOKEN_RIGHT_PAREN)
+            || !ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after type name."))
             {
                 break;
             }
-            ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after type name.");
         } while (!IsAtEnd(Parser));
     }
     Token BeforeColon = Parser->Curr;
