@@ -174,10 +174,7 @@ static U32 GetSize(const GPAHeader *Header)
 
 static GPAHeader *GPAFindFreeNode(PascalGPA *GPA, U32 ByteCount)
 {
-    if (ByteCount < PASCAL_MEM_ALIGNMENT)
-        ByteCount = PASCAL_MEM_ALIGNMENT;
-    else
-        ByteCount &= ~(PASCAL_MEM_ALIGNMENT - 1);
+    ByteCount = (ByteCount + PASCAL_MEM_ALIGNMENT) & ~(PASCAL_MEM_ALIGNMENT - 1);
     
     GPAHeader *Node = GPA->Mem.Head;
     while (Node != NULL 
@@ -316,7 +313,8 @@ void ArenaReset(PascalArena *Arena)
 
 void *ArenaAllocate(PascalArena *Arena, U32 ByteCount)
 {
-    USize Size = ByteCount & ~(PASCAL_MEM_ALIGNMENT - 1);
+    USize Size = (ByteCount + PASCAL_MEM_ALIGNMENT) & ~(PASCAL_MEM_ALIGNMENT - 1);
+
     UInt i = Arena->CurrentIdx;
     /* start looking elsewhere */
     if ((USize)Arena->Used[i] + Size > Arena->Cap[i])
