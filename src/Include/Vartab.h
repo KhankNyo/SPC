@@ -4,7 +4,8 @@
 
 
 #include "Common.h"
-#include "PascalString.h"
+#include "Memory.h"
+#include "AstExpr.h"
 
 
 
@@ -16,31 +17,31 @@ typedef struct PascalVar
     const U8 *Str;
     UInt Len;
     U32 Hash;
-    U32 Value;
+
+    ParserType Type;
+    U32 ID;
+    void *Data;
 } PascalVar;
 
 typedef struct PascalVartab 
 {
     PascalVar *Table;
-    U32 Cap, Count;
+    ISize Cap, Count;
+    PascalGPA *Allocator;
 } PascalVartab;
 
 
-PascalVartab VartabInit(U32 InitialCap);
+PascalVartab VartabInit(PascalGPA *Allocator, ISize InitialCap);
+PascalVartab VartabPredefinedIdentifiers(PascalGPA *Allocator, ISize InitialCap);
 void VartabDeinit(PascalVartab *Vartab);
+void VartabReset(PascalVartab *Vartab);
 
-/* Find the entry that has the given key,
+
+/* Find the entry that has the given key and hash,
  * returns  NULL if no such entry exists,
  *          the pointer to the entry containing the key */
-PascalVar *VartabFind(PascalVartab *Vartab, 
-        const U8 *Key, UInt Len
-);
-
-/* Get the pointer to the value of an entry,
- * returns  NULL if no entry with the given key exists, or was deleted,
- *          poiter to the type of the entry if the key exists */
-U32 *VartabGet(PascalVartab *Vartab, 
-        const U8 *Key, UInt Len
+PascalVar *VartabFindWithHash(PascalVartab *Vartab, 
+        const U8 *Key, UInt Len, U32 Hash
 );
 
 /* Override an entry with the key and type 
@@ -48,13 +49,18 @@ U32 *VartabGet(PascalVartab *Vartab,
  *          false if a brand new entry is created */
 bool VartabSet(PascalVartab *Vartab, 
         const U8 *Key, UInt Len, 
-        U32 Value
+        ParserType Type, U32 ID, void *Data
 );
+
 
 /* Deletes an entry from the table,
  * returns  true if the entry exists before deletion,
  *          or false otherwise */
 bool VartabDelete(PascalVartab *Vartab, const U8 *Key, UInt Len);
+
+
+/* hashes a string */
+U32 VartabHashStr(const U8 *Str, UInt Len);
 
 
 #endif /* PASCAL_VAR_H */

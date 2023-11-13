@@ -3,8 +3,8 @@
 #include <string.h> /* memset */
 
 #include "Tokenizer.h"
+#include "Parser.h"
 #include "Common.h"
-#include "Memory.h"
 #include "Vartab.h"
 
 
@@ -15,13 +15,12 @@
 #define SET_TOMBSTONE(pSlot) ((pSlot)->Len = 0)
 
 
-static PascalVar *VartabFindValidSlot(PascalVar *Table, U32 Cap, const U8 *Key, UInt Len, U32 Hash);
+static PascalVar *VartabFindValidSlot(PascalVar *Table, ISize Cap, const U8 *Key, UInt Len, U32 Hash);
 static void VartabResize(PascalVartab *Vartab, U32 Newsize);
-static U32 HashStr(const U8 *Key, UInt Len);
 
 
 
-PascalVartab VartabInit(U32 InitialCap)
+PascalVartab VartabInit(PascalGPA *Allocator, ISize InitialCap)
 {
     PASCAL_ASSERT(InitialCap < (1lu << 30), 
             "vartab can only a capacity of %lu elements or less (received %lu).", 
@@ -36,26 +35,56 @@ PascalVartab VartabInit(U32 InitialCap)
     PascalVartab Vartab = {
         .Cap = InitialCap,
         .Count = 0,
-        .Table = MemAllocateArray(PascalVar, InitialCap),
+        .Allocator = Allocator,
     };
+    Vartab.Table = GPAAllocate(Allocator, sizeof(Vartab.Table[0])*InitialCap),
     memset(Vartab.Table, 0, InitialCap * sizeof(Vartab.Table[0]));
     return Vartab;
 }
 
 
+PascalVartab VartabPredefinedIdentifiers(PascalGPA *Allocator, ISize InitialCap)
+{
+    PascalVartab Identifiers = VartabInit(Allocator, InitialCap);
+    VartabSet(&Identifiers, (const U8*)"INTEGER", 7, TYPE_I16, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"REAL", 4, TYPE_F32, VAR_ID_TYPE, NULL);
+
+    VartabSet(&Identifiers, (const U8*)"int8", 4, TYPE_I8, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"int16", 5, TYPE_I16, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"int32", 5, TYPE_I32, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"int64", 5, TYPE_I64, VAR_ID_TYPE, NULL);
+
+    VartabSet(&Identifiers, (const U8*)"uint8", 4, TYPE_U8, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"uint16", 5, TYPE_U16, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"uint32", 5, TYPE_U32, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"uint64", 5, TYPE_U64, VAR_ID_TYPE, NULL);
+    return Identifiers;
+}
+
+
+
 void VartabDeinit(PascalVartab *Vartab)
 {
-    MemDeallocateArray(Vartab->Table);
+    GPADeallocate(Vartab->Allocator, Vartab->Table);
     memset(Vartab, 0, sizeof(*Vartab));
+}
+
+
+void VartabReset(PascalVartab *Vartab)
+{
+    memset(Vartab->Table, 0, sizeof(Vartab->Table[0]) * Vartab->Cap);
+    Vartab->Count = 0;
 }
 
 
 
 
 
-PascalVar *VartabFind(PascalVartab *Vartab, const U8 *Key, UInt Len)
+PascalVar *VartabFindWithHash(PascalVartab *Vartab, const U8 *Key, UInt Len, U32 Hash)
 {
-    PascalVar *Slot = VartabFindValidSlot(Vartab->Table, Vartab->Cap, Key, Len, HashStr(Key, Len));
+    PascalVar *Slot = VartabFindValidSlot(Vartab->Table, Vartab->Cap, 
+            Key, Len, Hash
+    );
     if (IS_EMPTY(Slot) || IS_TOMBSTONED(Slot))
         return NULL;
     return Slot;
@@ -63,27 +92,16 @@ PascalVar *VartabFind(PascalVartab *Vartab, const U8 *Key, UInt Len)
 
 
 
-U32 *VartabGet(PascalVartab *Vartab, const U8 *Key, UInt Len)
-{
-    PascalVar *Slot = VartabFindValidSlot(Vartab->Table, Vartab->Cap, 
-            Key, Len, HashStr(Key, Len)
-    );
-    if (IS_TOMBSTONED(Slot) || IS_EMPTY(Slot))
-        return NULL;
-    return &Slot->Value;
-}
-
-
-bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, U32 Value)
+bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, ParserType Type, U32 ID, void *Data)
 {
     bool ExceededMaxLoad = Vartab->Count + 1 > Vartab->Cap * VARTAB_MAX_LOAD;
     if (ExceededMaxLoad)
     {
-        U32 NewCap = Vartab->Cap * VARTAB_GROW_FACTOR;
+        ISize NewCap = Vartab->Cap * VARTAB_GROW_FACTOR;
         VartabResize(Vartab, NewCap);
     }
 
-    U32 Hash = HashStr(Key, Len);
+    U32 Hash = VartabHashStr(Key, Len);
     PascalVar *Slot = VartabFindValidSlot(Vartab->Table, Vartab->Cap, 
             Key, Len, Hash
     );
@@ -93,10 +111,14 @@ bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, U32 Value)
         Vartab->Count++;
     }
 
+
     Slot->Str = Key;
     Slot->Len = Len;
-    Slot->Value = Value;
     Slot->Hash = Hash;
+
+    Slot->Type = Type;
+    Slot->ID = ID;
+    Slot->Data = Data;
     return IsNewKey;
 }
 
@@ -104,7 +126,7 @@ bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, U32 Value)
 bool VartabDelete(PascalVartab *Vartab, const U8 *Key, UInt Len)
 {
     PascalVar *Slot = VartabFindValidSlot(Vartab->Table, Vartab->Cap, 
-            Key, Len, HashStr(Key, Len)
+            Key, Len, VartabHashStr(Key, Len)
     );
     if (IS_TOMBSTONED(Slot) || IS_EMPTY(Slot))
         return false;
@@ -114,16 +136,37 @@ bool VartabDelete(PascalVartab *Vartab, const U8 *Key, UInt Len)
 }
 
 
+U32 VartabHashStr(const U8 *Key, UInt Len)
+{
+    U32 Hash = 2166136261u;
+    for (UInt i = 0; i < Len; i++)
+    {
+        /* all strings will have the 5th bit off during hashing */
+        Hash = (Hash ^ CHR_TO_UPPER(Key[i])) * 16777619;
+    }
+    return Hash;
+}
 
 
-static PascalVar *VartabFindValidSlot(PascalVar *Table, U32 Cap, const U8 *Key, UInt Len, U32 Hash)
+
+
+
+
+
+static PascalVar *VartabFindValidSlot(PascalVar *Table, ISize Cap, const U8 *Key, UInt Len, U32 Hash)
 {
     PascalVar *Tombstoned = NULL;
-    U32 Index = Hash & (Cap - 1);
+    USize Index = Hash & (Cap - 1);
 
-    for (U32 i = 0; i < Cap; i++)
+    for (ISize i = 0; i < Cap; i++)
     {
         PascalVar *Slot = &Table[Index];
+        if (Len == Slot->Len
+            && Hash == Slot->Hash
+            && TokenEqualNoCase(Key, Slot->Str, Len))
+        {
+            return Slot;
+        }
         if (IS_EMPTY(Slot))
         {
             if (NULL == Tombstoned)
@@ -134,14 +177,8 @@ static PascalVar *VartabFindValidSlot(PascalVar *Table, U32 Cap, const U8 *Key, 
         {
             Tombstoned = Slot;
         }
-        else if (Len == Slot->Len
-            && Hash == Slot->Hash
-            && TokenEqualNoCase(Key, Slot->Str, Len))
-        {
-            return Slot;
-        }
 
-        Index = (Index + 1) & (Cap - 1);
+        Index = (Index + 1) & ((USize)Cap - 1);
     }
     PASCAL_UNREACHABLE("Table does not contain '%.*s'", Len, Key);
     return NULL;
@@ -150,39 +187,27 @@ static PascalVar *VartabFindValidSlot(PascalVar *Table, U32 Cap, const U8 *Key, 
 
 static void VartabResize(PascalVartab *Vartab, U32 NewCap)
 {
-    PascalVar *NewTable = MemAllocateArray(*NewTable, NewCap);
+    PascalVar *NewTable = GPAAllocate(Vartab->Allocator, sizeof(*NewTable)*NewCap);
     memset(NewTable, 0, NewCap * sizeof(*NewTable));
 
     /* rebuild hash table */
     Vartab->Count = 0;
-    for (U32 i = 0; i < Vartab->Cap; i++)
+    for (ISize i = 0; i < Vartab->Cap; i++)
     {
         /* skip invalid entries */
         if (IS_EMPTY(&Vartab->Table[i]) || IS_TOMBSTONED(&Vartab->Table[i]))
             continue;
 
         PascalVar *Slot = VartabFindValidSlot(NewTable, Vartab->Cap, 
-                Vartab->Table[i].Str, Vartab->Table[i].Len, 
-                Vartab->Table[i].Hash
+                Vartab->Table[i].Str, Vartab->Table[i].Len, Vartab->Table[i].Hash
         );
         *Slot = Vartab->Table[i];
         Vartab->Count++;
     }
 
-    MemDeallocateArray(Vartab->Table);
-    Vartab->Cap = NewCap;
+    GPADeallocate(Vartab->Allocator, Vartab->Table);
     Vartab->Table = NewTable;
+    Vartab->Cap = NewCap;
 }
 
-
-static U32 HashStr(const U8 *Key, UInt Len)
-{
-    U32 Hash = 2166136261u;
-    for (UInt i = 0; i < Len; i++)
-    {
-        /* all strings will have the 5th bit off during hashing */
-        Hash = (Hash ^ CHR_TO_UPPER(Key[i])) * 16777619;
-    }
-    return Hash;
-}
 

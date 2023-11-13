@@ -7,6 +7,7 @@
 
 
 
+void *MemGetAllocator(void);
 void MemInit(U32 InitialCap);
 void MemDeinit(void);
 

@@ -13,6 +13,12 @@
 
 static PascalGPA sAllocator = { 0 };
 
+
+void *MemGetAllocator(void)
+{
+    return &sAllocator;
+}
+
 void MemInit(U32 InitialCap)
 {
     sAllocator = GPAInit(InitialCap);
