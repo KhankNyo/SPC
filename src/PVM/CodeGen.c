@@ -345,7 +345,7 @@ static void PVMCompileIfStmt(PVMCompiler *Compiler, const AstIfStmt *IfStmt)
 
     U64 SkipIf = PVMEmitBranchIfFalse(Compiler, &Tmp);
         PVMCompileStmt(Compiler, IfStmt->IfCase);
-    if (IfStmt->ElseCase)
+    if (NULL != IfStmt->ElseCase)
     {
         U64 ExitIf = PVMEmitBranch(Compiler, -1);
         PVMPatchBranch(Compiler, SkipIf, BRANCH_CONDITIONAL);
@@ -397,15 +397,21 @@ static void PVMCompileForStmt(PVMCompiler *Compiler, const AstForStmt *ForStmt)
 
 static void PVMCompileWhileStmt(PVMCompiler *Compiler, const AstWhileStmt *WhileStmt)
 {
-    Operand Register = PVMAllocateRegister(Compiler, WhileStmt->Expr.Type);
+    Operand Tmp = PVMAllocateRegister(Compiler, WhileStmt->Expr.Type);
 
-    U64 Test = PVMCurrentChunk(Compiler)->Count;
-    PVMCompileExprInto(Compiler, &Register, &WhileStmt->Expr);
-    U64 Location = PVMEmitBranchIfFalse(Compiler, &Register);
+    /* condition test */
+    U64 CondTest = PVMCurrentChunk(Compiler)->Count;
+    PVMCompileExprInto(Compiler, &Tmp, &WhileStmt->Expr);
+    U64 ExitWhile = PVMEmitBranchIfFalse(Compiler, &Tmp);
+
+    PVMFreeRegister(Compiler, &Tmp);
+
+    /* statement */
     PVMCompileStmt(Compiler, WhileStmt->Stmt);
 
-    PVMEmitBranch(Compiler, Test);
-    PVMPatchBranch(Compiler, Location, BRANCH_CONDITIONAL);
+    /* branch to loophead to test for cond */
+    PVMEmitBranch(Compiler, CondTest);
+    PVMPatchBranch(Compiler, ExitWhile, BRANCH_CONDITIONAL);
 }
 
 
