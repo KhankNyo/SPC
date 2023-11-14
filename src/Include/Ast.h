@@ -20,6 +20,7 @@ typedef struct AstStmtBlock AstStmtBlock;
 
 
 typedef struct AstAssignStmt AstAssignStmt;
+typedef struct AstIfStmt AstIfStmt;
 typedef struct AstForStmt AstForStmt;
 typedef struct AstWhileStmt AstWhileStmt;
 typedef struct AstBeginEndStmt AstBeginEndStmt;
@@ -38,6 +39,7 @@ typedef enum AstStmtType
 {
     AST_STMT_INVALID = 0,
     AST_STMT_BEGINEND,
+    AST_STMT_IF,
     AST_STMT_FOR,
     AST_STMT_WHILE,
     AST_STMT_ASSIGNMENT,
@@ -125,11 +127,19 @@ struct AstBeginEndStmt
     AstStmtList *Statements;
 };
 
+struct AstIfStmt 
+{
+    AstStmt Base;
+    AstExpr Condition;
+    AstStmt *IfCase;
+    AstStmt *ElseCase;
+};
+
 struct AstForStmt
 {
     AstStmt Base;
-    U32 VariableID;
-    AstExpr InitExpr, StopExpr;
+    AstAssignStmt *InitStmt;
+    AstExpr StopExpr;
     AstStmt *Stmt;
     TokenType Comparison;
     int Imm;
@@ -147,6 +157,7 @@ struct AstAssignStmt
     AstStmt Base;
 
     /* TODO: assigning to things other than variables */
+    ParserType LhsType;
     U32 VariableID;
     TokenType TypeOfAssignment;
     AstExpr Expr;

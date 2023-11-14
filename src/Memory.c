@@ -35,6 +35,11 @@ void *MemAllocate(USize ByteCount)
     return GPAAllocate(&sAllocator, ByteCount); 
 }
 
+void *MemAllocateZero(USize ByteCount)
+{
+    return GPAAllocateZero(&sAllocator, ByteCount);
+}
+
 void *MemReallocate(void *Ptr, USize NewSize)
 {
     return GPAReallocate(&sAllocator, Ptr, NewSize);

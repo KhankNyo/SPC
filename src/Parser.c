@@ -37,6 +37,7 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type);
 
 
 static AstBeginEndStmt *ParseBeginEndStmt(PascalParser *Parser);
+static AstIfStmt *ParseIfStmt(PascalParser *Parser);
 static AstForStmt *ParseForStmt(PascalParser *Parser);
 static AstWhileStmt *ParseWhileStmt(PascalParser *Parser);
 static AstAssignStmt *ParseAssignStmt(PascalParser *Parser);
@@ -68,6 +69,7 @@ static void Error(PascalParser *Parser, const char *Fmt, ...);
 static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList);
 static void RecoverFromError(PascalParser *Parser);
 
+static const char *ParserTypeToStr(ParserType Type);
 
 
 
@@ -192,24 +194,38 @@ BeginEndBlock:
 
 AstStmt *ParseStmt(PascalParser *Parser)
 {
-    if (ConsumeIfNextIs(Parser, TOKEN_BEGIN))
+    switch (Parser->Next.Type)
     {
+    case TOKEN_BEGIN:
+    {
+        ConsumeToken(Parser);
         return (AstStmt*)ParseBeginEndStmt(Parser);
-    }
-    if (ConsumeIfNextIs(Parser, TOKEN_EXIT)) /* TODO: return by assigning function name */
+    } break;
+    case TOKEN_EXIT:
     {
+        ConsumeToken(Parser);
         return (AstStmt*)ParseReturnStmt(Parser);
-    }
-    if (ConsumeIfNextIs(Parser, TOKEN_WHILE))
+    } break;
+    case TOKEN_WHILE:
     {
+        ConsumeToken(Parser);
         return (AstStmt*)ParseWhileStmt(Parser);
-    }
-    if (ConsumeIfNextIs(Parser, TOKEN_FOR))
+    } break;
+    case TOKEN_FOR:
     {
+        ConsumeToken(Parser);
         return (AstStmt*)ParseForStmt(Parser);
+    } break;
+    case TOKEN_IF:
+    {
+        ConsumeToken(Parser);
+        return (AstStmt*)ParseIfStmt(Parser);
+    } break;
+    default: 
+    {
+        return (AstStmt*)ParseAssignStmt(Parser);
+    } break;
     }
-
-    return (AstStmt*)ParseAssignStmt(Parser);
 }
 
 
@@ -450,15 +466,28 @@ static AstBeginEndStmt *ParseBeginEndStmt(PascalParser *Parser)
 }
 
 
+static AstIfStmt *ParseIfStmt(PascalParser *Parser)
+{
+    AstIfStmt *IfStmt = ArenaAllocateZero(Parser->Arena, sizeof(*IfStmt));
+    IfStmt->Base.Type = AST_STMT_IF;
+
+    IfStmt->Condition = ParseExpr(Parser);
+    ConsumeOrError(Parser, TOKEN_THEN, "Expected 'then' after expression.");
+    IfStmt->IfCase = ParseStmt(Parser);
+    if (ConsumeIfNextIs(Parser, TOKEN_ELSE))
+    {
+        IfStmt->ElseCase = ParseStmt(Parser);
+    }
+    return IfStmt;
+}
+
+
 static AstForStmt *ParseForStmt(PascalParser *Parser)
 {
     AstForStmt *ForStmt = ArenaAllocateZero(Parser->Arena, sizeof *ForStmt);
     ForStmt->Base.Type = AST_STMT_FOR;
 
-    ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected variable name after 'for'.");
-
-    ConsumeOrError(Parser, TOKEN_COLON_EQUAL, "Expected ':=' after variable name.");
-    ForStmt->InitExpr = ParseExpr(Parser);
+    ForStmt->InitStmt = ParseAssignStmt(Parser);
     ForStmt->Comparison = TOKEN_GREATER;
     ForStmt->Imm = -1;
     if (!ConsumeIfNextIs(Parser, TOKEN_DOWNTO))
@@ -470,7 +499,10 @@ static AstForStmt *ParseForStmt(PascalParser *Parser)
 
     ForStmt->StopExpr = ParseExpr(Parser);
     ConsumeOrError(Parser, TOKEN_DO, "Expected 'do' after expression.");
-    ForStmt->StopExpr.Type = ParserCoerceTypes(Parser, ForStmt->InitExpr.Type, ForStmt->StopExpr.Type);
+    ForStmt->StopExpr.Type = ParserCoerceTypes(Parser, 
+            ForStmt->InitStmt->LhsType, 
+            ForStmt->StopExpr.Type
+    );
 
     ForStmt->Stmt = ParseStmt(Parser);
     return ForStmt;
@@ -511,8 +543,9 @@ static AstAssignStmt *ParseAssignStmt(PascalParser *Parser)
     Assignment->TypeOfAssignment = Parser->Curr.Type;
     Assignment->Expr = ParseExpr(Parser);
 
-    /* TODO: use return value to do typecheck */
-    ParserCoerceTypes(Parser, LhsType, Assignment->Expr.Type);
+    /* typecheck */
+    (void)ParserCoerceTypes(Parser, LhsType, Assignment->Expr.Type);
+    Assignment->LhsType = LhsType;
     return Assignment;
 }
 
@@ -594,7 +627,9 @@ static ParserType ParserCoerceTypes(PascalParser *Parser, ParserType Left, Parse
     PASCAL_ASSERT(Left >= TYPE_INVALID && Right >= TYPE_INVALID, "Unreachable");
     if (Left > TYPE_COUNT || Right > TYPE_COUNT)
     {
-        Error(Parser, "Invalid combination of type %d and %d", Left, Right);
+        Error(Parser, "Invalid combination of type %d and %d", 
+                ParserTypeToStr(Left), ParserTypeToStr(Right)
+        );
         return TYPE_INVALID;
     }
     return sCoercionRules[Left][Right];
@@ -894,5 +929,28 @@ static void RecoverFromError(PascalParser *Parser)
 
 
 
+
+
+static const char *ParserTypeToStr(ParserType Type)
+{
+    static const char *StrLut[] = {
+        [TYPE_INVALID] = "invalid",
+        [TYPE_I8] = "int8",
+        [TYPE_I16] = "int16",
+        [TYPE_I32] = "int32",
+        [TYPE_I64] = "int64",
+        [TYPE_U8] = "uint8",
+        [TYPE_U16] = "uint16",
+        [TYPE_U32] = "uint32",
+        [TYPE_U64] = "uint64",
+        [TYPE_F32] = "Ffoat",
+        [TYPE_F64] = "Double",
+        [TYPE_FUNCTION] = "function",
+    };
+    PASCAL_STATIC_ASSERT(TYPE_COUNT == STATIC_ARRAY_SIZE(StrLut), "");
+    if (Type < TYPE_COUNT)
+        return StrLut[Type];
+    return "invalid";
+}
 
 

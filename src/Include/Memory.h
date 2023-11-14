@@ -1,6 +1,8 @@
 #ifndef PASCAL_MEMORY_H
 #define PASCAL_MEMORY_H
 
+
+#include <string.h> /* memset */
 #include "Common.h"
 
 #define PASCAL_MEM_ALIGNMENT (sizeof(LargeType))
@@ -16,6 +18,12 @@ void MemDeinit(void);
  * never return NULL 
  */
 void *MemAllocate(USize ByteCount);
+
+/*
+ * returns a pointer to a buffer with ByteCount capacity and is zero initialized
+ * never return NULL
+ */
+void *MemAllocateZero(USize ByteCount);
 
 /* 
  * Allocates an array,
@@ -72,6 +80,10 @@ PascalGPA GPAInit(U32 InitialCap);
 void GPADeinit(PascalGPA *GPA);
 
 void *GPAAllocate(PascalGPA *GPA, U32 ByteCount);
+static inline void *GPAAllocateZero(PascalGPA *GPA, U32 ByteCount)
+{
+    return memset(GPAAllocate(GPA, ByteCount), 0, ByteCount);
+}
 void *GPAReallocate(PascalGPA *GPA, void *Ptr, U32 NewSize);
 void GPADeallocate(PascalGPA *GPA, void *Ptr);
 

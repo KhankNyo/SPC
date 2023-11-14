@@ -8,6 +8,8 @@
 
 #define PVM_SCOPE_COUNT 128
 #define PVM_MAX_LOCAL_COUNT PVM_REG_COUNT
+#define BRANCH_ALWAYS 26
+#define BRANCH_CONDITIONAL 21
 
 typedef struct Operand 
 {
@@ -65,10 +67,11 @@ static void PVMCompileFunctionBlock(PVMCompiler *Compiler, const AstFunctionBloc
 static void PVMCompileStmtBlock(PVMCompiler *Compiler, const AstStmtBlock *Block);
 
 static void PVMCompileStmt(PVMCompiler *Compiler, const AstStmt *Statement);
+static void PVMCompileIfStmt(PVMCompiler *Compiler, const AstIfStmt *IfStmt);
 static void PVMCompileBeginEndStmt(PVMCompiler *Compiler, const AstBeginEndStmt *BeginEnd);
 static void PVMCompileForStmt(PVMCompiler *Compiler, const AstForStmt *ForStmt);
 static void PVMCompileWhileStmt(PVMCompiler *Compiler, const AstWhileStmt *WhileStmt);
-static void PVMCompileAssignStmt(PVMCompiler *Compiler, const AstAssignStmt *Assignment);
+static Operand *PVMCompileAssignStmt(PVMCompiler *Compiler, const AstAssignStmt *Assignment);
 static void PVMCompileReturnStmt(PVMCompiler *Compiler, const AstReturnStmt *RetStmt);
 
 
@@ -80,9 +83,9 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand *Dest, const Ast
 
 
 
-static U64 PVMEmitBrIfFalse(PVMCompiler *Compiler, Operand *Condition);
+static U64 PVMEmitBranchIfFalse(PVMCompiler *Compiler, Operand *Condition);
 static void PVMPatchBranch(PVMCompiler *Compiler, U64 StreamOffset, UInt ImmSize); 
-static void PVMEmitBranch(PVMCompiler *Compiler, U64 Location);
+static U64 PVMEmitBranch(PVMCompiler *Compiler, U64 Location);
 static void PVMEmitMov(PVMCompiler *Compiler, Operand *Dest, Operand *Src);
 static void PVMEmitLoad(PVMCompiler *Compiler, Operand *Dest, U64 Integer, ParserType IntegerType);
 static void PVMEmitAddImm(PVMCompiler *Compiler, Operand *Dest, I16 Imm);
@@ -291,6 +294,7 @@ static void PVMCompileStmt(PVMCompiler *Compiler, const AstStmt *Statement)
     switch (Statement->Type)
     {
     case AST_STMT_BEGINEND:     PVMCompileBeginEndStmt(Compiler, (const AstBeginEndStmt*)Statement); break;
+    case AST_STMT_IF:           PVMCompileIfStmt(Compiler, (const AstIfStmt*)Statement); break;
     case AST_STMT_FOR:          PVMCompileForStmt(Compiler, (const AstForStmt*)Statement); break;
     case AST_STMT_WHILE:        PVMCompileWhileStmt(Compiler, (const AstWhileStmt*)Statement); break;
     case AST_STMT_ASSIGNMENT:   PVMCompileAssignStmt(Compiler, (const AstAssignStmt*)Statement); break;
@@ -316,24 +320,78 @@ static void PVMCompileBeginEndStmt(PVMCompiler *Compiler, const AstBeginEndStmt 
     }
 }
 
+static void PVMCompileIfStmt(PVMCompiler *Compiler, const AstIfStmt *IfStmt)
+{
+    Operand Tmp = PVMAllocateRegister(Compiler, IfStmt->Condition.Type);
+    PVMCompileExprInto(Compiler, &Tmp, &IfStmt->Condition);
+
+    /*
+     * Start:
+     *   SETCC Tmp
+     *   BEZ Tmp, SkipIf
+     *      Stmt...
+     * #if (IfStmt->ElseCase) {
+         *   BAL ExitIf
+         * SkipIf:
+         *   SETCC Tmp
+         *   BEZ Tmp, SkipElse
+         *      Stmt...
+         *   BAL ExitElse
+         * SkipElse:
+     * } else {
+         * SkipIf:              ; just a label declaration
+     * }
+     */
+
+    U64 SkipIf = PVMEmitBranchIfFalse(Compiler, &Tmp);
+        PVMCompileStmt(Compiler, IfStmt->IfCase);
+    if (IfStmt->ElseCase)
+    {
+        U64 ExitIf = PVMEmitBranch(Compiler, -1);
+        PVMPatchBranch(Compiler, SkipIf, BRANCH_CONDITIONAL);
+        PVMCompileStmt(Compiler, IfStmt->ElseCase);
+        PVMPatchBranch(Compiler, ExitIf, BRANCH_ALWAYS);
+    }
+    else 
+    {
+        PVMPatchBranch(Compiler, SkipIf, BRANCH_CONDITIONAL);
+    }
+}
+
 
 static void PVMCompileForStmt(PVMCompiler *Compiler, const AstForStmt *ForStmt)
 {
-    Operand *I = PVMGetLocationOf(Compiler, ForStmt->VariableID);
-    PVMCompileExprInto(Compiler, I, &ForStmt->InitExpr);
+    /* 
+     *   I = Assign...
+     * CondCheck:
+     *   SETCC Stop, CondExpr...
+     *   BEZ Stop, ExitFor 
+     *      Stmt...
+     *   ADDI I, +-1
+     *   BAL CondCheck
+     * ExitFor:
+     */
+
+    /* assignment */
+    Operand *I = PVMCompileAssignStmt(Compiler, ForStmt->InitStmt);
 
     /* TODO: temporary register */
-    Operand Stop = PVMAllocateRegister(Compiler, ForStmt->StopExpr.Type);
     U64 Location = PVMCurrentChunk(Compiler)->Count;
-        PVMCompileExprInto(Compiler, &Stop, &ForStmt->StopExpr);
-        PVMEmitSetCC(Compiler, ForStmt->Comparison, &Stop, I, &Stop);
-    U64 BrIns = PVMEmitBrIfFalse(Compiler, &Stop);
-    PVMEmitAddImm(Compiler, I, ForStmt->Imm);
+    Operand Stop = PVMAllocateRegister(Compiler, ForStmt->StopExpr.Type);
+    PVMCompileExprInto(Compiler, &Stop, &ForStmt->StopExpr);
+
+    /* conditional */
+    PVMEmitSetCC(Compiler, ForStmt->Comparison, &Stop, I, &Stop);
+    U64 ExitFor = PVMEmitBranchIfFalse(Compiler, &Stop);
     PVMFreeRegister(Compiler, &Stop);
 
+    /* body */
     PVMCompileStmt(Compiler, ForStmt->Stmt);
+
+    /* increment */
+    PVMEmitAddImm(Compiler, I, ForStmt->Imm);
     PVMEmitBranch(Compiler, Location);
-    PVMPatchBranch(Compiler, BrIns, 21);
+    PVMPatchBranch(Compiler, ExitFor, BRANCH_CONDITIONAL);
 }
 
 
@@ -343,18 +401,19 @@ static void PVMCompileWhileStmt(PVMCompiler *Compiler, const AstWhileStmt *While
 
     U64 Test = PVMCurrentChunk(Compiler)->Count;
     PVMCompileExprInto(Compiler, &Register, &WhileStmt->Expr);
-    U64 Location = PVMEmitBrIfFalse(Compiler, &Register);
+    U64 Location = PVMEmitBranchIfFalse(Compiler, &Register);
     PVMCompileStmt(Compiler, WhileStmt->Stmt);
 
     PVMEmitBranch(Compiler, Test);
-    PVMPatchBranch(Compiler, Location, 21);
+    PVMPatchBranch(Compiler, Location, BRANCH_CONDITIONAL);
 }
 
 
-static void PVMCompileAssignStmt(PVMCompiler *Compiler, const AstAssignStmt *Assignment)
+static Operand *PVMCompileAssignStmt(PVMCompiler *Compiler, const AstAssignStmt *Assignment)
 {
     Operand *LValue = PVMGetLocationOf(Compiler, Assignment->VariableID);
     PVMCompileExprInto(Compiler, LValue, &Assignment->Expr);
+    return LValue;
 }
 
 
@@ -555,7 +614,7 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand *Dest, const Ast
 
 
 
-static U64 PVMEmitBrIfFalse(PVMCompiler *Compiler, Operand *Condition)
+static U64 PVMEmitBranchIfFalse(PVMCompiler *Compiler, Operand *Condition)
 {
     if (Condition->InRegister)
     {
@@ -563,15 +622,15 @@ static U64 PVMEmitBrIfFalse(PVMCompiler *Compiler, Operand *Condition)
     }
     else 
     {
-        PASCAL_UNREACHABLE("TODO: BrIfFalse mem");
+        PASCAL_UNREACHABLE("TODO: BranchIfFalse mem");
     }
     return 0;
 }
 
-static void PVMEmitBranch(PVMCompiler *Compiler, U64 Location)
+static U64 PVMEmitBranch(PVMCompiler *Compiler, U64 Location)
 {
     I64 BrOffset = Location - PVMCurrentChunk(Compiler)->Count - 1;
-    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_BRAL_INS(BrOffset));
+    return ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_BRAL_INS(BrOffset));
 }
 
 static void PVMPatchBranch(PVMCompiler *Compiler, U64 StreamOffset, UInt ImmSize)
