@@ -1,6 +1,7 @@
 
 
 #include <stdarg.h>
+#include  "Common.h"
 #include "Parser.h"
 
 
@@ -11,13 +12,13 @@
 static ParserType sCoercionRules[TYPE_COUNT][TYPE_COUNT] = {
     /*Invalid       I8            I16           I32           I64           U8            U16           U32           U64           F32           F64           Function      */
     { TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,  },         /* Invalid */
-    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* I8 */
-    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* I16 */
-    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* I32 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* I8 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* I16 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* I32 */
     { TYPE_INVALID, TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* I64 */
-    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* U8 */
-    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* U16 */
-    { TYPE_INVALID, TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_U32,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* U32 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* U8 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* U16 */
+    { TYPE_INVALID, TYPE_U32,     TYPE_U32,     TYPE_U32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* U32 */
     { TYPE_INVALID, TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* U64 */
     { TYPE_INVALID, TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F64,     TYPE_INVALID,  },         /* F32 */
     { TYPE_INVALID, TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_INVALID,  },         /* F64 */
@@ -36,6 +37,7 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type);
 
 
 static AstBeginEndStmt *ParseBeginEndStmt(PascalParser *Parser);
+static AstForStmt *ParseForStmt(PascalParser *Parser);
 static AstWhileStmt *ParseWhileStmt(PascalParser *Parser);
 static AstAssignStmt *ParseAssignStmt(PascalParser *Parser);
 static AstReturnStmt *ParseReturnStmt(PascalParser *Parser);
@@ -60,6 +62,7 @@ static bool ConsumeIfNextIsOneOf(PascalParser *Parser, UInt Count, const TokenTy
 static bool ConsumeIfNextIs(PascalParser *Parser, TokenType Type);
 static void ConsumeToken(PascalParser *Parser);
 static bool ConsumeOrError(PascalParser *Parser, TokenType Expected, const char *Fmt, ...);
+static ParserType DetermineIntegerSize(U64 Integer);
 
 static void Error(PascalParser *Parser, const char *Fmt, ...);
 static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList);
@@ -200,6 +203,10 @@ AstStmt *ParseStmt(PascalParser *Parser)
     if (ConsumeIfNextIs(Parser, TOKEN_WHILE))
     {
         return (AstStmt*)ParseWhileStmt(Parser);
+    }
+    if (ConsumeIfNextIs(Parser, TOKEN_FOR))
+    {
+        return (AstStmt*)ParseForStmt(Parser);
     }
 
     return (AstStmt*)ParseAssignStmt(Parser);
@@ -443,6 +450,33 @@ static AstBeginEndStmt *ParseBeginEndStmt(PascalParser *Parser)
 }
 
 
+static AstForStmt *ParseForStmt(PascalParser *Parser)
+{
+    AstForStmt *ForStmt = ArenaAllocateZero(Parser->Arena, sizeof *ForStmt);
+    ForStmt->Base.Type = AST_STMT_FOR;
+
+    ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected variable name after 'for'.");
+
+    ConsumeOrError(Parser, TOKEN_COLON_EQUAL, "Expected ':=' after variable name.");
+    ForStmt->InitExpr = ParseExpr(Parser);
+    ForStmt->Comparison = TOKEN_GREATER;
+    ForStmt->Imm = -1;
+    if (!ConsumeIfNextIs(Parser, TOKEN_DOWNTO))
+    {
+        ConsumeOrError(Parser, TOKEN_TO, "Expected 'downto' or 'to' after expression.");
+        ForStmt->Comparison = TOKEN_LESS;
+        ForStmt->Imm = 1;
+    }
+
+    ForStmt->StopExpr = ParseExpr(Parser);
+    ConsumeOrError(Parser, TOKEN_DO, "Expected 'do' after expression.");
+    ForStmt->StopExpr.Type = ParserCoerceTypes(Parser, ForStmt->InitExpr.Type, ForStmt->StopExpr.Type);
+
+    ForStmt->Stmt = ParseStmt(Parser);
+    return ForStmt;
+}
+
+
 static AstWhileStmt *ParseWhileStmt(PascalParser *Parser)
 {
     AstWhileStmt *WhileStmt = ArenaAllocateZero(Parser->Arena, sizeof *WhileStmt);
@@ -673,7 +707,7 @@ static AstFactor ParseFactor(PascalParser *Parser)
     {
         ConsumeToken(Parser);
         Factor.FactorType = FACTOR_INTEGER;
-        Factor.Type = TYPE_I16;
+        Factor.Type = DetermineIntegerSize(Parser->Curr.Literal.Int);
         Factor.As.Integer = Parser->Curr.Literal.Int;
     } break;
     case TOKEN_NUMBER_LITERAL:
@@ -784,6 +818,25 @@ static bool ConsumeOrError(PascalParser *Parser, TokenType Expected, const char 
         return false;
     }
     return true;
+}
+
+
+
+static ParserType DetermineIntegerSize(U64 Integer)
+{
+    if (IN_I8(Integer))
+        return TYPE_I8;
+    if (IN_U8(Integer))
+        return TYPE_U8;
+    if (IN_I16(Integer))
+        return TYPE_I16;
+    if (IN_U16(Integer))
+        return TYPE_U16;
+    if (IN_I32(Integer))
+        return TYPE_I32;
+    if (IN_U32(Integer))
+        return TYPE_U32;
+    return TYPE_U64;
 }
 
 

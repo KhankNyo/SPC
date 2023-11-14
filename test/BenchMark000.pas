@@ -1,7 +1,7 @@
 
 
 var 
-    i, top: uint64;
+    i, top: uint32;
 begin
     top := 256 * 256 * 256 * 8;
     i := 0;

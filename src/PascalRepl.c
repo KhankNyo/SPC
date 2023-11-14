@@ -1,6 +1,8 @@
 
 
 #include <string.h>
+#include <time.h>
+
 #include "Common.h"
 
 #include "Pascal.h"

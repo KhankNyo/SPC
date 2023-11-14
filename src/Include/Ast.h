@@ -20,6 +20,7 @@ typedef struct AstStmtBlock AstStmtBlock;
 
 
 typedef struct AstAssignStmt AstAssignStmt;
+typedef struct AstForStmt AstForStmt;
 typedef struct AstWhileStmt AstWhileStmt;
 typedef struct AstBeginEndStmt AstBeginEndStmt;
 
@@ -37,6 +38,7 @@ typedef enum AstStmtType
 {
     AST_STMT_INVALID = 0,
     AST_STMT_BEGINEND,
+    AST_STMT_FOR,
     AST_STMT_WHILE,
     AST_STMT_ASSIGNMENT,
     AST_STMT_RETURN,
@@ -121,6 +123,16 @@ struct AstBeginEndStmt
 {
     AstStmt Base;
     AstStmtList *Statements;
+};
+
+struct AstForStmt
+{
+    AstStmt Base;
+    U32 VariableID;
+    AstExpr InitExpr, StopExpr;
+    AstStmt *Stmt;
+    TokenType Comparison;
+    int Imm;
 };
 
 struct AstWhileStmt 

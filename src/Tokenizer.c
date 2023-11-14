@@ -187,7 +187,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_PACKED", "TOKEN_PROCEDURE", "TOKEN_PROGRAM", 
         "TOKEN_RECORD", "TOKEN_REPEAT", "TOKEN_RESULT",
         "TOKEN_SET", "TOKEN_SHL", "TOKEN_SHR", "TOKEN_STRING", 
-        "TOKEN_THEN", "TOKEN_TRUE", "TOKEN_TYPE", 
+        "TOKEN_THEN", "TOKEN_TRUE", "TOKEN_TYPE", "TOKEN_TO",
         "TOKEN_UNIT", "TOKEN_UNTIL", "TOKEN_USES", 
         "TOKEN_VAR", 
         "TOKEN_WHILE", "TOKEN_WITH", 
@@ -206,7 +206,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_LEFT_PAREN", "TOKEN_RIGHT_PAREN",
         "TOKEN_CARET", "TOKEN_AT", "TOKEN_DOLLAR", "TOKEN_HASHTAG", "TOKEN_AMPERSAND", "TOKEN_PERCENTAGE",
 
-        "TOKEN_NUMBER_LITERAL", "TOKEN_HEX_LITERAL", "TOKEN_INTEGER_LITERAL", 
+        "TOKEN_NUMBER_LITERAL", "TOKEN_INTEGER_LITERAL", 
         "TOKEN_STRING_LITERAL", 
         "TOKEN_IDENTIFIER"
     };
@@ -395,8 +395,6 @@ static Token ConsumeNumber(PascalTokenizer *Lexer)
     && ('X' == CHR_TO_UPPER(Lexer->Start[1])))
     {
         AdvanceChrPtr(Lexer); /* skip 'x' in 0x */
-
-        Type = TOKEN_HEX_LITERAL;
         U64 Hex = 0;
         while (IsHex(*Lexer->Curr))
         {
@@ -662,6 +660,7 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
             {.Str = (const U8 *)"HEN", .Len = 3, .Type = TOKEN_THEN},
             {.Str = (const U8 *)"RUE", .Len = 3, .Type = TOKEN_TRUE},
             {.Str = (const U8 *)"YPE", .Len = 3, .Type = TOKEN_TYPE},
+            {.Str = (const U8 *)"O", .Len = 1, .Type = TOKEN_TO},
         },
         ['U'] = {
             {.Str = (const U8 *)"SES", .Len = 3, .Type = TOKEN_USES},

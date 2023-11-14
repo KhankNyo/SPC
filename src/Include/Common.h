@@ -128,8 +128,14 @@ typedef long double LargeType;
 #endif
 
 
-
+#define IN_I8(x) ((I64)INT8_MIN <= (I64)(x) && ((I64)(x) <= (I64)INT8_MAX))
+#define IN_I16(x) ((I64)INT16_MIN <= (I64)(x) && ((I64)(x) <= (I64)INT16_MAX))
 #define IN_I32(x) ((I64)INT32_MIN <= (I64)(x)) && ((I64)(x) <= (I64)INT32_MAX)
+
+#define IN_U8(x) ((U64)(x) < 0xFF)
+#define IN_U16(x) ((U64)(x) < 0xFFFF)
+#define IN_U32(x) ((U64)(x) < 0xFFFFFFFF)
+
 #define CHR_TO_UPPER(chr) ((U8)(chr) & ~(1u << 5))
 
 

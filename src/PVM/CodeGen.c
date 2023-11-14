@@ -66,6 +66,7 @@ static void PVMCompileStmtBlock(PVMCompiler *Compiler, const AstStmtBlock *Block
 
 static void PVMCompileStmt(PVMCompiler *Compiler, const AstStmt *Statement);
 static void PVMCompileBeginEndStmt(PVMCompiler *Compiler, const AstBeginEndStmt *BeginEnd);
+static void PVMCompileForStmt(PVMCompiler *Compiler, const AstForStmt *ForStmt);
 static void PVMCompileWhileStmt(PVMCompiler *Compiler, const AstWhileStmt *WhileStmt);
 static void PVMCompileAssignStmt(PVMCompiler *Compiler, const AstAssignStmt *Assignment);
 static void PVMCompileReturnStmt(PVMCompiler *Compiler, const AstReturnStmt *RetStmt);
@@ -79,19 +80,19 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand *Dest, const Ast
 
 
 
-static U64 PVMEmitBrIfFalse(PVMCompiler *Compiler, Operand *Dest);
+static U64 PVMEmitBrIfFalse(PVMCompiler *Compiler, Operand *Condition);
 static void PVMPatchBranch(PVMCompiler *Compiler, U64 StreamOffset, UInt ImmSize); 
 static void PVMEmitBranch(PVMCompiler *Compiler, U64 Location);
 static void PVMEmitMov(PVMCompiler *Compiler, Operand *Dest, Operand *Src);
-static void PVMEmitLoadI32(PVMCompiler *Compiler, Operand *Dest, I32 Integer);
+static void PVMEmitLoad(PVMCompiler *Compiler, Operand *Dest, U64 Integer, ParserType IntegerType);
+static void PVMEmitAddImm(PVMCompiler *Compiler, Operand *Dest, I16 Imm);
 static void PVMEmitAdd(PVMCompiler *Compiler, Operand *Dest, Operand *Left, Operand *Right);
 static void PVMEmitSub(PVMCompiler *Compiler, Operand *Dest, Operand *Left, Operand *Right);
 static void PVMEmitMul(PVMCompiler *Compiler, Operand *Dest, Operand *Left, Operand *Right);
 static void PVMEmitDiv(PVMCompiler *Compiler, Operand *Dividend, Operand *Remainder, Operand *Left, Operand *Right);
 static void PVMEmitSetCC(
         PVMCompiler *Compiler, TokenType Op, 
-        Operand *Dest, Operand *Left, Operand *Right, 
-        UInt OperandSize, bool IsSigned
+        Operand *Dest, Operand *Left, Operand *Right
 );
 static void PVMEmitReturn(PVMCompiler *Compiler);
 static void PVMEmitExit(PVMCompiler *Compiler);
@@ -289,10 +290,12 @@ static void PVMCompileStmt(PVMCompiler *Compiler, const AstStmt *Statement)
 {
     switch (Statement->Type)
     {
+    case AST_STMT_BEGINEND:     PVMCompileBeginEndStmt(Compiler, (const AstBeginEndStmt*)Statement); break;
+    case AST_STMT_FOR:          PVMCompileForStmt(Compiler, (const AstForStmt*)Statement); break;
+    case AST_STMT_WHILE:        PVMCompileWhileStmt(Compiler, (const AstWhileStmt*)Statement); break;
     case AST_STMT_ASSIGNMENT:   PVMCompileAssignStmt(Compiler, (const AstAssignStmt*)Statement); break;
     case AST_STMT_RETURN:       PVMCompileReturnStmt(Compiler, (const AstReturnStmt*)Statement); break;
-    case AST_STMT_WHILE:        PVMCompileWhileStmt(Compiler, (const AstWhileStmt*)Statement); break;
-    case AST_STMT_BEGINEND:     PVMCompileBeginEndStmt(Compiler, (const AstBeginEndStmt*)Statement); break;
+
 
     case AST_STMT_INVALID:
     {
@@ -311,6 +314,26 @@ static void PVMCompileBeginEndStmt(PVMCompiler *Compiler, const AstBeginEndStmt 
         PVMCompileStmt(Compiler, I->Statement);
         I = I->Next;
     }
+}
+
+
+static void PVMCompileForStmt(PVMCompiler *Compiler, const AstForStmt *ForStmt)
+{
+    Operand *I = PVMGetLocationOf(Compiler, ForStmt->VariableID);
+    PVMCompileExprInto(Compiler, I, &ForStmt->InitExpr);
+
+    /* TODO: temporary register */
+    Operand Stop = PVMAllocateRegister(Compiler, ForStmt->StopExpr.Type);
+    U64 Location = PVMCurrentChunk(Compiler)->Count;
+        PVMCompileExprInto(Compiler, &Stop, &ForStmt->StopExpr);
+        PVMEmitSetCC(Compiler, ForStmt->Comparison, &Stop, I, &Stop);
+    U64 BrIns = PVMEmitBrIfFalse(Compiler, &Stop);
+    PVMEmitAddImm(Compiler, I, ForStmt->Imm);
+    PVMFreeRegister(Compiler, &Stop);
+
+    PVMCompileStmt(Compiler, ForStmt->Stmt);
+    PVMEmitBranch(Compiler, Location);
+    PVMPatchBranch(Compiler, BrIns, 21);
 }
 
 
@@ -384,8 +407,7 @@ static void PVMCompileExprInto(PVMCompiler *Compiler, Operand *Dest, const AstEx
     do {
         PVMCompileSimpleExprInto(Compiler, &Right, &RightSimpleExpr->SimpleExpr);
         PVMEmitSetCC(Compiler, RightSimpleExpr->Op, 
-                &Left, &Left, &Right, 
-                sizeof(U32), true
+                &Left, &Left, &Right
         );
         RightSimpleExpr = RightSimpleExpr->Next;
     } while (NULL != RightSimpleExpr);
@@ -501,7 +523,7 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand *Dest, const Ast
     {
     case FACTOR_INTEGER:
     {
-        PVMEmitLoadI32(Compiler, Dest, Factor->As.Integer);
+        PVMEmitLoad(Compiler, Dest, Factor->As.Integer, Factor->Type);
     } break;
     case FACTOR_REAL:
     {
@@ -533,11 +555,11 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, Operand *Dest, const Ast
 
 
 
-static U64 PVMEmitBrIfFalse(PVMCompiler *Compiler, Operand *Reg)
+static U64 PVMEmitBrIfFalse(PVMCompiler *Compiler, Operand *Condition)
 {
-    if (Reg->InRegister)
+    if (Condition->InRegister)
     {
-        return ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_BRIF_INS(EZ, Reg->RegID, -1));
+        return ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_BRIF_INS(EZ, Condition->RegID, -1));
     }
     else 
     {
@@ -576,16 +598,86 @@ static void PVMEmitMov(PVMCompiler *Compiler, Operand *Dest, Operand *Src)
     }
 }
 
-static void PVMEmitLoadI32(PVMCompiler *Compiler, Operand *Dest, I32 Integer)
+static void PVMEmitLoad(PVMCompiler *Compiler, Operand *Dest, U64 Integer, ParserType IntegerType)
 {
+    /* TODO: sign type */
+    if (IntegerType > Dest->IntegralType)
+        IntegerType = Dest->IntegralType;
+
     if (Dest->InRegister)
     {
-        Dest->IntegralType = TYPE_I32;
-        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_ARITH_INS(LDI, Dest->RegID, Integer));
+        CodeChunk *Current = PVMCurrentChunk(Compiler);
+
+        if (0 == Integer)
+        {
+            ChunkWriteCode(Current, PVM_IRD_ARITH_INS(LDI, Dest->RegID, 0));
+            if (IntegerType == TYPE_I64 || IntegerType == TYPE_U64)
+                ChunkWriteCode(Current, PVM_IRD_ARITH_INS(LDZHLI, Dest->RegID, 0));
+            return;
+        }
+
+        switch (IntegerType)
+        {
+        case TYPE_U8:
+        case TYPE_I8:
+        case TYPE_I16:
+        {
+            ChunkWriteCode(Current, PVM_IRD_ARITH_INS(LDI, Dest->RegID, Integer));
+        } break;
+
+        case TYPE_U16:
+        {
+            ChunkWriteCode(Current, PVM_IRD_ARITH_INS(LDZI, Dest->RegID, Integer));
+        } break;
+        case TYPE_U32:
+        case TYPE_I32:
+        {
+            ChunkWriteCode(Current, PVM_IRD_ARITH_INS(LDZI, Dest->RegID, Integer));
+            ChunkWriteCode(Current, PVM_IRD_ARITH_INS(ORUI, Dest->RegID, Integer >> 16));
+        } break;
+
+        case TYPE_U64:
+        {
+            ChunkWriteCode(Current, PVM_IRD_ARITH_INS(LDZI, Dest->RegID, Integer >> 16));
+            ChunkWriteCode(Current, PVM_IRD_ARITH_INS(ORUI, Dest->RegID, Integer));
+            ChunkWriteCode(Current, PVM_IRD_ARITH_INS(LDZHLI, Dest->RegID, Integer >> 32));
+            if (Integer >> 48)
+                ChunkWriteCode(Current, PVM_IRD_ARITH_INS(ORHUI, Dest->RegID, Integer >> 48));
+        } break;
+        case TYPE_I64:
+        {
+            ChunkWriteCode(Current, PVM_IRD_ARITH_INS(LDZI, Dest->RegID, Integer >> 16));
+            ChunkWriteCode(Current, PVM_IRD_ARITH_INS(ORUI, Dest->RegID, Integer));
+            if (Integer >> 48 == 0xFFFF)
+            {
+                ChunkWriteCode(Current, PVM_IRD_ARITH_INS(LDHLI, Dest->RegID, Integer >> 32));
+            }
+            else 
+            {
+                ChunkWriteCode(Current, PVM_IRD_ARITH_INS(LDZHLI, Dest->RegID, Integer >> 32));
+                ChunkWriteCode(Current, PVM_IRD_ARITH_INS(ORHUI, Dest->RegID, Integer >> 48));
+            }
+        } break;
+
+        default: PASCAL_UNREACHABLE("Invalid integer type");
+        }
     }
     else 
     {
         PASCAL_UNREACHABLE("TODO Load mem, imm");
+    }
+}
+
+
+static void PVMEmitAddImm(PVMCompiler *Compiler, Operand *Dest, I16 Imm)
+{
+    if (Dest->InRegister)
+    {
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_ARITH_INS(ADD, Dest->RegID, Imm));
+    }
+    else 
+    {
+        PASCAL_UNREACHABLE("TODO: Addi [mem], i32");
     }
 }
 
@@ -639,7 +731,7 @@ static void PVMEmitDiv(PVMCompiler *Compiler, Operand *Dividend, Operand *Remain
     }
 }
 
-static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, Operand *Dest, Operand *Left, Operand *Right, UInt OperandSize, bool IsSigned)
+static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, Operand *Dest, Operand *Left, Operand *Right)
 {
     PASCAL_ASSERT(Dest->InRegister && Left->InRegister && Right->InRegister, "TODO: SetCC Dest, Left, Right");
 #define SET(Size, ...)\
@@ -674,25 +766,17 @@ static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, Operand *Dest, Ope
 
 
 
-    if (IsSigned)
+    switch (Dest->IntegralType)
     {
-        switch (OperandSize)
-        {
-        case sizeof(PVMPtr): SIGNEDSET(P, "(Signed) PVMEmitSetCC: PVMPtr: %s is not valid", TokenTypeToStr(Op)); break;
-        case sizeof(PVMWord): SIGNEDSET(W, "(Signed) PVMEmitSetCC: PVMWord: %s is not valid", TokenTypeToStr(Op)); break;
-        case sizeof(PVMHalf): SIGNEDSET(H, "(Signed) PVMEmitSetCC: PVMHalf: %s is not valid", TokenTypeToStr(Op)); break;
-        case sizeof(PVMByte): SIGNEDSET(B, "(Signed) PVMEmitSetCC: PVMByte: %s is not valid", TokenTypeToStr(Op)); break;
-        }
-    }
-    else
-    {
-        switch (OperandSize)
-        {
-        case sizeof(PVMPtr): SET(P, "PVMEmitSetCC: PVMPtr: %s is not valid", TokenTypeToStr(Op)); break;
-        case sizeof(PVMWord): SET(W, "PVMEmitSetCC: PVMWord: %s is not valid", TokenTypeToStr(Op)); break;
-        case sizeof(PVMHalf): SET(H, "PVMEmitSetCC: PVMHalf: %s is not valid", TokenTypeToStr(Op)); break;
-        case sizeof(PVMByte): SET(B, "PVMEmitSetCC: PVMByte: %s is not valid", TokenTypeToStr(Op)); break;
-        }
+    case TYPE_I64: SIGNEDSET(P, "(Signed) PVMEmitSetCC: PVMPtr: %s is not valid", TokenTypeToStr(Op)); break;
+    case TYPE_I32: SIGNEDSET(W, "(Signed) PVMEmitSetCC: PVMWord: %s is not valid", TokenTypeToStr(Op)); break;
+    case TYPE_I16: SIGNEDSET(H, "(Signed) PVMEmitSetCC: PVMHalf: %s is not valid", TokenTypeToStr(Op)); break;
+    case TYPE_I8:  SIGNEDSET(B, "(Signed) PVMEmitSetCC: PVMByte: %s is not valid", TokenTypeToStr(Op)); break;
+    case TYPE_U64: SET(P, "PVMEmitSetCC: PVMPtr: %s is not valid", TokenTypeToStr(Op)); break;
+    case TYPE_U32: SET(W, "PVMEmitSetCC: PVMWord: %s is not valid", TokenTypeToStr(Op)); break;
+    case TYPE_U16: SET(H, "PVMEmitSetCC: PVMHalf: %s is not valid", TokenTypeToStr(Op)); break;
+    case TYPE_U8:  SET(B, "PVMEmitSetCC: PVMByte: %s is not valid", TokenTypeToStr(Op)); break;
+    default: PASCAL_UNREACHABLE("Invalid size for setcc: %d", Dest->Size); break;
     }
 
 #undef SET
@@ -710,7 +794,6 @@ static void PVMEmitExit(PVMCompiler *Compiler)
 {
     ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_SYS_INS(EXIT));
 }
-
 
 
 

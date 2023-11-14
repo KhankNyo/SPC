@@ -358,9 +358,13 @@ static void DisasmImmRdArith(FILE *f, PVMWord Opcode)
     {
     case PVM_IRD_ADD: DisasmImmRd(f, "ADD", Opcode, true); break;
     case PVM_IRD_SUB: DisasmImmRd(f, "SUB", Opcode, true); break;
+
     case PVM_IRD_LDI: DisasmImmRd(f, "LDI", Opcode, true); break;
-    case PVM_IRD_LUI: DisasmImmRd(f, "LUI", Opcode, false); break;
-    case PVM_IRD_ORI: DisasmImmRd(f, "ORI", Opcode, false); break;
+    case PVM_IRD_LDZI: DisasmImmRd(f, "LDZI", Opcode, false); break;
+    case PVM_IRD_ORUI: DisasmImmRd(f, "ORUI", Opcode, false); break;
+    case PVM_IRD_LDZHLI: DisasmImmRd(f, "LDZHLI", Opcode, false); break;
+    case PVM_IRD_LDHLI: DisasmImmRd(f, "LDHLI", Opcode, false); break;
+    case PVM_IRD_ORHUI: DisasmImmRd(f, "ORHUI", Opcode, false); break;
     }
 }
 

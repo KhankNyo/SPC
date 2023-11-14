@@ -33,7 +33,7 @@
  *
  * Floating point ops:
  * FData:           [ 1000 ][ Mode ][    Op   ][  FD  ][  FA  ][  FB  ][  00000  ]
- * FMem:            [ 1001 ][ Mode ][    FD   ][              Imm20              ]
+ * FMem:            [ 1001 ][ Mode ][    FD   ][              Imm21              ]
  *
  * 
  * 
@@ -45,8 +45,8 @@
  *      01:
  *      10:
  *      11:
- *
- *  3.1/Data:
+ */
+ /*  3.1/Data:
  *      Mode:
  *      00: Arith
  *          Ins:
@@ -82,8 +82,10 @@
  *                  else 
  *                      RD.Word  := RA.Word / RB.Word
  *                  RR.Word  := Remainder
+ *
  *          00101:  NEG RD, RA
  *                  RD := -RA
+ *
  *      01: 
  *      10:
  *      11:
@@ -129,15 +131,20 @@
  *              RD := Imm16 << 16
  *          00100: ORI RD, Imm16
  *              RD |= Imm16
+ *          00101: LHUI RD, Imm16 
+ *              RD.Ptr.Upper := Imm16 << 48
+ *          00110: ORHLI
+ *              RD.Ptr.Upper |= Imm16 << 32
+ *
  *      01: Mem:
  *          00000: LDRS RD, [FP + Imm16]
- *              RD := [BasePointer + Imm16]
+ *              RD.Ptr := [BasePointer + Imm16]
  *          00001: LDFS FD, [FP + Imm16]
- *              FD := [BasePointer + Imm16]
+ *              FD.Ptr := [BasePointer + Imm16]
  *          00010: STRS RD, [FP + Imm16]
- *              [FP + Imm16] := RD
+ *              [FP + Imm16] := RD.Ptr
  *          00011: STFS RD, [FP + Imm16]
- *              [FP + Imm16] := FD
+ *              [FP + Imm16] := FD.Ptr
  *      10: Store:
  *      11:
  *
@@ -251,9 +258,13 @@ typedef enum PVMIRDArith
 {
     PVM_IRD_ADD = 0,
     PVM_IRD_SUB,
+
     PVM_IRD_LDI,
-    PVM_IRD_LUI,
-    PVM_IRD_ORI,
+    PVM_IRD_LDZI,
+    PVM_IRD_ORUI,
+    PVM_IRD_LDZHLI,
+    PVM_IRD_LDHLI,
+    PVM_IRD_ORHUI,
 } PVMIRDArith;
 
 typedef enum PVMIRDMem

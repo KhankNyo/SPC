@@ -1,7 +1,7 @@
 
+#include <time.h>
 #include "Memory.h"
 #include "PVM/PVM.h"
-
 
 
 
@@ -78,6 +78,7 @@ do {\
 } while(0)
 
 
+    double start = clock();
 
     PVMWord *IP = Chunk->Code;
     PVMPtr *FP = PVM->Stack.Start;
@@ -207,9 +208,13 @@ do {\
             {
             case PVM_IRD_ADD: R(Opcode, IRD, RD).Word.First += IRD_SIGNED_IMM(Opcode); break;
             case PVM_IRD_SUB: R(Opcode, IRD, RD).Word.First -= IRD_SIGNED_IMM(Opcode); break;
+
             case PVM_IRD_LDI: R(Opcode, IRD, RD).Word.First = IRD_SIGNED_IMM(Opcode); break;
-            case PVM_IRD_LUI: R(Opcode, IRD, RD).Word.First = PVM_IRD_GET_IMM(Opcode) << 16; break;
-            case PVM_IRD_ORI: R(Opcode, IRD, RD).Word.First |= PVM_IRD_GET_IMM(Opcode); break;
+            case PVM_IRD_LDZI: R(Opcode, IRD, RD).Word.First = PVM_IRD_GET_IMM(Opcode); break;
+            case PVM_IRD_ORUI: R(Opcode, IRD, RD).Word.First |= PVM_IRD_GET_IMM(Opcode) << 16; break;
+            case PVM_IRD_LDZHLI: R(Opcode, IRD, RD).Word.Second = PVM_IRD_GET_IMM(Opcode); break;
+            case PVM_IRD_LDHLI: R(Opcode, IRD, RD).Word.Second = IRD_SIGNED_IMM(Opcode); break;
+            case PVM_IRD_ORHUI: R(Opcode, IRD, RD).Word.Second |= PVM_IRD_GET_IMM(Opcode) << 16; break;
             }
         } break;
         case PVM_IRD_MEM:
@@ -312,6 +317,8 @@ do {\
 
         }
     }
+
+    
 IllegalInstruction:
     return PVM_ILLEGAL_INSTRUCTION;
 DivisionBy0:
@@ -321,6 +328,7 @@ CallstackUnderflow:
 CallstackOverflow:
     return PVM_CALLSTACK_OVERFLOW;
 Out:
+    printf("Finished in %g ms\n", (clock() - start) * 1000 / CLOCKS_PER_SEC);
     return PVM_NO_ERROR;
 
 
