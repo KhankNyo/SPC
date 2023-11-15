@@ -67,7 +67,7 @@ static ParserType DetermineIntegerSize(U64 Integer);
 
 static void Error(PascalParser *Parser, const char *Fmt, ...);
 static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList);
-static void RecoverFromError(PascalParser *Parser);
+static void Unpanic(PascalParser *Parser);
 
 static const char *ParserTypeToStr(ParserType Type);
 
@@ -174,9 +174,9 @@ AstBlock *ParseBlock(PascalParser *Parser)
         } break;
         }
 
-        if (Parser->Error)
+        if (Parser->PanicMode)
         {
-            RecoverFromError(Parser);
+            Unpanic(Parser);
         }
 
         if (NULL != *I)
@@ -194,38 +194,45 @@ BeginEndBlock:
 
 AstStmt *ParseStmt(PascalParser *Parser)
 {
+    AstStmt *Statement = NULL;
     switch (Parser->Next.Type)
     {
     case TOKEN_BEGIN:
     {
         ConsumeToken(Parser);
-        return (AstStmt*)ParseBeginEndStmt(Parser);
+        Statement = (AstStmt*)ParseBeginEndStmt(Parser);
     } break;
     case TOKEN_EXIT:
     {
         ConsumeToken(Parser);
-        return (AstStmt*)ParseReturnStmt(Parser);
+        Statement = (AstStmt*)ParseReturnStmt(Parser);
     } break;
     case TOKEN_WHILE:
     {
         ConsumeToken(Parser);
-        return (AstStmt*)ParseWhileStmt(Parser);
+        Statement = (AstStmt*)ParseWhileStmt(Parser);
     } break;
     case TOKEN_FOR:
     {
         ConsumeToken(Parser);
-        return (AstStmt*)ParseForStmt(Parser);
+        Statement = (AstStmt*)ParseForStmt(Parser);
     } break;
     case TOKEN_IF:
     {
         ConsumeToken(Parser);
-        return (AstStmt*)ParseIfStmt(Parser);
+        Statement = (AstStmt*)ParseIfStmt(Parser);
     } break;
     default: 
     {
-        return (AstStmt*)ParseAssignStmt(Parser);
+        Statement = (AstStmt*)ParseAssignStmt(Parser);
     } break;
     }
+
+    if (Parser->PanicMode)
+    {
+        Unpanic(Parser);
+    }
+    return Statement;
 }
 
 
@@ -473,6 +480,7 @@ static AstIfStmt *ParseIfStmt(PascalParser *Parser)
 
     IfStmt->Condition = ParseExpr(Parser);
     ConsumeOrError(Parser, TOKEN_THEN, "Expected 'then' after expression.");
+
     IfStmt->IfCase = ParseStmt(Parser);
     if (ConsumeIfNextIs(Parser, TOKEN_ELSE))
     {
@@ -901,34 +909,34 @@ static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList)
 }
 
 
-static void RecoverFromError(PascalParser *Parser)
+static void Unpanic(PascalParser *Parser)
 {
     Parser->PanicMode = false;
     while (!IsAtEnd(Parser))
     {
-        /* keywords before a block */
-        switch (Parser->Next.Type)
+        if (Parser->Curr.Type == TOKEN_SEMICOLON)
         {
-        case TOKEN_LABEL:
-        case TOKEN_CONST:
-        case TOKEN_TYPE:
-        case TOKEN_VAR:
-        case TOKEN_PROCEDURE:
-        case TOKEN_FUNCTION:
-        case TOKEN_BEGIN:
-            return;
+            switch (Parser->Next.Type)
+            {
+            case TOKEN_LABEL:
+            case TOKEN_CONST:
+            case TOKEN_TYPE:
+            case TOKEN_VAR:
+            case TOKEN_PROCEDURE:
+            case TOKEN_FUNCTION:
+            case TOKEN_BEGIN:
 
-        default: 
-        {
-            ConsumeToken(Parser);
-        } break;
+            case TOKEN_IF:
+            case TOKEN_FOR:
+            case TOKEN_WHILE:
+                return;
 
+            default: break;
+            }
         }
+        ConsumeToken(Parser);
     }
 }
-
-
-
 
 
 static const char *ParserTypeToStr(ParserType Type)
