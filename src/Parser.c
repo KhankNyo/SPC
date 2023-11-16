@@ -55,6 +55,8 @@ static PascalVartab *ParserCurrentScope(PascalParser *Parser);
 static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser);
 static AstTerm ParseTerm(PascalParser *Parser);
 static AstFactor ParseFactor(PascalParser *Parser);
+static AstFactor ParseVariable(PascalParser *Parser);
+static AstExprList *ParseArgumentList(PascalParser *Parser);
 
 
 static bool IsAtEnd(const PascalParser *Parser);
@@ -377,7 +379,7 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type)
 {
     /*
      * function Iden(param1, param2: typename; param3...: typename): typename;
-     * procedure Iden(param, param2: typename; param3...: typename): typename;
+     * procedure Iden(param, param2: typename; param3...: typename);
      */
 
 
@@ -445,6 +447,7 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type)
     ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after 'end'");
     return Function;
 }
+
 
 
 
@@ -782,20 +785,7 @@ static AstFactor ParseFactor(PascalParser *Parser)
     } break;
     case TOKEN_IDENTIFIER:
     {
-        ConsumeToken(Parser);
-        if (NextTokenIs(Parser, TOKEN_LEFT_PAREN))
-        {
-            PASCAL_UNREACHABLE("TODO: call expression");
-        }
-        Factor.FactorType = FACTOR_VARIABLE;
-        Factor.As.Variable.Name = Parser->Curr;
-
-        PascalVar *Info = ParserGetIdentifierInfo(Parser, &Parser->Curr, "Undefined identifier.");
-        if (NULL != Info)
-        {
-            Factor.Type = Info->Type;
-            Factor.As.Variable.ID = Info->ID;
-        }
+        Factor = ParseVariable(Parser);
     } break;
 
     default: 
@@ -806,6 +796,52 @@ static AstFactor ParseFactor(PascalParser *Parser)
     }
     return Factor;
 }
+
+
+
+static AstFactor ParseVariable(PascalParser *Parser)
+{
+    AstFactor Factor = { 0 };
+    ConsumeToken(Parser);
+    Token Identifier = Parser->Curr;
+
+    PascalVar *Info = ParserGetIdentifierInfo(Parser, 
+            &Identifier, "Undefined identifier."
+    );
+    if (NULL != Info)
+    {
+        Factor.Type = Info->Type;
+        Factor.As.VarID = Info->ID;
+        if (TYPE_FUNCTION == Info->Type)
+        {
+            Factor.FactorType = FACTOR_CALL;
+            Factor.As.CallArgList = ParseArgumentList(Parser);
+        }
+        else
+        {
+            Factor.FactorType = FACTOR_VARIABLE;
+        }
+    }
+    return Factor;
+}
+
+
+
+static AstExprList *ParseArgumentList(PascalParser *Parser)
+{
+    AstExprList *Args = NULL;
+    AstExprList **Current = &Args;
+    while (!ConsumeIfNextIs(Parser, TOKEN_RIGHT_PAREN))
+    {
+        *Current = ArenaAllocate(Parser->Arena, sizeof **Current);
+        (*Current)->Expr = ParseExpr(Parser);
+        Current = &(*Current)->Next;
+    }
+    return Args;
+}
+
+
+
 
 
 

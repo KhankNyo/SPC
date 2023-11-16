@@ -17,6 +17,8 @@ typedef struct AstOpSimpleExpr AstOpSimpleExpr;
 typedef struct AstExpr AstExpr;
 typedef struct AstOpExpr AstExOppr;
 
+typedef struct AstExprList AstExprList;
+
 typedef enum ParserType 
 {
     TYPE_INVALID = 0,
@@ -47,14 +49,11 @@ struct AstFactor
     union {
         U64 Integer;
         F64 Real;
+        U32 VarID;
 
         AstExpr *Expression;
+        AstExprList *CallArgList;
         struct AstFactor *NotFactor;
-
-        struct {
-            Token Name;
-            U32 ID;
-        } Variable;
     } As;
 };
 
@@ -107,6 +106,13 @@ struct AstExpr
     ParserType Type;
     AstSimpleExpr Left;
     AstOpSimpleExpr *Right;
+};
+
+
+struct AstExprList 
+{
+    AstExpr Expr;
+    AstExprList *Next;
 };
 
 
