@@ -213,32 +213,30 @@ static VarLocation *PVMGetLocationOf(PVMCompiler *Compiler, U32 LocationID)
 
 static void PVMCompileBlock(PVMCompiler *Compiler, const AstBlock *Block)
 {
-    switch (Block->Type)
-    {
-    case AST_BLOCK_VAR:
-    {
-        PVMCompileVarBlock(Compiler, (const AstVarBlock*)Block);
-    } break;
-    case AST_BLOCK_FUNCTION:
-    {
-        PVMCompileFunctionBlock(Compiler, (const AstFunctionBlock*)Block);
-    } break;
-    case AST_BLOCK_STATEMENTS:
-    {
-        PVMBeginScope(Compiler);
-        PVMCompileStmtBlock(Compiler, (const AstStmtBlock*)Block);
-        PVMEndScope(Compiler);
-    } break;
+    do {
+        switch (Block->Type)
+        {
+        case AST_BLOCK_VAR:
+        {
+            PVMCompileVarBlock(Compiler, (const AstVarBlock*)Block);
+        } break;
+        case AST_BLOCK_FUNCTION:
+        {
+            PVMCompileFunctionBlock(Compiler, (const AstFunctionBlock*)Block);
+        } break;
+        case AST_BLOCK_STATEMENTS:
+        {
+            PVMBeginScope(Compiler);
+            PVMCompileStmtBlock(Compiler, (const AstStmtBlock*)Block);
+            PVMEndScope(Compiler);
+        } break;
 
-    case AST_BLOCK_INVALID:
-        break;
-    }
-
-    /* TODO: loop instead */
-    if (NULL != Block->Next)
-    {
-        PVMCompileBlock(Compiler, Block->Next);
-    }
+        case AST_BLOCK_INVALID:
+        {
+            PASCAL_UNREACHABLE("Invalid block");
+        } break;
+        }
+    } while (NULL != Block->Next);
 }
 
 
