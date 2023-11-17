@@ -73,15 +73,42 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk)
 do {\
     if (R(Opcode, BRIF, RA)RegType Operation 0) {\
         (IP) += (PVMSPtr)(I32)PVM_BRIF_GET_IMM(Opcode);\
-        /* TODO: verify jump target */\
+        if (IP < Chunk->Code || CodeEnd <= IP) {\
+            /* TODO: verify jump target */\
+        }\
     }\
 } while(0)
+
+
+#define PUSH_MULTIPLE(Base, Opcode) do{\
+    UInt RegList = PVM_IRD_GET_IMM(Opcode);\
+    UInt i = Base;\
+    while (RegList) {\
+        if (RegList & 1) {\
+            *SP++ = PVM->R[i];\
+            i++;\
+        }\
+    }\
+} while (0)
+
+#define POP_MULTIPLE(Base, Opcode) do{\
+    UInt RegList = PVM_IRD_GET_IMM(Opcode);\
+    UInt i = Base;\
+    while (RegList) {\
+        if (RegList & 1) {\
+            *SP++ = PVM->R[i];\
+            i++;\
+        }\
+    }\
+} while (0)
 
 
     double start = clock();
 
     PVMWord *IP = Chunk->Code;
     PVMPtr *FP = PVM->Stack.Start;
+    PVMPtr *SP = PVM->Stack.Start;
+    const PVMWord *CodeEnd = IP + Chunk->Count;
     while (1)
     {
         PVMWord Opcode = *IP++;
@@ -114,7 +141,7 @@ do {\
             {
                 if (PVM_IDAT_SPECIAL_SIGNED(Opcode))
                 {
-                    R(Opcode, IDAT, RD).SPtr = 
+                    R(Opcode, IDAT, RD).Ptr = 
                         R(Opcode, IDAT, RA).SWord.First * R(Opcode, IDAT, RB).SWord.First;
                 }
                 else
@@ -224,12 +251,44 @@ do {\
             {
                 /* TODO: invalid access */
             }
+
             switch (PVM_IRD_GET_MEM(Opcode))
             {
             case PVM_IRD_LDRS: R(Opcode, IRD, RD).Ptr = *Addr; break;
             case PVM_IRD_LDFS: F(Opcode, IRD, FD).Ptr = *Addr; break;
             case PVM_IRD_STRS: *Addr = R(Opcode, IRD, RD).Ptr; break;
             case PVM_IRD_STFS: *Addr = F(Opcode, IRD, FD).Ptr; break;
+            case PVM_TRANSFER_PSHL:
+            {
+                UInt RegList = PVM_IRD_GET_IMM(Opcode);
+                UInt i = 0;
+                while (RegList)
+                {
+                    if (RegList & 1)
+                    {
+                        *SP++ = PVM->R[i].Ptr;
+                        i++;
+                    }
+                    RegList >>= 1;
+                }
+            } break;
+            case PVM_TRANSFER_POPL:
+            case PVM_TRANSFER_PSHU:
+            {
+                UInt RegList = PVM_IRD_GET_IMM(Opcode);
+                UInt i = 16;
+                while (RegList)
+                {
+                    if (RegList & 1)
+                    {
+                        *SP++ = PVM->R[i].Ptr;
+                        i++;
+                    }
+                    RegList <<= 1;
+                }
+            } break;
+            case PVM_TRANSFER_POPU:
+            break;
             }
         } break;
 
@@ -241,7 +300,10 @@ do {\
         case PVM_BALT_AL: 
         {
             IP += (PVMSPtr)(I32)PVM_BAL_GET_IMM(Opcode);
-            /* TODO: verify jump target */
+            if (IP < Chunk->Code || CodeEnd <= IP)
+            {
+                /* TODO invalid branch target */
+            }
         } break;
         case PVM_BALT_SR:
         {

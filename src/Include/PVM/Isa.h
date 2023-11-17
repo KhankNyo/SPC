@@ -34,10 +34,8 @@
  * Floating point ops:
  * FData:           [ 1000 ][ Mode ][    Op   ][  FD  ][  FA  ][  FB  ][  00000  ]
  * FMem:            [ 1001 ][ Mode ][    FD   ][              Imm21              ]
- *
- * 
- * 
- * 
+ */
+ /* 
  * 3/ Instructions:
  *  3.0/Resv:
  *      Mode:
@@ -46,7 +44,8 @@
  *      10:
  *      11:
  */
- /*  3.1/Data:
+ /*  
+ *  3.1/Data:
  *      Mode:
  *      00: Arith
  *          Ins:
@@ -54,8 +53,11 @@
  *                      RD := RA + RB
  *          00001:  SUB RD, RA, RB
  *                      RD := RA - RB
+ *          00010:  NEG RD, RA
+ *                      RD := ~RA + 1;
  *
- *          00010:  (S)MUL HI, RA, RB, LO
+ *      01: Special
+ *          00000:  (S)MUL HI, RA, RB, LO
  *                  if (S)
  *                      Product := SExPtr(RA) * SExPtr(RB)
  *                      HI := Product.HI
@@ -63,33 +65,32 @@
  *                  else
  *                      Product := RA * RB
  *                      HI := Product.HI
- *                      LO := Prod_ARITHuct.LO
+ *                      LO := Product.LO
  *
- *          00011:  (S)DIVP RD, RA, RB, RR
+ *          00001:  (S)DIVP RD, RA, RB, RR
  *                  if (RB.Ptr == 0)
  *                      DivisionBy0Exception()
  *                  if (S)
  *                      RD.SPtr  := RA.SPtr / RB.SPtr
  *                  else
  *                      RD.Ptr   := RA.SPtr / RB.SPtr
- *                  RR.Word  := Remainder
+ *                  RR.Ptr := Remainder
  *
- *          00100:  (S)DIV RD, RA, RB, RR
+ *          00010:  (S)DIV RD, RA, RB, RR
  *                  if (RB.Ptr == 0)
  *                      DivisionBy0Exception()
  *                  if (S)
  *                      RD.SWord := RA.SWord / RB.SWord
  *                  else 
  *                      RD.Word  := RA.Word / RB.Word
- *                  RR.Word  := Remainder
+ *                  RR := Remainder
  *
- *          00101:  NEG RD, RA
- *                  RD := -RA
- *
- *      01: 
- *      10:
- *      11:
- *
+ *      10: Cmp
+ *      11: Transfer
+ *          00000:  MOV RD, RS
+ *                  RD := RS;
+ */
+ /*
  *  3.2/BranchIf:
  *      Mode:
  *      00: BEZ RA, Offset20
@@ -98,7 +99,8 @@
  *      01: BNZ RA, Offset20
  *          if (RA != 0)
  *              PC += SExPtr(Offset20)
- *
+ */
+ /*
  *  3.3/BranchAlways, Ret:
  *      Mode:
  *      10: B Offset26
@@ -110,14 +112,16 @@
  *          else Do BranchSubroutine:
  *              RetStackPush(.Addr = PC, .Frame = FP);
  *              PC += SExPtr(Offset26);
- *
+ */
+ /*
  *  3.4/LimmRd:
  *      Mode:
  *      00:
  *      01:
  *      10:
  *      11:
- *
+ */
+ /*  
  *  3.5/ImmRd:
  *      Mode:
  *      00: Arith:
@@ -138,25 +142,46 @@
  *
  *      01: Mem:
  *          00000: LDRS RD, [FP + Imm16]
- *              RD.Ptr := [BasePointer + Imm16]
+ *              RD.Ptr := [FP + Imm16]
  *          00001: LDFS FD, [FP + Imm16]
- *              FD.Ptr := [BasePointer + Imm16]
+ *              FD.Ptr := [FP + Imm16]
  *          00010: STRS RD, [FP + Imm16]
  *              [FP + Imm16] := RD.Ptr
  *          00011: STFS RD, [FP + Imm16]
  *              [FP + Imm16] := FD.Ptr
- *      10: Store:
+ *              
+ *          00100:  PSHL {R0..R15}
+ *                  for i := 0 to 16 do 
+ *                      if 1 == REGLIST[i] then
+ *                          [++SP] := Ri.Ptr;
+ *          00101:  POPL {R0..R15}
+ *                  for i := 0 to 16 do 
+ *                      if 1 == REGLIST[15 - i] then
+ *                          Ri.Ptr := [SP--];
+ *          00110:  PSHU {R16..R31}
+ *                  for i := 16 to 32 do 
+ *                      if 1 == REGLIST[i] then
+ *                          [++SP] := Ri.Ptr;
+ *          00111:  POPU {R16..R31}
+ *                  for i := 16 to 32 do 
+ *                      if 1 == REGLIST[15 - i] then
+ *                          Ri.Ptr := [SP--];
+ *      10:
  *      11:
- *
- * 4/ ABI:
- *  4.0/ Function Call and return values
+ */
+ /* 
+ *  4/ ABI:
+ *   4.0/ Function Call and return values
  *      Let Rx = General Register x
  *          Fx = Floating Point Register x
- *      Arguments:  R0..R7, rest are on stack from the order of left to right
- *                  F0..F7, rest are on stack from the order of left to right
+ *      Arguments:  R0..R7, rest are on stack in the order from left to right
+ *                  F0..F7, rest are on stack in the order from left to right
  *      Return:     R0 or F0
- *
- *
+ */
+ /*
+ *   4.1/ Caller and Callee saved registers:
+ *      R00..R20 are Caller saved registers 
+ *      R21..R31 are Callee saved registers
  */
 /*---------------------------------------------------------------------*/
 
@@ -265,6 +290,8 @@ typedef enum PVMIRDArith
     PVM_IRD_LDZHLI,
     PVM_IRD_LDHLI,
     PVM_IRD_ORHUI,
+
+
 } PVMIRDArith;
 
 typedef enum PVMIRDMem
@@ -273,6 +300,11 @@ typedef enum PVMIRDMem
     PVM_IRD_LDFS,
     PVM_IRD_STRS,
     PVM_IRD_STFS,
+
+    PVM_TRANSFER_PSHL,
+    PVM_TRANSFER_POPL,
+    PVM_TRANSFER_PSHU,
+    PVM_TRANSFER_POPU,
 } PVMIRDMem;
 
 typedef enum PVMSysOp 
@@ -292,6 +324,7 @@ typedef enum PVMArgReg
     PVM_REG_ARG5,
     PVM_REG_ARG6,
     PVM_REG_ARG7,
+    PVM_REG_ARGCOUNT,
 
     PVM_REG_RET = PVM_REG_ARG0,
 } PVMArgReg;
