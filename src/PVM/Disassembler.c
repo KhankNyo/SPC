@@ -17,6 +17,14 @@ static const char *sFloatRegName[] =
     "F24", "F25", "F26", "F27", "F28", "F29", "F30", "F31",
 };
 
+typedef enum ImmType 
+{
+    IMM_UNSIGNED,
+    IMM_SIGNED,
+    IMM_INDIRECT,
+    IMM_SIGNED_INDIRECT,
+} ImmType;
+
 static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode);
 
 static void DisasmIDatArith(FILE *f, PVMWord Opcode);
@@ -41,8 +49,9 @@ static void DisasmBAlt(FILE *f, const char *Mnemonic, PVMWord Addr, PVMWord Opco
 
 static void DisasmImmRdArith(FILE *f, PVMWord Opcode);
 static void DisasmImmRdMem(FILE *f, PVMWord Opcode);
-static void DisasmImmRd(FILE *f, const char *Mnemonic, PVMWord Opcode, bool IsSigned);
-static void DisasmImmFd(FILE *f, const char *Mnemonic, PVMWord Opcode, bool IsSigned);
+static void DisasmImmReg(FILE *f, const char *Mnemonic, const char *RegisterSet[32], PVMWord Opcode, ImmType Type);
+static void DisasmRegList(FILE *f, const char *Mnemonic, PVMWord Opcode, bool IsUpper);
+static void DisasmLongImm(FILE *f, const char *Mnemonic, PVMWord Opcode, ImmType Type);
 
 static void DisasmSysOp(FILE *f, PVMWord Addr, PVMWord Opcode);
 static void PrintAddr(FILE *f, PVMWord Addr);
@@ -356,15 +365,15 @@ static void DisasmImmRdArith(FILE *f, PVMWord Opcode)
 {
     switch (PVM_IRD_GET_ARITH(Opcode))
     {
-    case PVM_IRD_ADD: DisasmImmRd(f, "ADD", Opcode, true); break;
-    case PVM_IRD_SUB: DisasmImmRd(f, "SUB", Opcode, true); break;
+    case PVM_IRD_ADD: DisasmImmReg(f, "ADD", sIntRegName, Opcode, IMM_SIGNED); break;
+    case PVM_IRD_SUB: DisasmImmReg(f, "SUB", sIntRegName, Opcode, IMM_SIGNED); break;
 
-    case PVM_IRD_LDI: DisasmImmRd(f, "LDI", Opcode, true); break;
-    case PVM_IRD_LDZI: DisasmImmRd(f, "LDZI", Opcode, false); break;
-    case PVM_IRD_ORUI: DisasmImmRd(f, "ORUI", Opcode, false); break;
-    case PVM_IRD_LDZHLI: DisasmImmRd(f, "LDZHLI", Opcode, false); break;
-    case PVM_IRD_LDHLI: DisasmImmRd(f, "LDHLI", Opcode, false); break;
-    case PVM_IRD_ORHUI: DisasmImmRd(f, "ORHUI", Opcode, false); break;
+    case PVM_IRD_LDI: DisasmImmReg(f, "LDI", sIntRegName, Opcode, IMM_SIGNED); break;
+    case PVM_IRD_LDZI: DisasmImmReg(f, "LDZI", sIntRegName, Opcode, IMM_UNSIGNED); break;
+    case PVM_IRD_ORUI: DisasmImmReg(f, "ORUI", sIntRegName, Opcode, IMM_UNSIGNED); break;
+    case PVM_IRD_LDZHLI: DisasmImmReg(f, "LDZHLI", sIntRegName, Opcode, IMM_UNSIGNED); break;
+    case PVM_IRD_LDHLI: DisasmImmReg(f, "LDHLI", sIntRegName, Opcode, IMM_SIGNED); break;
+    case PVM_IRD_ORHUI: DisasmImmReg(f, "ORHUI", sIntRegName, Opcode, IMM_UNSIGNED); break;
     }
 }
 
@@ -372,40 +381,79 @@ static void DisasmImmRdMem(FILE *f, PVMWord Opcode)
 {
     switch (PVM_IRD_GET_MEM(Opcode))
     {
-    case PVM_IRD_LDRS: DisasmImmRd(f, "LDRS", Opcode, false); break;
-    case PVM_IRD_LDFS: DisasmImmFd(f, "LDFS", Opcode, false); break;
-    case PVM_IRD_STRS: DisasmImmRd(f, "STRS", Opcode, false); break;
-    case PVM_IRD_STFS: DisasmImmFd(f, "STFS", Opcode, false); break;
+    case PVM_IRD_LDRS: DisasmImmReg(f, "LDRS", sIntRegName, Opcode, IMM_INDIRECT); break;
+    case PVM_IRD_LDFS: DisasmImmReg(f, "LDFS", sFloatRegName, Opcode, IMM_INDIRECT); break;
+    case PVM_IRD_STRS: DisasmImmReg(f, "STRS", sIntRegName, Opcode, IMM_INDIRECT); break;
+    case PVM_IRD_STFS: DisasmImmReg(f, "STFS", sFloatRegName, Opcode, IMM_INDIRECT); break;
+
+    case PVM_IRD_POPU: DisasmRegList(f, "POP", Opcode, false); break;
+    case PVM_IRD_POPL: DisasmRegList(f, "POP", Opcode, true); break;
+    case PVM_IRD_PSHL: DisasmRegList(f, "PSH", Opcode, false); break;
+    case PVM_IRD_PSHU: DisasmRegList(f, "PSH", Opcode, true); break;
+    case PVM_IRD_ADDSPI: DisasmLongImm(f, "ADDSP", Opcode, true); break;
     }
 }
 
 
 
-static void DisasmImmRd(FILE *f, const char *Mnemonic, PVMWord Opcode, bool IsSigned)
+static void DisasmImmReg(FILE *f, const char *Mnemonic, const char *RegisterSet[32], PVMWord Opcode, ImmType Type)
 {
-    const char *Rd = sIntRegName[PVM_IRD_GET_RD(Opcode)];
-    int Immediate = IsSigned 
-        ? (int)(I16)PVM_IRD_GET_IMM(Opcode)
-        : (int)PVM_IRD_GET_IMM(Opcode);
+    const char *Rd = RegisterSet[PVM_IRD_GET_RD(Opcode)];
+    U32 Immediate = PVM_IRD_GET_IMM(Opcode);
 
-    fprintf(f, "%s %s, %d\n", 
-            Mnemonic, Rd, Immediate
-    );
+    switch (Type)
+    {
+    case IMM_SIGNED:
+    {
+        fprintf(f, "%s %s, %d\n", Mnemonic, Rd, (I32)Immediate);
+    } break;
+    case IMM_UNSIGNED:
+    {
+        fprintf(f, "%s %s, %u\n", Mnemonic, Rd, Immediate);
+    } break;
+    case IMM_INDIRECT:
+    {
+        fprintf(f, "%s %s, [%u]\n", Mnemonic, Rd, Immediate);
+    } break;
+    case IMM_SIGNED_INDIRECT:
+    {
+        fprintf(f, "%s %s, [%d]\n", Mnemonic, Rd, (I32)Immediate);
+    } break;
+    }
+}
+
+static void DisasmLongImm(FILE *f, const char *Mnemonic, PVMWord Opcode, ImmType Type)
+{
+    U32 Immediate = BIT_AT32(Opcode, 21, 0);
+    switch (Type)
+    {
+    case IMM_SIGNED: fprintf(f, "%s %d\n", Mnemonic, (I32)BIT_SEX32(Immediate, 20)); break;
+    case IMM_UNSIGNED: fprintf(f, "%s %u\n", Mnemonic, Immediate); break;
+    case IMM_INDIRECT: fprintf(f, "%s [%u]\n", Mnemonic, Immediate); break;
+    case IMM_SIGNED_INDIRECT: fprintf(f, "%s [%d]\n", Mnemonic, (I32)BIT_SEX32(Immediate, 20)); break;
+    }
 }
 
 
-static void DisasmImmFd(FILE *f, const char *Mnemonic, PVMWord Opcode, bool IsSigned)
+static void DisasmRegList(FILE *f, const char *Mnemonic, PVMWord Opcode, bool UpperRegisters)
 {
-    const char *Rd = sFloatRegName[PVM_IRD_GET_RD(Opcode)];
-    int Immediate = IsSigned 
-        ? (int)(I16)PVM_IRD_GET_IMM(Opcode)
-        : (int)PVM_IRD_GET_IMM(Opcode);
+    const char **Registers = sIntRegName;
+    if (UpperRegisters)
+    {
+        Registers = &sIntRegName[16];
+    }
 
-    fprintf(f, "%s %s, %d\n", 
-            Mnemonic, Rd, Immediate
-    );
+    char RegisterListStr[256];
+    UInt RegisterList = PVM_IRD_GET_IMM(Opcode);
+    for (UInt i = 0; i < 16; i++)
+    {
+        if ((RegisterList >> i) & 0x1)
+            snprintf(RegisterListStr, sizeof RegisterListStr, "%s", Registers[i]);
+        if (i != 15)
+            snprintf(RegisterListStr, sizeof RegisterListStr, ", ");
+    }
+    fprintf(f, "%s {%s}\n", Mnemonic, RegisterListStr);
 }
-
 
 
 

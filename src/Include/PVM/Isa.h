@@ -141,14 +141,14 @@
  *              RD.Ptr.Upper |= Imm16 << 32
  *
  *      01: Mem:
- *          00000: LDRS RD, [FP + Imm16]
+ *          00000:  LDRS RD, [FP + Imm16]
  *              RD.Ptr := [FP + Imm16]
- *          00001: LDFS FD, [FP + Imm16]
- *              FD.Ptr := [FP + Imm16]
- *          00010: STRS RD, [FP + Imm16]
+ *          00001:  LDFS FD, [FP + Imm16]
+ *              FD := [FP + Imm16]
+ *          00010:  STRS RD, [FP + Imm16]
  *              [FP + Imm16] := RD.Ptr
- *          00011: STFS RD, [FP + Imm16]
- *              [FP + Imm16] := FD.Ptr
+ *          00011:  STFS RD, [FP + Imm16]
+ *              [FP + Imm16] := FD
  *              
  *          00100:  PSHL {R0..R15}
  *                  for i := 0 to 16 do 
@@ -166,6 +166,8 @@
  *                  for i := 16 to 32 do 
  *                      if 1 == REGLIST[15 - i] then
  *                          Ri.Ptr := [SP--];
+ *          01000:  ADDSP Imm21
+ *                  SP += SExPtr(Imm21)
  *      10:
  *      11:
  */
@@ -290,8 +292,6 @@ typedef enum PVMIRDArith
     PVM_IRD_LDZHLI,
     PVM_IRD_LDHLI,
     PVM_IRD_ORHUI,
-
-
 } PVMIRDArith;
 
 typedef enum PVMIRDMem
@@ -301,10 +301,11 @@ typedef enum PVMIRDMem
     PVM_IRD_STRS,
     PVM_IRD_STFS,
 
-    PVM_TRANSFER_PSHL,
-    PVM_TRANSFER_POPL,
-    PVM_TRANSFER_PSHU,
-    PVM_TRANSFER_POPU,
+    PVM_IRD_PSHL,
+    PVM_IRD_POPL,
+    PVM_IRD_PSHU,
+    PVM_IRD_POPU,
+    PVM_IRD_ADDSPI,
 } PVMIRDMem;
 
 typedef enum PVMSysOp 
@@ -384,7 +385,7 @@ typedef enum PVMArgReg
      | BIT_POS32(PVM_IRD_ ## Mnemonic, 5, 21)\
      | BIT_POS32(Rd, 5, 16)\
      | BIT_POS32(Imm16, 16, 0))
-
+#define PVM_ADDSP_INS(Offset) (PVM_IRD_MEM_INS(ADDSPI, 0, 0) | BIT_POS32(Offset, 21, 0))
 
 #define PVM_BRIF_INS(CC, Ra, Offset21)\
     (BIT_POS32(PVM_BRIF_ ## CC, 6, 26)\
@@ -454,6 +455,7 @@ typedef enum PVMArgReg
 #define PVM_BAL_GET_IMM(OpcodeWord) (I32)BIT_SEX32(BIT_AT32(OpcodeWord, 26, 0), 25)
 #define PVM_BSR_GET_IMM(OpcodeWord) PVM_BAL_GET_IMM(OpcodeWord)
 
+
 #define PVM_IRD_GET_ARITH(OpcodeWord) (PVMIRDArith)PVM_GET_OP(OpcodeWord)
 #define PVM_IRD_GET_MEM(OpcodeWord) (PVMIRDMem)PVM_GET_OP(OpcodeWord)
 #define PVM_IRD_GET_RD(OpcodeWord) PVM_IDAT_GET_RD(OpcodeWord)
@@ -479,6 +481,8 @@ typedef enum PVMArgReg
 
 #define PVM_FMEM_GET_FD(OpcodeWord) PVM_LIRD_GET_RD(OpcodeWord)
 #define PVM_FMEM_GET_IMM(OpcodeWord) PVM_LIRD_GET_IMM(OpcodeWord)
+
+
 
 
 

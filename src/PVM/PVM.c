@@ -37,9 +37,6 @@ void PVMDeinit(PascalVM *PVM)
  *============================================================================================*/
 PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk)
 {
-
-#define NOTHING 
-
 #define R(Opcode, InstructionType, RegType) (PVM->R[GLUE(PVM_ ##InstructionType, _GET_ ##RegType) (Opcode)])
 #define F(Opcode, InstructionType, RegType) (PVM->F[GLUE(PVM_ ##InstructionType, _GET_ ##RegType) (Opcode)])
 
@@ -85,30 +82,38 @@ do {\
     UInt i = Base;\
     while (RegList) {\
         if (RegList & 1) {\
-            *SP++ = PVM->R[i];\
+            *(++SP) = PVM->R[i].Ptr;\
             i++;\
         }\
+        RegList >>= 1;\
     }\
 } while (0)
 
 #define POP_MULTIPLE(Base, Opcode) do{\
     UInt RegList = PVM_IRD_GET_IMM(Opcode);\
     UInt i = Base;\
-    while (RegList) {\
-        if (RegList & 1) {\
-            *SP++ = PVM->R[i];\
+    while (RegList & 0xFFFF) {\
+        if (RegList & 0x8000) {\
+            *SP-- = PVM->R[i].Ptr;\
             i++;\
         }\
+        RegList <<= 1;\
     }\
 } while (0)
 
+#define VERIFY_STACK_ADDR(Addr) do {\
+    if ((void*)(Addr) > (void*)PVM->Stack.End) {\
+        /* TODO: verify stack addr */\
+    }\
+} while(0)
 
     double start = clock();
 
     PVMWord *IP = Chunk->Code;
-    PVMPtr *FP = PVM->Stack.Start;
     PVMPtr *SP = PVM->Stack.Start;
+    PVMPtr *FP = PVM->Stack.Start;
     const PVMWord *CodeEnd = IP + Chunk->Count;
+    PVMReturnValue RetVal = PVM_NO_ERROR;
     while (1)
     {
         PVMWord Opcode = *IP++;
@@ -247,48 +252,36 @@ do {\
         case PVM_IRD_MEM:
         {
             PVMPtr *Addr = FP + (PVMPtr)PVM_IRD_GET_IMM(Opcode);
-            if (Addr > PVM->Stack.End)
-            {
-                /* TODO: invalid access */
-            }
-
             switch (PVM_IRD_GET_MEM(Opcode))
             {
-            case PVM_IRD_LDRS: R(Opcode, IRD, RD).Ptr = *Addr; break;
-            case PVM_IRD_LDFS: F(Opcode, IRD, FD).Ptr = *Addr; break;
-            case PVM_IRD_STRS: *Addr = R(Opcode, IRD, RD).Ptr; break;
-            case PVM_IRD_STFS: *Addr = F(Opcode, IRD, FD).Ptr; break;
-            case PVM_TRANSFER_PSHL:
+            case PVM_IRD_LDRS: 
             {
-                UInt RegList = PVM_IRD_GET_IMM(Opcode);
-                UInt i = 0;
-                while (RegList)
-                {
-                    if (RegList & 1)
-                    {
-                        *SP++ = PVM->R[i].Ptr;
-                        i++;
-                    }
-                    RegList >>= 1;
-                }
+                VERIFY_STACK_ADDR(Addr);
+                R(Opcode, IRD, RD).Ptr = *Addr; 
             } break;
-            case PVM_TRANSFER_POPL:
-            case PVM_TRANSFER_PSHU:
+            case PVM_IRD_LDFS: 
             {
-                UInt RegList = PVM_IRD_GET_IMM(Opcode);
-                UInt i = 16;
-                while (RegList)
-                {
-                    if (RegList & 1)
-                    {
-                        *SP++ = PVM->R[i].Ptr;
-                        i++;
-                    }
-                    RegList <<= 1;
-                }
+                VERIFY_STACK_ADDR(Addr);
+                F(Opcode, IRD, FD).Ptr = *Addr;
             } break;
-            case PVM_TRANSFER_POPU:
-            break;
+            case PVM_IRD_STRS: 
+            {
+                VERIFY_STACK_ADDR(Addr);
+                *Addr = R(Opcode, IRD, RD).Ptr; 
+            } break;
+            case PVM_IRD_STFS: 
+            {
+                VERIFY_STACK_ADDR(Addr);
+                *Addr = F(Opcode, IRD, FD).Ptr;
+            } break;
+            case PVM_IRD_PSHL: PUSH_MULTIPLE(0, Opcode); break;
+            case PVM_IRD_POPL: POP_MULTIPLE(0, Opcode); break;
+            case PVM_IRD_PSHU: PUSH_MULTIPLE(16, Opcode); break;
+            case PVM_IRD_POPU: POP_MULTIPLE(16, Opcode); break;
+            case PVM_IRD_ADDSPI:
+            {
+                SP += (PVMSPtr)(I32)BIT_SEX32(BIT_AT32(Opcode, 21, 0), 20);
+            } break;
             }
         } break;
 
@@ -380,18 +373,23 @@ do {\
         }
     }
 
-    
+
 IllegalInstruction:
-    return PVM_ILLEGAL_INSTRUCTION;
+    RetVal = PVM_ILLEGAL_INSTRUCTION;
+    goto Out;
 DivisionBy0:
-    return PVM_DIVISION_BY_0;
+    RetVal = PVM_DIVISION_BY_0;
+    goto Out;
 CallstackUnderflow:
-    return PVM_CALLSTACK_UNDERFLOW;
+    RetVal = PVM_CALLSTACK_UNDERFLOW;
+    goto Out;
 CallstackOverflow:
-    return PVM_CALLSTACK_OVERFLOW;
+    RetVal = PVM_CALLSTACK_OVERFLOW;
 Out:
+    /* TODO: unhack this */
+    PVM->Stack.Ptr = SP;
     printf("Finished in %g ms\n", (clock() - start) * 1000 / CLOCKS_PER_SEC);
-    return PVM_NO_ERROR;
+    return RetVal;
 
 
 #undef IRD_SIGNED_IMM
@@ -405,7 +403,6 @@ Out:
 #undef TEST_AND_SET
 #undef R
 #undef F
-#undef NOTHING
 }
 
 
@@ -433,7 +430,7 @@ void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
     }
 
     fprintf(f, "\n===================== STACK ======================");
-    fprintf(f, "\nSP: %p", (void*)PVM->Stack.Ptr);
+    fprintf(f, "\nSP: %8p\n", (void*)PVM->Stack.Ptr);
     for (PVMPtr *Sp = PVM->Stack.Start; Sp < PVM->Stack.Ptr; Sp++)
     {
         fprintf(f, "%8p: [0x%08llx]\n", (void*)Sp, *Sp);
