@@ -146,7 +146,7 @@ do {\
     UInt i = Base_;\
     while (i < Base_ + 16) {\
         if (RegList & 0x8000) {\
-            PVM->R[15 - i].Ptr = *(SP--);\
+            PVM->R[(Base + 15) - i].Ptr = *(SP--);\
         }\
         i++;\
         RegList <<= 1;\

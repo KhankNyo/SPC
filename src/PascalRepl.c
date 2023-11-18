@@ -11,6 +11,7 @@
 #include "Parser.h"
 #include "PVM/CodeGen.h"
 #include "PVM/Disassembler.h"
+#include "PVM/Isa.h"
 
 
 static bool GetCommandLine(PascalVM *PVM, char *Buf, USize Bufsz);

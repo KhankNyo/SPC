@@ -20,7 +20,7 @@ if "%ARG1%"=="cl" (
     set "OBJ_EXTENSION=obj"
 ) else (
     set "CC=gcc"
-    set "CCF=-g -O0 -Wall -Wextra -Wpedantic -I%INCPATH% -DDEBUG -DPVM_DEBUGGER"
+    set "CCF=-g -Ofast -Wall -Wextra -Wpedantic -I%INCPATH% -DDEBUG -DPVM_DEBUGGER"
     set "LDF="
     set "LIBS="
     set "OBJ_SWITCH=-o "
