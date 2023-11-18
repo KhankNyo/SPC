@@ -6,8 +6,8 @@
 #include "PVM/CodeGen.h"
 
 
-#define PVM_SCOPE_COUNT 128
-#define PVM_MAX_LOCAL_COUNT PVM_REG_COUNT
+#define PVM_SCOPE_COUNT 32
+#define PVM_MAX_LOCAL_COUNT 256
 #define BRANCH_ALWAYS 26
 #define BRANCH_CONDITIONAL 21
 
@@ -116,6 +116,7 @@ static void PVMEmitSetCC(
         PVMCompiler *Compiler, TokenType Op, 
         VarLocation *Dest, VarLocation *Left, VarLocation *Right
 );
+static void PVMEmitPush(PVMCompiler *Compiler, UInt RegID);
 static void PVMEmitAddSp(PVMCompiler *Compiler, I32 Offset);
 static void PVMEmitCall(PVMCompiler *Compiler, U32 CalleeID);
 static void PVMEmitReturn(PVMCompiler *Compiler);
@@ -861,7 +862,7 @@ static void PVMEmitLoad(PVMCompiler *Compiler, VarLocation *Dest, U64 Integer, P
                 ChunkWriteCode(Current, PVM_IRD_ARITH_INS(ORHUI, Target->As.Reg.ID, Integer >> 48));
             }
         } break;
-        default: PASCAL_UNREACHABLE("Invalid integer type");
+        default: PASCAL_UNREACHABLE("Invalid integer type: %d", IntegerType);
         }
     }
 
@@ -881,7 +882,10 @@ static void PVMEmitAddImm(PVMCompiler *Compiler, VarLocation *Dest, I16 Imm)
     }
     else 
     {
-        PASCAL_UNREACHABLE("TODO: Addi [mem], i32");
+        VarLocation Tmp = PVMAllocateRegister(Compiler, Dest->IntegralType);
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_MEM_INS(LDRS, Tmp.As.Reg.ID, Dest->As.Mem.FPOffset));
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_ARITH_INS(ADD, Tmp.As.Reg.ID, Imm));
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_MEM_INS(STRS, Tmp.As.Reg.ID, Dest->As.Mem.FPOffset));
     }
 }
 
@@ -937,16 +941,35 @@ static void PVMEmitDiv(PVMCompiler *Compiler, VarLocation *Dividend, VarLocation
 
 static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, VarLocation *Dest, VarLocation *Left, VarLocation *Right)
 {
-    PASCAL_ASSERT(Dest->InRegister && Left->InRegister && Right->InRegister, "TODO: SetCC Dest, Left, Right");
+    VarLocation *Target = Dest, *TLeft = Left, *TRight = Right;
+    VarLocation Tmp[3];
+    if (!Target->InRegister)
+    {
+        Tmp[0] = PVMAllocateRegister(Compiler, Target->IntegralType);
+        Target = &Tmp[0];
+    }
+    if (!TLeft->InRegister)
+    {
+        Tmp[1] = PVMAllocateRegister(Compiler, Target->IntegralType);
+        TLeft = &Tmp[1];
+    }
+    if (!TRight->InRegister)
+    {
+        Tmp[2] = PVMAllocateRegister(Compiler, Target->IntegralType);
+        TRight = &Tmp[2];
+    }
+
+
+
 #define SET(Size, ...)\
     do {\
         switch (Op) {\
-        case TOKEN_EQUAL:           ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SEQ ## Size, Dest->As.Reg.ID, Left->As.Reg.ID, Right->As.Reg.ID)); break;\
-        case TOKEN_LESS_GREATER:    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SNE ## Size, Dest->As.Reg.ID, Left->As.Reg.ID, Right->As.Reg.ID)); break;\
-        case TOKEN_LESS:            ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SLT ## Size, Dest->As.Reg.ID, Left->As.Reg.ID, Right->As.Reg.ID)); break;\
-        case TOKEN_GREATER:         ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SGT ## Size, Dest->As.Reg.ID, Left->As.Reg.ID, Right->As.Reg.ID)); break;\
-        case TOKEN_GREATER_EQUAL:   ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SLT ## Size, Dest->As.Reg.ID, Right->As.Reg.ID, Left->As.Reg.ID)); break;\
-        case TOKEN_LESS_EQUAL:      ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SGT ## Size, Dest->As.Reg.ID, Right->As.Reg.ID, Left->As.Reg.ID)); break;\
+        case TOKEN_EQUAL:           ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SEQ ## Size, Target->As.Reg.ID, TLeft->As.Reg.ID, TRight->As.Reg.ID)); break;\
+        case TOKEN_LESS_GREATER:    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SNE ## Size, Target->As.Reg.ID, TLeft->As.Reg.ID, TRight->As.Reg.ID)); break;\
+        case TOKEN_LESS:            ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SLT ## Size, Target->As.Reg.ID, TLeft->As.Reg.ID, TRight->As.Reg.ID)); break;\
+        case TOKEN_GREATER:         ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SGT ## Size, Target->As.Reg.ID, TLeft->As.Reg.ID, TRight->As.Reg.ID)); break;\
+        case TOKEN_GREATER_EQUAL:   ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SLT ## Size, Target->As.Reg.ID, TRight->As.Reg.ID, TLeft->As.Reg.ID)); break;\
+        case TOKEN_LESS_EQUAL:      ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SGT ## Size, Target->As.Reg.ID, TRight->As.Reg.ID, TLeft->As.Reg.ID)); break;\
         default: {\
             PASCAL_UNREACHABLE(__VA_ARGS__);\
         } break;\
@@ -956,12 +979,12 @@ static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, VarLocation *Dest,
 #define SIGNEDSET(Size, ...)\
     do {\
         switch (Op) {\
-        case TOKEN_EQUAL:           ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SEQ ## Size, Dest->As.Reg.ID, Left->As.Reg.ID, Right->As.Reg.ID)); break;\
-        case TOKEN_LESS_GREATER:    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SNE ## Size, Dest->As.Reg.ID, Left->As.Reg.ID, Right->As.Reg.ID)); break;\
-        case TOKEN_LESS:            ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSLT ## Size, Dest->As.Reg.ID, Left->As.Reg.ID, Right->As.Reg.ID)); break;\
-        case TOKEN_GREATER:         ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSGT ## Size, Dest->As.Reg.ID, Left->As.Reg.ID, Right->As.Reg.ID)); break;\
-        case TOKEN_GREATER_EQUAL:   ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSLT ## Size, Dest->As.Reg.ID, Right->As.Reg.ID, Left->As.Reg.ID)); break;\
-        case TOKEN_LESS_EQUAL:      ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSGT ## Size, Dest->As.Reg.ID, Right->As.Reg.ID, Left->As.Reg.ID)); break;\
+        case TOKEN_EQUAL:           ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SEQ ## Size, Target->As.Reg.ID, TLeft->As.Reg.ID, TRight->As.Reg.ID)); break;\
+        case TOKEN_LESS_GREATER:    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SNE ## Size, Target->As.Reg.ID, TLeft->As.Reg.ID, TRight->As.Reg.ID)); break;\
+        case TOKEN_LESS:            ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSLT ## Size, Target->As.Reg.ID, TLeft->As.Reg.ID, TRight->As.Reg.ID)); break;\
+        case TOKEN_GREATER:         ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSGT ## Size, Target->As.Reg.ID, TLeft->As.Reg.ID, TRight->As.Reg.ID)); break;\
+        case TOKEN_GREATER_EQUAL:   ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSLT ## Size, Target->As.Reg.ID, TRight->As.Reg.ID, TLeft->As.Reg.ID)); break;\
+        case TOKEN_LESS_EQUAL:      ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IDAT_CMP_INS(SSGT ## Size, Target->As.Reg.ID, TRight->As.Reg.ID, TLeft->As.Reg.ID)); break;\
         default: {\
             PASCAL_UNREACHABLE(__VA_ARGS__);\
         } break;\
@@ -983,10 +1006,34 @@ static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, VarLocation *Dest,
     default: PASCAL_UNREACHABLE("Invalid size for setcc: %d", Dest->As.Mem.Size); break;
     }
 
+    if (!Dest->InRegister)
+    {
+        PVMEmitMov(Compiler, Dest, Target);
+        PVMFreeRegister(Compiler, Target);
+    }
+    if (!Left->InRegister)
+        PVMFreeRegister(Compiler, TLeft);
+    if (!Right->InRegister)
+        PVMFreeRegister(Compiler, TRight);
+
 #undef SET
 #undef SIGNEDSET
 }
 
+
+
+static void PVMEmitPush(PVMCompiler *Compiler, UInt RegID)
+{
+    if (RegID >= 16)
+    {
+        RegID -= 16;
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_MEM_INS(PSHU, 0, 1 << RegID));
+    }
+    else 
+    {
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_MEM_INS(PSHL, 0, 1 << RegID));
+    }
+}
 
 
 static void PVMEmitAddSp(PVMCompiler *Compiler, I32 Offset)
@@ -1047,14 +1094,46 @@ static VarLocation PVMAllocateRegister(PVMCompiler *Compiler, ParserType Type)
             /* mark reg as allocated */
             Compiler->RegisterList[Compiler->CurrScopeDepth] |= 1u << i;
             return (VarLocation) {
-                .As.Reg.ID = i,
-                .InRegister = true,
                 .IntegralType = Type,
+                .InRegister = true,
+                .As.Reg.ID = i,
             };
         }
     }
-    PASCAL_UNREACHABLE("TODO: Register spilling");
-    return (VarLocation) { 0 };
+
+    /*
+     * 1/ take the first variable that has a register 
+     * 2/ rewrite bookkeeping info
+     * 3/ push it onto the stack
+     * 4/ return the register
+     */
+    UInt Reg = 0;
+    int CurrentScope = Compiler->CurrScopeDepth;
+    for (int i = CurrentScope; i >= 0; i--)
+    {
+        for (int k = 0; k < Compiler->LocalCount[i]; k++)
+        {
+            LocalVar *Local = &Compiler->Locals[i][k];
+            if (Local->Location.InRegister)
+            {
+                Reg = Local->Location.As.Reg.ID;
+                Local->Location.InRegister = false;
+                Local->Location.As.Mem.Size = PVMSizeOfType(Compiler, Local->Location.IntegralType);
+                Local->Location.As.Mem.FPOffset = Compiler->SP[CurrentScope];
+                PVMEmitPush(Compiler, Reg);
+                goto DoneSpilling;
+            }
+        }
+    }
+    /* no locals are in register */
+    /* then just use R0 */
+    PVMEmitPush(Compiler, Reg);
+DoneSpilling:
+    return (VarLocation) {
+        .IntegralType = Type,
+        .InRegister = true,
+        .As.Reg.ID = Reg,
+    };
 }
 
 static void PVMFreeRegister(PVMCompiler *Compiler, VarLocation *Register)
@@ -1093,7 +1172,8 @@ static void PVMBeginScope(PVMCompiler *Compiler)
 
 static void PVMEndScope(PVMCompiler *Compiler)
 {
-    PVMAllocateStackSpace(Compiler, -Compiler->SP[Compiler->CurrScopeDepth]);
+    /* for debugging purposes, uncomment when finish */
+    //PVMAllocateStackSpace(Compiler, -Compiler->SP[Compiler->CurrScopeDepth]);
     Compiler->CurrScopeDepth--;
 }
 

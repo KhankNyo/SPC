@@ -448,9 +448,11 @@ static void DisasmRegList(FILE *f, const char *Mnemonic, PVMWord Opcode, bool Up
     for (UInt i = 0; i < 16; i++)
     {
         if ((RegisterList >> i) & 0x1)
+        {
             snprintf(RegisterListStr, sizeof RegisterListStr, "%s", Registers[i]);
-        if (i != 15)
-            snprintf(RegisterListStr, sizeof RegisterListStr, ", ");
+            if (i != 15)
+                snprintf(RegisterListStr, sizeof RegisterListStr, ", ");
+        }
     }
     fprintf(f, "%s {%s}\n", Mnemonic, RegisterListStr);
 }
