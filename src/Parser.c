@@ -32,6 +32,7 @@ static const char *sFunction = "function";
 
 static void ParseType(PascalParser *Parser);
 static AstStmtBlock *ParseBeginEndBlock(PascalParser *Parser);
+static AstVarList *ParseVarList(PascalParser *Parser, AstVarList *List);
 static AstVarBlock *ParseVar(PascalParser *Parser);
 static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type);
 
@@ -343,16 +344,16 @@ static AstVarList *ParseVarList(PascalParser *Parser, AstVarList *List)
         }
         return List;
     }
-    else 
+    else if (ConsumeOrError(Parser, TOKEN_COMMA, "Expected ',' or ':' after '%.*s'.", Variable.Len, Variable.Str))
     {
-        ConsumeOrError(Parser, TOKEN_COMMA, "Expected ',' after variable name.");
-
         List->Next = ArenaAllocateZero(Parser->Arena, sizeof(*List->Next));
         AstVarList *RetVal = ParseVarList(Parser, List->Next);
         List->Type = List->Next->Type;
         List->ID = ParserDefineIdentifier(Parser, &Variable, List->Next->Type, List);
         return RetVal;
     }
+
+    return List;
 }
 
 
@@ -445,7 +446,9 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type)
     /* TODO: optional Body by detecting 'forward' keyword */
     Function->Block = ParseBlock(Parser);
     ParserEndScope(Parser);
-    ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after 'end'");
+    ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after '%.*s'", 
+            Parser->Curr.Len, Parser->Curr.Str
+    );
     return Function;
 }
 
@@ -817,7 +820,10 @@ static AstFactor ParseVariable(PascalParser *Parser)
         if (TYPE_FUNCTION == Info->Type)
         {
             Factor.FactorType = FACTOR_CALL;
-            Factor.As.CallArgList = ParseArgumentList(Parser);
+            if (ConsumeIfNextIs(Parser, TOKEN_LEFT_PAREN))
+            {
+                Factor.As.CallArgList = ParseArgumentList(Parser);
+            }
         }
         else
         {
@@ -833,10 +839,13 @@ static AstExprList *ParseArgumentList(PascalParser *Parser)
 {
     AstExprList *Args = NULL;
     AstExprList **Current = &Args;
-    while (!ConsumeIfNextIs(Parser, TOKEN_RIGHT_PAREN))
+    while (!IsAtEnd(Parser))
     {
         *Current = ArenaAllocate(Parser->Arena, sizeof **Current);
         (*Current)->Expr = ParseExpr(Parser);
+        if (ConsumeIfNextIs(Parser, TOKEN_RIGHT_PAREN))
+            break;
+        ConsumeOrError(Parser, TOKEN_COMMA, "Expected ',' or ')' after expression.");
         Current = &(*Current)->Next;
     }
     return Args;
@@ -952,6 +961,9 @@ static void Unpanic(PascalParser *Parser)
     Parser->PanicMode = false;
     while (!IsAtEnd(Parser))
     {
+        if (Parser->Next.Type == TOKEN_SEMICOLON)
+            return;
+
         if (Parser->Curr.Type == TOKEN_SEMICOLON)
         {
             switch (Parser->Next.Type)
@@ -963,6 +975,7 @@ static void Unpanic(PascalParser *Parser)
             case TOKEN_PROCEDURE:
             case TOKEN_FUNCTION:
             case TOKEN_BEGIN:
+            case TOKEN_END:
 
             case TOKEN_IF:
             case TOKEN_FOR:

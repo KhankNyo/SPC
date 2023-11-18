@@ -128,6 +128,9 @@ typedef long double LargeType;
 #endif
 
 
+#define INT21_MAX (I32)(((U32)1 << 20) - 1)
+#define INT21_MIN (I32)(BIT_SEX32(((U32)1 << 20), 20))
+
 #define IN_I8(x) ((I64)INT8_MIN <= (I64)(x) && ((I64)(x) <= (I64)INT8_MAX))
 #define IN_I16(x) ((I64)INT16_MIN <= (I64)(x) && ((I64)(x) <= (I64)INT16_MAX))
 #define IN_I32(x) ((I64)INT32_MIN <= (I64)(x)) && ((I64)(x) <= (I64)INT32_MAX)

@@ -49,10 +49,12 @@ struct AstFactor
     union {
         U64 Integer;
         F64 Real;
-        U32 VarID;
 
         AstExpr *Expression;
-        AstExprList *CallArgList;
+        struct {
+            U32 VarID;
+            AstExprList *CallArgList;
+        };
         struct AstFactor *NotFactor;
     } As;
 };

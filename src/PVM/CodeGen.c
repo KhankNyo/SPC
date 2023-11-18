@@ -7,9 +7,10 @@
 
 
 #define PVM_SCOPE_COUNT 32
-#define PVM_MAX_LOCAL_COUNT 256
+#define PVM_LOCAL_COUNT 256
 #define BRANCH_ALWAYS 26
 #define BRANCH_CONDITIONAL 21
+#define PVM_GLOBAL_COUNT 256
 
 typedef struct VarLocation 
 {
@@ -33,18 +34,36 @@ typedef struct LocalVar
     VarLocation Location;
 } LocalVar;
 
+typedef struct GlobalVar 
+{
+    U32 ID;
+    U32 Location;
+    ParserType Type;
+    union {
+        UInt TypeSize;
+        struct {
+            ParserType ReturnType;
+            bool HasReturnType;
+        } Function;
+    } As;
+} GlobalVar;
+
 typedef struct PVMCompiler
 {
     const PascalAst *Ast;
     CodeChunk *Chunk;
-    bool HasError;
-    UInt CurrScopeDepth;
     UInt SpilledRegCount;
 
-    U32 RegisterList[PVM_SCOPE_COUNT];
-    LocalVar Locals[PVM_SCOPE_COUNT][PVM_MAX_LOCAL_COUNT];
-    int LocalCount[PVM_SCOPE_COUNT];
-    U32 SP[PVM_SCOPE_COUNT];
+    int GlobalCount;
+    GlobalVar Global    [PVM_GLOBAL_COUNT];
+
+    UInt CurrScopeDepth;
+    LocalVar Locals     [PVM_SCOPE_COUNT][PVM_LOCAL_COUNT];
+    int LocalCount      [PVM_SCOPE_COUNT];
+    U32 RegisterList    [PVM_SCOPE_COUNT];
+    U32 SP              [PVM_SCOPE_COUNT];
+
+    bool HasError;
 } PVMCompiler;
 
 
@@ -76,6 +95,8 @@ void PVMCompilerDeinit(PVMCompiler *Compiler);
 
 
 static void PVMDeclareLocal(PVMCompiler *Compiler, U32 ID, VarLocation Dest);
+static void PVMDeclareGlobal(PVMCompiler *Compiler, GlobalVar Global);
+static GlobalVar *PVMGetGlobal(PVMCompiler *Compiler, U32 ID);
 static VarLocation *PVMGetLocationOf(PVMCompiler *Compiler, U32 LocationID);
 
 
@@ -120,7 +141,9 @@ static void PVMEmitSetCC(
 static void PVMEmitPush(PVMCompiler *Compiler, UInt RegID);
 static void PVMEmitPop(PVMCompiler *Compiler, UInt RegID);
 static void PVMEmitAddSp(PVMCompiler *Compiler, I32 Offset);
+static void PVMEmitSaveCallerRegs(PVMCompiler *Compiler);
 static void PVMEmitCall(PVMCompiler *Compiler, U32 CalleeID);
+static void PVMEmitUnsaveCallerRegs(PVMCompiler *Compiler);
 static void PVMEmitReturn(PVMCompiler *Compiler);
 static void PVMEmitExit(PVMCompiler *Compiler);
 
@@ -191,19 +214,12 @@ static void PVMDeclareLocal(PVMCompiler *Compiler, U32 ID, VarLocation Dest)
 {
     unsigned CurrScope = Compiler->CurrScopeDepth;
     int LocalCount = Compiler->LocalCount[CurrScope];
-    PASCAL_ASSERT(LocalCount < PVM_MAX_LOCAL_COUNT, "TODO: more locals\n");
+    PASCAL_ASSERT(LocalCount < PVM_LOCAL_COUNT, "TODO: more locals\n");
 
     LocalVar *NewLocal = &Compiler->Locals[CurrScope][LocalCount];
     NewLocal->ID = ID;
     NewLocal->Location = Dest;
     Compiler->LocalCount[CurrScope]++;
-}
-
-
-static void PVMBindVariableToCurrentLocation(PVMCompiler *Compiler, Token Name)
-{
-    (void)Compiler, (void)Name;
-    PASCAL_ASSERT(0, "TODO: PVMBindVariableToCurrentLocation()");
 }
 
 static VarLocation *PVMGetLocationOf(PVMCompiler *Compiler, U32 LocationID)
@@ -221,6 +237,31 @@ static VarLocation *PVMGetLocationOf(PVMCompiler *Compiler, U32 LocationID)
     }
 
     PASCAL_UNREACHABLE("TODO: static analysis to prevent undef variable");
+    return NULL;
+}
+
+static void PVMDeclareGlobal(PVMCompiler *Compiler, GlobalVar Global)
+{
+    PASCAL_ASSERT(Compiler->GlobalCount < PVM_GLOBAL_COUNT, "TODO: more global\n");
+
+    GlobalVar *NewGlobal = &Compiler->Global[Compiler->GlobalCount];
+    *NewGlobal = Global;
+    Compiler->GlobalCount++;
+}
+
+
+static GlobalVar *PVMGetGlobal(PVMCompiler *Compiler, U32 ID)
+{
+    if (0 == Compiler->GlobalCount)
+        return NULL;
+
+    /* ID's are assumed to be declared in order */
+    /* linear search is fast enough for now, TODO: binary search */
+    for (int i = 0; i < Compiler->GlobalCount; i++)
+    {
+        if (ID == Compiler->Global[i].ID)
+            return &Compiler->Global[i];
+    }
     return NULL;
 }
 
@@ -296,12 +337,24 @@ static void PVMCompileVarBlock(PVMCompiler *Compiler, const AstVarBlock *Declara
 
 static void PVMCompileFunctionBlock(PVMCompiler *Compiler, const AstFunctionBlock *Function)
 {
-    //PVMBindVariableToCurrentLocation(Compiler, Function->Identifier);
-    /* TODO: assumes that all registers are freed when this function is called */
+    /* Save location of function */
+    GlobalVar GlobalFunction = {
+        .ID = Function->ID,
+        .Type = TYPE_FUNCTION,
+
+        /* TODO: this offset won't work with nested function */
+        .Location = PVMCurrentChunk(Compiler)->Count,
+
+        .As.Function.HasReturnType = Function->HasReturnType,
+        .As.Function.ReturnType = Function->ReturnType,
+    };
+    PVMDeclareGlobal(Compiler, GlobalFunction);
+
+
+    PVMBeginScope(Compiler);
     const AstVarList *I = Function->Params;
     if (NULL != I)
     {
-        PASCAL_UNREACHABLE("TODO: Handle stack arguments");
 
         /* register arguments */
         UInt Arg = 0;
@@ -320,10 +373,11 @@ static void PVMCompileFunctionBlock(PVMCompiler *Compiler, const AstFunctionBloc
         /* stack arguments */
         while (NULL != I)
         {
+            PASCAL_UNREACHABLE("TODO: Handle stack arguments");
             UInt Size = PVMSizeOfType(Compiler, I->Type);
             VarLocation Param = {
                 .As.Mem.Size = Size,
-                .As.Mem.FPOffset = 0,
+                .As.Mem.FPOffset = 0, /* TODO: handle stack argument */
                 .InRegister = false,
                 .IntegralType = I->Type,
             };
@@ -332,9 +386,8 @@ static void PVMCompileFunctionBlock(PVMCompiler *Compiler, const AstFunctionBloc
             I = I->Next;
         }
     }
-    /* TODO: parser should verify arg count */
-
     PVMCompileBlock(Compiler, Function->Block);
+    PVMEndScope(Compiler);
 }
 
 static void PVMCompileStmtBlock(PVMCompiler *Compiler, const AstStmtBlock *Block)
@@ -664,8 +717,12 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, VarLocation *Dest, const
     } break;
     case FACTOR_CALL:
     {
+        PVMEmitSaveCallerRegs(Compiler);
         PVMCompileArgumentList(Compiler, Factor->As.CallArgList);
         PVMEmitCall(Compiler, Factor->As.VarID);
+        PVMEmitUnsaveCallerRegs(Compiler);
+
+        /* a function call is an expression, so it must have a return value */
         PVMEmitMov(Compiler, Dest, &sReturnRegister);
     } break;
     case FACTOR_VARIABLE:
@@ -676,6 +733,10 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, VarLocation *Dest, const
     case FACTOR_GROUP_EXPR:
     {
         PVMCompileExprInto(Compiler, Dest, Factor->As.Expression);
+    } break;
+    case FACTOR_NOT:
+    {
+        PASCAL_UNREACHABLE("TODO: FACTOR_NOT case in PVMCompileFactorInto");
     } break;
 
 
@@ -1058,8 +1119,7 @@ static void PVMEmitPop(PVMCompiler *Compiler, UInt RegID)
 
 static void PVMEmitAddSp(PVMCompiler *Compiler, I32 Offset)
 {
-    /* TODO: put these in a macro */
-    if (-((1 << 21) - 1) <= Offset && Offset <= ((1 << 21) - 1))
+    if (INT21_MIN <= Offset && Offset <= INT21_MAX)
     {
         ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_ADDSP_INS(Offset));
     }
@@ -1070,9 +1130,39 @@ static void PVMEmitAddSp(PVMCompiler *Compiler, I32 Offset)
 }
 
 
+static void PVMEmitSaveCallerRegs(PVMCompiler *Compiler)
+{
+    /* pushes all caller save regs */
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_MEM_INS(PSHL, 0, 0xFFFF));
+
+    /* check all locals in current scope and update their location */
+    if (Compiler->RegisterList[Compiler->CurrScopeDepth])
+    {
+        for (UInt i = 0; i < 16; i++)
+        {
+            if (!PVMRegisterIsFree(Compiler, i))
+            {
+                PASCAL_UNREACHABLE("TODO: SaveCallerRegs(): update register location");
+            }
+        }
+    }
+}
+
 static void PVMEmitCall(PVMCompiler *Compiler, U32 CalleeID)
 {
-    PASCAL_UNREACHABLE("TODO: EmitCall()");
+    /* TODO: function is assumed to have been defined before a call,
+     *  though they can be forward declared */
+
+    GlobalVar *Function = PVMGetGlobal(Compiler, CalleeID);
+    PASCAL_ASSERT(NULL != Function, "TODO: forward decl");
+    U32 CurrentLocation = PVMCurrentChunk(Compiler)->Count;
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_BSR_INS(Function->Location - CurrentLocation - 1));
+}
+
+static void PVMEmitUnsaveCallerRegs(PVMCompiler *Compiler)
+{
+    /* pop all caller save regs */
+    ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_MEM_INS(POPL, 0, 0xFFFF));
 }
 
 

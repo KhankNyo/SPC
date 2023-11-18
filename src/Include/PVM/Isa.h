@@ -174,16 +174,16 @@
  /* 
  *  4/ ABI:
  *   4.0/ Function Call and return values
- *      Let Rx = General Register x
- *          Fx = Floating Point Register x
+ *      Let Rx := General Register x
+ *          Fx := Floating Point Register x
  *      Arguments:  R0..R7, rest are on stack in the order from left to right
  *                  F0..F7, rest are on stack in the order from left to right
  *      Return:     R0 or F0
  */
  /*
  *   4.1/ Caller and Callee saved registers:
- *      R00..R20 are Caller saved registers 
- *      R21..R31 are Callee saved registers
+ *      R00..R15 are Caller saved registers (i.e. temporaries, the function being call can freely use these without saving)
+ *      R16..R31 are Callee saved registers (i.e. the function being called must save them before using)
  */
 /*---------------------------------------------------------------------*/
 
