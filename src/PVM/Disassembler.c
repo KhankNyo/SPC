@@ -386,8 +386,8 @@ static void DisasmImmRdMem(FILE *f, PVMWord Opcode)
     case PVM_IRD_STRS: DisasmImmReg(f, "STRS", sIntRegName, Opcode, IMM_INDIRECT); break;
     case PVM_IRD_STFS: DisasmImmReg(f, "STFS", sFloatRegName, Opcode, IMM_INDIRECT); break;
 
-    case PVM_IRD_POPU: DisasmRegList(f, "POP", Opcode, false); break;
-    case PVM_IRD_POPL: DisasmRegList(f, "POP", Opcode, true); break;
+    case PVM_IRD_POPU: DisasmRegList(f, "POP", Opcode, true); break;
+    case PVM_IRD_POPL: DisasmRegList(f, "POP", Opcode, false); break;
     case PVM_IRD_PSHL: DisasmRegList(f, "PSH", Opcode, false); break;
     case PVM_IRD_PSHU: DisasmRegList(f, "PSH", Opcode, true); break;
     case PVM_IRD_ADDSPI: DisasmLongImm(f, "ADDSP", Opcode, true); break;
@@ -444,17 +444,26 @@ static void DisasmRegList(FILE *f, const char *Mnemonic, PVMWord Opcode, bool Up
     }
 
     char RegisterListStr[256];
+    char *Tmp = RegisterListStr;
+    int Written = 0;
+    UInt SizeLeft = sizeof RegisterListStr;
     UInt RegisterList = PVM_IRD_GET_IMM(Opcode);
     for (UInt i = 0; i < 16; i++)
     {
-        if ((RegisterList >> i) & 0x1)
+        if (((RegisterList >> i) & 0x1) && SizeLeft > 0)
         {
-            snprintf(RegisterListStr, sizeof RegisterListStr, "%s", Registers[i]);
-            if (i != 15)
-                snprintf(RegisterListStr, sizeof RegisterListStr, ", ");
+            if (Written)
+            {
+                Written = snprintf(Tmp, SizeLeft, ", ");
+                Tmp += Written;
+                SizeLeft -= Written;
+            }
+            Written = snprintf(Tmp, SizeLeft, "%s", Registers[i]);
+            Tmp += Written;
+            SizeLeft -= Written;
         }
     }
-    fprintf(f, "%s {%s}\n", Mnemonic, RegisterListStr);
+    fprintf(f, "%s { %s }\n", Mnemonic, RegisterListStr);
 }
 
 

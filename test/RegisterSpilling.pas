@@ -2,12 +2,16 @@
 
 
 var
-    test, sum, a, i: int32;
+    test, sum, a: uint32;
 begin
-    a := 1 + (2 + (3 + (4 + (5 + (6 + (7 + (8 + (9 + (10 
-        + (11 + (12 + (13 + (14 + (15 + (16 + (17 + (18 + (19)))))))))
-    )))))))));
-    for i := 0 to 19 do 
-        sum := sum + i;
+    { address 2 on stack }
+    a := (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + 1)))))))))))))))))))); 
+
+    { address 1 on stack }
+    sum := 0;
+    for sum := 0 to 20 do
+    begin end;
+
+    { address 0 on stack }
     test := sum = a;
 end.

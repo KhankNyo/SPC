@@ -416,7 +416,7 @@ void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
         {
             fprintf(f, "\n");
         }
-        fprintf(f, "[R%02d: 0x%08llx]", i, PVM->R[i].Ptr);
+        fprintf(f, "[R%02d: 0x%08lld]", i, PVM->R[i].Ptr);
     }
 
     fprintf(f, "\n===================== F%d REGISTERS ======================", (int)sizeof(PVM->F[0])*8);

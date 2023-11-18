@@ -39,6 +39,7 @@ typedef struct PVMCompiler
     CodeChunk *Chunk;
     bool HasError;
     UInt CurrScopeDepth;
+    UInt SpilledRegCount;
 
     U32 RegisterList[PVM_SCOPE_COUNT];
     LocalVar Locals[PVM_SCOPE_COUNT][PVM_MAX_LOCAL_COUNT];
@@ -117,6 +118,7 @@ static void PVMEmitSetCC(
         VarLocation *Dest, VarLocation *Left, VarLocation *Right
 );
 static void PVMEmitPush(PVMCompiler *Compiler, UInt RegID);
+static void PVMEmitPop(PVMCompiler *Compiler, UInt RegID);
 static void PVMEmitAddSp(PVMCompiler *Compiler, I32 Offset);
 static void PVMEmitCall(PVMCompiler *Compiler, U32 CalleeID);
 static void PVMEmitReturn(PVMCompiler *Compiler);
@@ -160,6 +162,7 @@ PVMCompiler PVMCompilerInit(CodeChunk *Chunk, const PascalAst *Ast)
         .RegisterList = { 0 },
         .CurrScopeDepth = 0,
         .LocalCount = { 0 },
+        .SpilledRegCount = 0,
     };
     return Compiler;
 }
@@ -947,16 +950,19 @@ static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, VarLocation *Dest,
     {
         Tmp[0] = PVMAllocateRegister(Compiler, Target->IntegralType);
         Target = &Tmp[0];
+        PVMEmitMov(Compiler, Target, Dest);
     }
     if (!TLeft->InRegister)
     {
         Tmp[1] = PVMAllocateRegister(Compiler, Target->IntegralType);
         TLeft = &Tmp[1];
+        PVMEmitMov(Compiler, TLeft, Left);
     }
     if (!TRight->InRegister)
     {
         Tmp[2] = PVMAllocateRegister(Compiler, Target->IntegralType);
         TRight = &Tmp[2];
+        PVMEmitMov(Compiler, TRight, Right);
     }
 
 
@@ -1036,6 +1042,20 @@ static void PVMEmitPush(PVMCompiler *Compiler, UInt RegID)
 }
 
 
+static void PVMEmitPop(PVMCompiler *Compiler, UInt RegID)
+{
+    if (RegID >= 16)
+    {
+        RegID -= 16;
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_MEM_INS(POPU, 0, 1 << RegID));
+    }
+    else 
+    {
+        ChunkWriteCode(PVMCurrentChunk(Compiler), PVM_IRD_MEM_INS(POPL, 0, 1 << RegID));
+    }
+}
+
+
 static void PVMEmitAddSp(PVMCompiler *Compiler, I32 Offset)
 {
     /* TODO: put these in a macro */
@@ -1101,34 +1121,12 @@ static VarLocation PVMAllocateRegister(PVMCompiler *Compiler, ParserType Type)
         }
     }
 
-    /*
-     * 1/ take the first variable that has a register 
-     * 2/ rewrite bookkeeping info
-     * 3/ push it onto the stack
-     * 4/ return the register
-     */
-    UInt Reg = 0;
-    int CurrentScope = Compiler->CurrScopeDepth;
-    for (int i = CurrentScope; i >= 0; i--)
-    {
-        for (int k = 0; k < Compiler->LocalCount[i]; k++)
-        {
-            LocalVar *Local = &Compiler->Locals[i][k];
-            if (Local->Location.InRegister)
-            {
-                Reg = Local->Location.As.Reg.ID;
-                Local->Location.InRegister = false;
-                Local->Location.As.Mem.Size = PVMSizeOfType(Compiler, Local->Location.IntegralType);
-                Local->Location.As.Mem.FPOffset = Compiler->SP[CurrentScope];
-                PVMEmitPush(Compiler, Reg);
-                goto DoneSpilling;
-            }
-        }
-    }
-    /* no locals are in register */
-    /* then just use R0 */
+
+    /* spill register */
+    UInt Reg = Compiler->SpilledRegCount % PVM_REG_COUNT;
+    Compiler->SpilledRegCount++;
     PVMEmitPush(Compiler, Reg);
-DoneSpilling:
+
     return (VarLocation) {
         .IntegralType = Type,
         .InRegister = true,
@@ -1138,7 +1136,18 @@ DoneSpilling:
 
 static void PVMFreeRegister(PVMCompiler *Compiler, VarLocation *Register)
 {
-    Compiler->RegisterList[Compiler->CurrScopeDepth] &= ~(1u << Register->As.Reg.ID);
+    PASCAL_ASSERT(Register->InRegister, "Cannot free non register");
+    UInt Reg = (Compiler->SpilledRegCount - 1) % PVM_REG_COUNT;
+
+    if (Compiler->SpilledRegCount > 0 && Reg == Register->As.Reg.ID)
+    {
+        Compiler->SpilledRegCount--;
+        PVMEmitPop(Compiler, Reg);
+    }
+    else
+    {
+        Compiler->RegisterList[Compiler->CurrScopeDepth] &= ~(1u << Register->As.Reg.ID);
+    }
 }
 
 static bool PVMRegisterIsFree(PVMCompiler *Compiler, UInt RegID)
