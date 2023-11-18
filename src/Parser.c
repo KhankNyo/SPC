@@ -277,6 +277,7 @@ AstExpr ParseExpr(PascalParser *Parser)
 
 static void ParseType(PascalParser *Parser)
 {
+    /* TODO: parse type properly */
     if (!NextTokenIs(Parser, TOKEN_IDENTIFIER))
     {
         Error(Parser, "Expected at least 1 type definition for a 'type' block.");
@@ -441,7 +442,7 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type)
     );
 
 
-    /* Body (Opt) */
+    /* TODO: optional Body by detecting 'forward' keyword */
     Function->Block = ParseBlock(Parser);
     ParserEndScope(Parser);
     ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after 'end'");
@@ -461,8 +462,8 @@ static AstBeginEndStmt *ParseBeginEndStmt(PascalParser *Parser)
 {
     AstBeginEndStmt *BeginEnd = ArenaAllocateZero(Parser->Arena, sizeof(*BeginEnd));
     BeginEnd->Base.Type = AST_STMT_BEGINEND;
-    AstStmtList **Stmts = &BeginEnd->Statements;
 
+    AstStmtList **Stmts = &BeginEnd->Statements;
     while (!IsAtEnd(Parser) && !NextTokenIs(Parser, TOKEN_END))
     {
         (*Stmts) = ArenaAllocateZero(Parser->Arena, sizeof(**Stmts));
@@ -565,6 +566,7 @@ static AstReturnStmt *ParseReturnStmt(PascalParser *Parser)
 {
     AstReturnStmt *RetStmt = ArenaAllocateZero(Parser->Arena, sizeof(*RetStmt));
     RetStmt->Base.Type = AST_STMT_RETURN;
+
     if (ConsumeIfNextIs(Parser, TOKEN_LEFT_PAREN))
     {
         RetStmt->Expr = ArenaAllocateZero(Parser->Arena, sizeof *RetStmt->Expr);

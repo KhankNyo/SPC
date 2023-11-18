@@ -11,7 +11,7 @@ set "INCPATH=%SRCDIR%\Include"
 
 if "%ARG1%"=="cl" (
     set "CC=cl"
-    set "CCF=/Zi /DEBUG /DDEBUG /FC /I%INCPATH%"
+    set "CCF=/Zi /DEBUG /FC /I%INCPATH% /DDEBUG /DPVM_DEBUGGER"
     set "LD=/DEBUG /Zi"
     set "LIBS=/MDd /MTd /DEBUG /Zi"
     set "OBJ_SWITCH=/Fo"
@@ -20,7 +20,7 @@ if "%ARG1%"=="cl" (
     set "OBJ_EXTENSION=obj"
 ) else (
     set "CC=gcc"
-    set "CCF=-g -O0 -DDEBUG -Wall -Wextra -Wpedantic -I%INCPATH%"
+    set "CCF=-g -O0 -Wall -Wextra -Wpedantic -I%INCPATH% %CCF% -DDEBUG -DPVM_DEBUGGER"
     set "LDF="
     set "LIBS="
     set "OBJ_SWITCH=-o "
@@ -33,6 +33,7 @@ set "MSG="
 set "SRCS=%SRCDIR%\PascalString.c %SRCDIR%\main.c %SRCDIR%\Pascal.c %SRCDIR%\Memory.c"
 set "SRCS=%SRCS% %SRCDIR%\Tokenizer.c %SRCDIR%\Parser.c %SRCDIR%\Ast.c %SRCDIR%\Vartab.c"
 set "SRCS=%SRCS% %SRCDIR%\PVM\Disassembler.c %SRCDIR%\PVM\PVM.c %SRCDIR%\PVM\CodeChunk.c %SRCDIR%\PVM\CodeGen.c"
+set "SRCS=%SRCS% %SRCDIR%\PVM\Debugger.c"
 set "SRCS=%SRCS% %SRCDIR%\PascalFile.c %SRCDIR%\PascalRepl.c"
 set "OUTPUT=%BINDIR%\pascal.exe"
 

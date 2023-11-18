@@ -75,6 +75,12 @@ typedef struct PascalVM
         PVMSaveFrame *Start;
         int SizeLeft;
     } RetStack;
+
+    bool SingleStepMode;
+    struct {
+        int Line;
+        U32 PC;
+    } Error;
 } PascalVM;
 
 PascalVM PVMInit(U32 StackSize, UInt RetStackSize);
@@ -89,9 +95,10 @@ typedef enum PVMReturnValue
     PVM_CALLSTACK_OVERFLOW,
     PVM_CALLSTACK_UNDERFLOW,
 } PVMReturnValue;
-
 PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk);
 
+/* Same as PVMInterpret, but handles and prints error to stdout */
+bool PVMRun(PascalVM *PVM, const CodeChunk *Chunk);
 
 void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine);
 

@@ -13,8 +13,9 @@
 #include "PVM/Disassembler.h"
 
 
-static bool GetCommandLine(char *Buf, USize Bufsz);
-static bool RunVM(PascalVM *PVM, CodeChunk *Chunk, const PascalAst *Ast);
+static bool GetCommandLine(PascalVM *PVM, char *Buf, USize Bufsz);
+
+#define STREQU(Buffer, Literal) (0 == strncmp(Buffer, Literal, sizeof(Literal) - 1))
 
 int PascalRepl(void)
 {
@@ -30,7 +31,7 @@ int PascalRepl(void)
 
     int RetVal = PASCAL_EXIT_SUCCESS;
     static char Tmp[1024] = { 0 };
-    while (GetCommandLine(Tmp, sizeof Tmp))
+    while (GetCommandLine(&PVM, Tmp, sizeof Tmp))
     {
         USize SourceLen = strlen(Tmp);
         U8 *CurrentSource = ArenaAllocate(&Program, SourceLen + 1);
@@ -42,7 +43,10 @@ int PascalRepl(void)
         PascalAst *Ast = ParserGenerateAst(&Parser);
         if (NULL != Ast)
         {
-            RunVM(&PVM, &Chunk, Ast);
+            if (PVMCompile(&Chunk, Ast))
+            {
+                PVMRun(&PVM, &Chunk);
+            }
         }
         ArenaReset(&Scratch);
         Chunk.Count = 0;
@@ -56,43 +60,39 @@ int PascalRepl(void)
 }
 
 
-static bool GetCommandLine(char *Buf, USize Bufsz)
+static bool GetCommandLine(PascalVM *PVM, char *Buf, USize Bufsz)
 {
     do {
         printf("\n>> ");
         if (NULL == fgets(Buf, Bufsz, stdin))
-        {
             return false;
+
+        if ('.' == Buf[0])
+        {
+            Buf[strlen(Buf) - 1] = '\0'; /* remove pesky newline character */
+
+            if (STREQU(&Buf[1], "Debug"))
+            {
+                if (PVM->SingleStepMode)
+                    fprintf(stdout, "Disabled debug mode.\n");
+                else 
+                    fprintf(stdout, "Enabled debug mode.\n");
+                PVM->SingleStepMode = !PVM->SingleStepMode;
+            }
+            else if (STREQU(&Buf[1], "Quit"))
+            {
+                fprintf(stdout, "Quitting...\n");
+                return false;
+            }
+            else 
+            {
+                fprintf(stdout, "Unknown Repl command: '%s'\n", &Buf[1]);
+            }
+            Buf[0] = '\n';
         }
     } while ('\n' == Buf[0]);
-
-    if (0 == strncmp(Buf, "Quit", sizeof ("Quit") - 1))
-        return false;
     return true;
 }
 
-
-
-static bool RunVM(PascalVM *PVM, CodeChunk *Chunk, const PascalAst *Ast)
-{
-    if (!PVMCompile(Chunk, Ast))
-    {
-        fprintf(stderr, "Compile Error\n");
-        return false;
-    }
-
-    PVMDisasm(stdout, Chunk, "Compiled Code");
-
-    printf("Press Enter to execute...\n");
-    getc(stdin);
-    PVMReturnValue Ret = PVMInterpret(PVM, Chunk);
-    if (Ret != PVM_NO_ERROR)
-    {
-        return false;
-    }
-
-    PVMDumpState(stdout, PVM, 6);
-    return true;
-}
 
 

@@ -1181,8 +1181,7 @@ static void PVMBeginScope(PVMCompiler *Compiler)
 
 static void PVMEndScope(PVMCompiler *Compiler)
 {
-    /* for debugging purposes, uncomment when finish */
-    //PVMAllocateStackSpace(Compiler, -Compiler->SP[Compiler->CurrScopeDepth]);
+    PVMAllocateStackSpace(Compiler, -Compiler->SP[Compiler->CurrScopeDepth]);
     Compiler->CurrScopeDepth--;
 }
 

@@ -9,8 +9,8 @@ begin
 
     { address 1 on stack }
     sum := 0;
-    for sum := 0 to 20 do
-    begin end;
+    while sum < 21 do 
+        sum := sum + 1;
 
     { address 0 on stack }
     test := sum = a;

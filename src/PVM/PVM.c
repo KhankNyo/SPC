@@ -1,10 +1,16 @@
 
+#include <stdarg.h>
 #include <time.h>
+
 #include "Memory.h"
 #include "PVM/PVM.h"
+#include "PVM/Debugger.h"
+#include "PVM/Disassembler.h"
 
 
 
+
+static void RuntimeError(PascalVM *PVM, const char *Fmt, ...);
 
 
 
@@ -18,6 +24,7 @@ PascalVM PVMInit(U32 StackSize, UInt RetStackSize)
     PVM.RetStack.Start = MemAllocateArray(PVMSaveFrame, RetStackSize);
     PVM.RetStack.Val = PVM.RetStack.Start;
     PVM.RetStack.SizeLeft = RetStackSize;
+    PVM.SingleStepMode = false;
     return PVM;
 }
 
@@ -26,6 +33,49 @@ void PVMDeinit(PascalVM *PVM)
     MemDeallocateArray(PVM->Stack.Start);
     MemDeallocateArray(PVM->RetStack.Start);
     *PVM = (PascalVM){ 0 };
+}
+
+
+bool PVMRun(PascalVM *PVM, const CodeChunk *Chunk)
+{
+    PVMDisasm(stdout, Chunk, "Compiled Code");
+    fprintf(stdout, "Press Enter to execute...\n");
+    getc(stdin);
+
+    bool NoError = false;
+    double Start = clock();
+    PVMReturnValue Ret = PVMInterpret(PVM, Chunk);
+    double End = clock();
+    PVMDumpState(stdout, PVM, 6);
+
+
+    switch (Ret)
+    {
+    case PVM_NO_ERROR:
+    {
+        fprintf(stdout, "Finished execution.\n"
+                "Time elapsed: %f ms\n", (End - Start) * 1000 / CLOCKS_PER_SEC
+        );
+        NoError = true;
+    } break;
+    case PVM_CALLSTACK_OVERFLOW:
+    {
+        RuntimeError(PVM, "Callstack overflow");
+    } break;
+    case PVM_CALLSTACK_UNDERFLOW:
+    {
+        RuntimeError(PVM, "Callstack underflow");
+    } break;
+    case PVM_DIVISION_BY_0:
+    {
+        RuntimeError(PVM, "Integer division by 0");
+    } break;
+    case PVM_ILLEGAL_INSTRUCTION:
+    {
+        RuntimeError(PVM, "IllegalInstruction");
+    } break;
+    }
+    return NoError;
 }
 
 
@@ -79,24 +129,26 @@ do {\
 
 #define PUSH_MULTIPLE(Base, Opcode) do{\
     UInt RegList = PVM_IRD_GET_IMM(Opcode);\
-    UInt i = Base;\
-    while (RegList) {\
+    UInt Base_ = Base;\
+    UInt i = Base_;\
+    while (i < Base_ + 16) {\
         if (RegList & 1) {\
             *(++SP) = PVM->R[i].Ptr;\
-            i++;\
         }\
+        i++;\
         RegList >>= 1;\
     }\
 } while (0)
 
 #define POP_MULTIPLE(Base, Opcode) do{\
     UInt RegList = PVM_IRD_GET_IMM(Opcode);\
-    UInt i = Base;\
-    while (RegList & 0xFFFF) {\
+    UInt Base_ = Base;\
+    UInt i = Base_;\
+    while (i < Base_ + 16) {\
         if (RegList & 0x8000) {\
-            *SP-- = PVM->R[i].Ptr;\
-            i++;\
+            PVM->R[15 - i].Ptr = *(SP--);\
         }\
+        i++;\
         RegList <<= 1;\
     }\
 } while (0)
@@ -107,8 +159,6 @@ do {\
     }\
 } while(0)
 
-    double start = clock();
-
     PVMWord *IP = Chunk->Code;
     PVMPtr *SP = PVM->Stack.Start;
     PVMPtr *FP = PVM->Stack.Start;
@@ -116,6 +166,15 @@ do {\
     PVMReturnValue RetVal = PVM_NO_ERROR;
     while (1)
     {
+
+#ifdef PVM_DEBUGGER
+        if (PVM->SingleStepMode)
+        {
+            PVM->Stack.Ptr = SP;
+            PVMDebugPause(PVM, Chunk, IP, SP, FP);
+        }
+#endif
+
         PVMWord Opcode = *IP++;
         switch (PVM_GET_INS(Opcode))
         {
@@ -386,9 +445,8 @@ CallstackUnderflow:
 CallstackOverflow:
     RetVal = PVM_CALLSTACK_OVERFLOW;
 Out:
-    /* TODO: unhack this */
+    PVM->Error.Line = 1;
     PVM->Stack.Ptr = SP;
-    printf("Finished in %g ms\n", (clock() - start) * 1000 / CLOCKS_PER_SEC);
     return RetVal;
 
 
@@ -401,6 +459,8 @@ Out:
 #undef FDAT_TEST_AND_SET
 #undef FDAT_BINARY_OP
 #undef TEST_AND_SET
+#undef POP_MULTIPLE
+#undef PUSH_MULTIPLE
 #undef R
 #undef F
 }
@@ -431,10 +491,25 @@ void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
 
     fprintf(f, "\n===================== STACK ======================");
     fprintf(f, "\nSP: %8p\n", (void*)PVM->Stack.Ptr);
-    for (PVMPtr *Sp = PVM->Stack.Start; Sp < PVM->Stack.Ptr; Sp++)
+    for (PVMPtr *Sp = PVM->Stack.Start; Sp <= PVM->Stack.Ptr; Sp++)
     {
         fprintf(f, "%8p: [0x%08llx]\n", (void*)Sp, *Sp);
     }
+    fputc('\n', f);
+}
+
+
+
+
+
+
+static void RuntimeError(PascalVM *PVM, const char *Fmt, ...)
+{
+    va_list Args;
+    va_start(Args, Fmt);
+    fprintf(stdout, "Runtime Error: [line %d]", PVM->Error.Line);
+    fprintf(stdout, Fmt, Args);
+    va_end(Args);
 }
 
 

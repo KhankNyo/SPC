@@ -85,18 +85,14 @@ static bool PascalRun(const U8 *Source, PascalArena *Arena)
     if (!PVMCompile(&Code, Ast))
         goto CompileError;
 
-
-    PVMDisasm(stdout, &Code, "Compiled expression");
-    printf("Press Enter to execute...\n");
-    getc(stdin);
-
     PascalVM VM = PVMInit(1024, 128);
-    PVMReturnValue Ret = PVMInterpret(&VM, &Code);
-    PVMDumpState(stdout, &VM, 6);
 
+    bool NoError = PVMRun(&VM, &Code);
+
+    PVMDeinit(&VM);
     ParserDestroyAst(Ast);
     ChunkDeinit(&Code);
-    return Ret == PVM_NO_ERROR;
+    return NoError;
 
 CompileError:
     ParserDestroyAst(Ast);

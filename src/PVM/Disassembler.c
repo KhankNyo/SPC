@@ -1,5 +1,6 @@
 
 #include "PVM/PVM.h"
+#include "PVM/Disassembler.h"
 
 
 static const char *sIntRegName[] = 
@@ -25,7 +26,6 @@ typedef enum ImmType
     IMM_SIGNED_INDIRECT,
 } ImmType;
 
-static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode);
 
 static void DisasmIDatArith(FILE *f, PVMWord Opcode);
 static void DisasmIDatSpecial(FILE *f, PVMWord Opcode);
@@ -65,13 +65,13 @@ void PVMDisasm(FILE *f, const CodeChunk *Chunk, const char *ChunkName)
     fprintf(f, "<========== %s ==========>\n", ChunkName);
     for (PVMWord i = 0; i < Chunk->Count; i++)
     {
-        DisasmInstruction(f, i, Chunk->Code[i]);
+        PVMDisasmInstruction(f, i, Chunk->Code[i]);
     }
 }
 
 
 
-static void DisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode)
+void PVMDisasmInstruction(FILE *f, PVMWord Addr, PVMWord Opcode)
 {
     PrintAddr(f, Addr);
     PrintHexCode(f, Opcode);
