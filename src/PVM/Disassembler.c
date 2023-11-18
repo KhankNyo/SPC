@@ -1,4 +1,5 @@
 
+#include "PVM/CodeChunk.h"
 #include "PVM/PVM.h"
 #include "PVM/Disassembler.h"
 
@@ -63,8 +64,19 @@ static void PrintHexCode(FILE *f, PVMWord Opcode);
 void PVMDisasm(FILE *f, const CodeChunk *Chunk, const char *ChunkName)
 {
     fprintf(f, "<========== %s ==========>\n", ChunkName);
+
+    const LineDebugInfo *Info = NULL;
+    const U8 *LastLine = NULL;
     for (PVMWord i = 0; i < Chunk->Count; i++)
     {
+        Info = ChunkGetDebugInfo(Chunk, i);
+        if (Info->Str > LastLine)
+        {
+            LastLine = Info->Str;
+            fprintf(f, "\n[Line %d]: '%.*s'\n", 
+                    Info->Line, Info->Len, Info->Str
+            );
+        }
         PVMDisasmInstruction(f, i, Chunk->Code[i]);
     }
 }

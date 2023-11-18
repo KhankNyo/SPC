@@ -507,7 +507,7 @@ static void RuntimeError(PascalVM *PVM, const char *Fmt, ...)
 {
     va_list Args;
     va_start(Args, Fmt);
-    fprintf(stdout, "Runtime Error: [line %d]", PVM->Error.Line);
+    fprintf(stdout, "Runtime Error: [line %d]:\n\t", PVM->Error.Line);
     fprintf(stdout, Fmt, Args);
     va_end(Args);
 }

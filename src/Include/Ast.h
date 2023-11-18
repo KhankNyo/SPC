@@ -61,6 +61,9 @@ struct AstBlock
 struct AstStmt 
 {
     AstStmtType Type;
+    const U8 *Src;
+    UInt Len;
+    U32 Line;
 };
 
 

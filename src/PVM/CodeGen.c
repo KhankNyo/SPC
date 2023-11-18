@@ -124,6 +124,7 @@ static void PVMCompileArgumentList(PVMCompiler *Compiler, const AstExprList *Arg
 
 
 
+static void PVMEmitDebugInfo(PVMCompiler *Compiler, const AstStmt *BaseStmt);
 static U64 PVMEmitBranchIfFalse(PVMCompiler *Compiler, VarLocation *Condition);
 static void PVMPatchBranch(PVMCompiler *Compiler, U64 StreamOffset, UInt ImmSize); 
 static U64 PVMEmitBranch(PVMCompiler *Compiler, U64 Location);
@@ -443,6 +444,7 @@ static void PVMCompileBeginEndStmt(PVMCompiler *Compiler, const AstBeginEndStmt 
 
 static void PVMCompileIfStmt(PVMCompiler *Compiler, const AstIfStmt *IfStmt)
 {
+    PVMEmitDebugInfo(Compiler, &IfStmt->Base);
     VarLocation Tmp = PVMAllocateRegister(Compiler, IfStmt->Condition.Type);
     PVMCompileExprInto(Compiler, &Tmp, &IfStmt->Condition);
 
@@ -493,6 +495,7 @@ static void PVMCompileForStmt(PVMCompiler *Compiler, const AstForStmt *ForStmt)
      * ExitFor:
      */
 
+    PVMEmitDebugInfo(Compiler, &ForStmt->Base);
     /* assignment */
     VarLocation *I = PVMCompileAssignStmt(Compiler, ForStmt->InitStmt);
 
@@ -518,6 +521,7 @@ static void PVMCompileForStmt(PVMCompiler *Compiler, const AstForStmt *ForStmt)
 
 static void PVMCompileWhileStmt(PVMCompiler *Compiler, const AstWhileStmt *WhileStmt)
 {
+    PVMEmitDebugInfo(Compiler, &WhileStmt->Base);
     VarLocation Tmp = PVMAllocateRegister(Compiler, WhileStmt->Expr.Type);
 
     /* condition test */
@@ -538,6 +542,7 @@ static void PVMCompileWhileStmt(PVMCompiler *Compiler, const AstWhileStmt *While
 
 static VarLocation *PVMCompileAssignStmt(PVMCompiler *Compiler, const AstAssignStmt *Assignment)
 {
+    PVMEmitDebugInfo(Compiler, &Assignment->Base);
     VarLocation *LValue = PVMGetLocationOf(Compiler, Assignment->VariableID);
     PVMCompileExprInto(Compiler, LValue, &Assignment->Expr);
     return LValue;
@@ -546,6 +551,7 @@ static VarLocation *PVMCompileAssignStmt(PVMCompiler *Compiler, const AstAssignS
 
 static void PVMCompileReturnStmt(PVMCompiler *Compiler, const AstReturnStmt *RetStmt)
 {
+    PVMEmitDebugInfo(Compiler, &RetStmt->Base);
     if (NULL != RetStmt->Expr)
     {
         PVMCompileExprInto(Compiler, &sReturnRegister, RetStmt->Expr);
@@ -795,6 +801,14 @@ static void PVMCompileArgumentList(PVMCompiler *Compiler, const AstExprList *Arg
 
 
 
+static void PVMEmitDebugInfo(PVMCompiler *Compiler, const AstStmt *BaseStmt)
+{
+    ChunkWriteDebugInfo(PVMCurrentChunk(Compiler), 
+            BaseStmt->Len, 
+            BaseStmt->Src,
+            BaseStmt->Line
+    );
+}
 
 
 static U64 PVMEmitBranchIfFalse(PVMCompiler *Compiler, VarLocation *Condition)

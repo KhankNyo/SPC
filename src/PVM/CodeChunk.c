@@ -16,6 +16,11 @@ CodeChunk ChunkInit(U32 InitialCapacity)
             .Cap = InitialCapacity,
             .Data = MemAllocateArray(F64, InitialCapacity),
         },
+        .Debug = {
+            .Count = 0,
+            .Cap = InitialCapacity,
+            .Info = MemAllocateArray(LineDebugInfo, InitialCapacity),
+        },
     };
 }
 
@@ -23,8 +28,10 @@ void ChunkDeinit(CodeChunk *Chunk)
 {
     MemDeallocateArray(Chunk->Code);
     MemDeallocateArray(Chunk->DataSection.Data);
+    MemDeallocateArray(Chunk->Debug.Info);
     *Chunk = (CodeChunk) { 0 };
 }
+
 
 U32 ChunkWriteCode(CodeChunk *Chunk, U32 Word)
 {
@@ -38,10 +45,11 @@ U32 ChunkWriteCode(CodeChunk *Chunk, U32 Word)
     return Chunk->Count++;
 }
 
+
 U32 ChunkWriteData(CodeChunk *Chunk, F64 Data)
 {
     DataChunk *DataSection = &Chunk->DataSection;
-    if (DataSection->Count <= DataSection->Cap)
+    if (DataSection->Count >= DataSection->Cap)
     {
         DataSection->Cap *= CODECHUNK_GROW_RATE;
         DataSection->Data = MemReallocateArray(F64, DataSection->Data, DataSection->Cap);
@@ -52,5 +60,46 @@ U32 ChunkWriteData(CodeChunk *Chunk, F64 Data)
 }
 
 
+U32 ChunkWriteDebugInfo(CodeChunk *Chunk, UInt Len, const U8 *SrcString, U32 Line)
+{
+    ChunkDebugInfo *DebugInfo = &Chunk->Debug;
+    U32 Count = DebugInfo->Count;
+    if (Count >= DebugInfo->Cap)
+    {
+        DebugInfo->Cap *= CODECHUNK_GROW_RATE;
+        DebugInfo->Info = MemReallocateArray(*DebugInfo->Info, 
+                DebugInfo->Info, DebugInfo->Cap
+        );
+    }
+
+    DebugInfo->Info[Count].InstructionOffset = Chunk->Count;
+    DebugInfo->Info[Count].Len = Len;
+    DebugInfo->Info[Count].Str = SrcString;
+    DebugInfo->Info[Count].Line = Line;
+    return DebugInfo->Count++;
+}
+
+
+const LineDebugInfo *ChunkGetDebugInfo(const CodeChunk *Chunk, U32 InstructionOffset)
+{
+    const ChunkDebugInfo *Dbg = &Chunk->Debug;
+    if (Dbg->Count != 0 && InstructionOffset >= Dbg->Info[Dbg->Count - 1].InstructionOffset)
+    {
+        return &Dbg->Info[Dbg->Count - 1];
+    }
+    if (Dbg->Count == 0)
+    {
+        static LineDebugInfo NoInfo = {0};
+        return &NoInfo;
+    }
+
+    const LineDebugInfo *Info = &Dbg->Info[0];
+    for (U32 i = 0; i < Dbg->Count; i++)
+    {
+        if (Dbg->Info[i].InstructionOffset == InstructionOffset)
+            return &Dbg->Info[i];
+    }
+    return Info;
+}
 
 

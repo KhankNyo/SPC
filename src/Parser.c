@@ -30,6 +30,9 @@ static const char *sFunction = "function";
 
 
 
+static void *StmtInit(PascalParser *Parser, UInt Size, AstStmtType Type);
+static void StmtEndLine(const PascalParser *Parser, AstStmt *Stmt);
+
 static void ParseType(PascalParser *Parser);
 static AstStmtBlock *ParseBeginEndBlock(PascalParser *Parser);
 static AstVarList *ParseVarList(PascalParser *Parser, AstVarList *List);
@@ -177,14 +180,15 @@ AstBlock *ParseBlock(PascalParser *Parser)
         } break;
         }
 
-        if (Parser->PanicMode)
-        {
-            Unpanic(Parser);
-        }
 
         if (NULL != *I)
         {
             I = &(*I)->Next;
+        }
+
+        if (Parser->PanicMode)
+        {
+            Unpanic(Parser);
         }
     } while (!IsAtEnd(Parser));
 
@@ -231,6 +235,7 @@ AstStmt *ParseStmt(PascalParser *Parser)
     } break;
     }
 
+
     if (Parser->PanicMode)
     {
         Unpanic(Parser);
@@ -273,6 +278,20 @@ AstExpr ParseExpr(PascalParser *Parser)
 
 
 
+static void *StmtInit(PascalParser *Parser, UInt Size, AstStmtType Type)
+{
+    AstStmt *Stmt = ArenaAllocateZero(Parser->Arena, Size);
+    Stmt->Type = Type;
+    Stmt->Src = Parser->Curr.Str;
+    Stmt->Line = Parser->Curr.Line;
+
+    return Stmt;
+}
+
+static void StmtEndLine(const PascalParser *Parser, AstStmt *Stmt)
+{
+    Stmt->Len = Parser->Curr.Str + Parser->Curr.Len - Stmt->Src;
+}
 
 
 
@@ -482,11 +501,11 @@ static AstBeginEndStmt *ParseBeginEndStmt(PascalParser *Parser)
 
 static AstIfStmt *ParseIfStmt(PascalParser *Parser)
 {
-    AstIfStmt *IfStmt = ArenaAllocateZero(Parser->Arena, sizeof(*IfStmt));
-    IfStmt->Base.Type = AST_STMT_IF;
+    AstIfStmt *IfStmt = StmtInit(Parser, sizeof(*IfStmt), AST_STMT_IF);
 
     IfStmt->Condition = ParseExpr(Parser);
     ConsumeOrError(Parser, TOKEN_THEN, "Expected 'then' after expression.");
+    StmtEndLine(Parser, &IfStmt->Base);
 
     IfStmt->IfCase = ParseStmt(Parser);
     if (ConsumeIfNextIs(Parser, TOKEN_ELSE))
@@ -499,8 +518,7 @@ static AstIfStmt *ParseIfStmt(PascalParser *Parser)
 
 static AstForStmt *ParseForStmt(PascalParser *Parser)
 {
-    AstForStmt *ForStmt = ArenaAllocateZero(Parser->Arena, sizeof *ForStmt);
-    ForStmt->Base.Type = AST_STMT_FOR;
+    AstForStmt *ForStmt = StmtInit(Parser, sizeof *ForStmt, AST_STMT_FOR);
 
     ForStmt->InitStmt = ParseAssignStmt(Parser);
     ForStmt->Comparison = TOKEN_GREATER;
@@ -518,6 +536,7 @@ static AstForStmt *ParseForStmt(PascalParser *Parser)
             ForStmt->InitStmt->LhsType, 
             ForStmt->StopExpr.Type
     );
+    StmtEndLine(Parser, &ForStmt->Base);
 
     ForStmt->Stmt = ParseStmt(Parser);
     return ForStmt;
@@ -526,11 +545,11 @@ static AstForStmt *ParseForStmt(PascalParser *Parser)
 
 static AstWhileStmt *ParseWhileStmt(PascalParser *Parser)
 {
-    AstWhileStmt *WhileStmt = ArenaAllocateZero(Parser->Arena, sizeof *WhileStmt);
-    WhileStmt->Base.Type = AST_STMT_WHILE;
+    AstWhileStmt *WhileStmt = StmtInit(Parser, sizeof *WhileStmt, AST_STMT_WHILE);
 
     WhileStmt->Expr = ParseExpr(Parser);
     ConsumeOrError(Parser, TOKEN_DO, "Expected 'do' after expression.");
+    StmtEndLine(Parser, &WhileStmt->Base);
 
     WhileStmt->Stmt = ParseStmt(Parser);
     return WhileStmt;
@@ -539,11 +558,10 @@ static AstWhileStmt *ParseWhileStmt(PascalParser *Parser)
 
 static AstAssignStmt *ParseAssignStmt(PascalParser *Parser)
 {
-    AstAssignStmt *Assignment = ArenaAllocateZero(Parser->Arena, sizeof(*Assignment));
-    Assignment->Base.Type = AST_STMT_ASSIGNMENT;
-
     /* TODO: assignment to function */
     ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected identifier.");
+    AstAssignStmt *Assignment = StmtInit(Parser, sizeof(*Assignment), AST_STMT_ASSIGNMENT);
+
     PascalVar *Lhs = ParserGetIdentifierInfo(Parser, &Parser->Curr, "Assignment target is undefined.");
     Assignment->VariableID = VAR_ID_INVALID;
     ParserType LhsType = TYPE_INVALID;
@@ -561,14 +579,15 @@ static AstAssignStmt *ParseAssignStmt(PascalParser *Parser)
     /* typecheck */
     (void)ParserCoerceTypes(Parser, LhsType, Assignment->Expr.Type);
     Assignment->LhsType = LhsType;
+
+    StmtEndLine(Parser, &Assignment->Base);
     return Assignment;
 }
 
 
 static AstReturnStmt *ParseReturnStmt(PascalParser *Parser)
 {
-    AstReturnStmt *RetStmt = ArenaAllocateZero(Parser->Arena, sizeof(*RetStmt));
-    RetStmt->Base.Type = AST_STMT_RETURN;
+    AstReturnStmt *RetStmt = StmtInit(Parser, sizeof(*RetStmt), AST_STMT_RETURN);
 
     if (ConsumeIfNextIs(Parser, TOKEN_LEFT_PAREN))
     {
@@ -576,6 +595,8 @@ static AstReturnStmt *ParseReturnStmt(PascalParser *Parser)
         *RetStmt->Expr = ParseExpr(Parser);
         ConsumeOrError(Parser, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
     }
+
+    StmtEndLine(Parser, &RetStmt->Base);
     return RetStmt;
 }
 
