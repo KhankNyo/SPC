@@ -46,17 +46,17 @@ U32 ChunkWriteCode(CodeChunk *Chunk, U32 Word)
 }
 
 
-U32 ChunkWriteData(CodeChunk *Chunk, F64 Data)
+U32 ChunkReserveData(CodeChunk *Chunk, U32 Size)
 {
     DataChunk *DataSection = &Chunk->DataSection;
-    if (DataSection->Count >= DataSection->Cap)
+    U32 Count = DataSection->Count;
+    if (Count + Size >= DataSection->Cap)
     {
         DataSection->Cap *= CODECHUNK_GROW_RATE;
         DataSection->Data = MemReallocateArray(F64, DataSection->Data, DataSection->Cap);
     }
-
-    DataSection->Data[DataSection->Count] = Data;
-    return DataSection->Count++;
+    DataSection->Count += Size;
+    return Count;
 }
 
 

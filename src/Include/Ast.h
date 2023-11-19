@@ -19,6 +19,7 @@ typedef struct AstReturnStmt AstReturnStmt;
 typedef struct AstStmtBlock AstStmtBlock;
 
 
+typedef struct AstCallStmt AstCallStmt;
 typedef struct AstAssignStmt AstAssignStmt;
 typedef struct AstIfStmt AstIfStmt;
 typedef struct AstForStmt AstForStmt;
@@ -32,7 +33,7 @@ typedef enum AstBlockType
     AST_BLOCK_INVALID = 0,
     AST_BLOCK_FUNCTION,
     AST_BLOCK_VAR,
-    AST_BLOCK_STATEMENTS,
+    AST_BLOCK_BEGINEND,
 } AstBlockType;
 
 typedef enum AstStmtType 
@@ -42,6 +43,7 @@ typedef enum AstStmtType
     AST_STMT_IF,
     AST_STMT_FOR,
     AST_STMT_WHILE,
+    AST_STMT_CALL,
     AST_STMT_ASSIGNMENT,
     AST_STMT_RETURN,
 } AstStmtType;
@@ -99,6 +101,7 @@ struct AstStmtList
 struct AstFunctionBlock 
 {
     AstBlock Base;
+
     AstVarList *Params;
     AstBlock *Block;
     U32 ID;
@@ -110,13 +113,17 @@ struct AstFunctionBlock
 struct AstVarBlock
 {
     AstBlock Base;
+
+    const U8 *Src;
+    UInt Len;
+    U32 Line;
     AstVarList Decl;
 };
 
 struct AstStmtBlock
 {
     AstBlock Base;
-    AstStmtList *Statements;
+    AstBeginEndStmt *BeginEnd;
 };
 
 
@@ -127,6 +134,9 @@ struct AstStmtBlock
 struct AstBeginEndStmt 
 {
     AstStmt Base;
+    U32 EndLine;
+    UInt EndLen;
+    const U8 *EndStr;
     AstStmtList *Statements;
 };
 
@@ -141,7 +151,11 @@ struct AstIfStmt
 struct AstForStmt
 {
     AstStmt Base;
-    AstAssignStmt *InitStmt;
+
+    ParserType VarType;
+    U32 VarID;
+    AstExpr InitExpr;
+
     AstExpr StopExpr;
     AstStmt *Stmt;
     TokenType Comparison;
@@ -153,6 +167,14 @@ struct AstWhileStmt
     AstStmt Base;
     AstExpr Expr;
     AstStmt *Stmt;
+};
+
+struct AstCallStmt 
+{
+    AstStmt Base;
+
+    U32 ProcedureID;
+    AstExprList *ArgList;
 };
 
 struct AstAssignStmt 

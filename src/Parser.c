@@ -28,6 +28,12 @@ static ParserType sCoercionRules[TYPE_COUNT][TYPE_COUNT] = {
 
 static const char *sFunction = "function";
 
+typedef struct ArgumentList 
+{
+    int Count;
+    AstExprList *Args;
+} ArgumentList;
+
 
 
 static void *StmtInit(PascalParser *Parser, UInt Size, AstStmtType Type);
@@ -44,7 +50,9 @@ static AstBeginEndStmt *ParseBeginEndStmt(PascalParser *Parser);
 static AstIfStmt *ParseIfStmt(PascalParser *Parser);
 static AstForStmt *ParseForStmt(PascalParser *Parser);
 static AstWhileStmt *ParseWhileStmt(PascalParser *Parser);
-static AstAssignStmt *ParseAssignStmt(PascalParser *Parser);
+static AstStmt *ParseIdentifierStmt(PascalParser *Parser);
+static AstCallStmt *ParseCallStmt(PascalParser *Parser, U32 ID, const AstFunctionBlock *Function);
+static AstAssignStmt *ParseAssignStmt(PascalParser *Parser, const PascalVar *IdenInfo);
 static AstReturnStmt *ParseReturnStmt(PascalParser *Parser);
 
 
@@ -60,7 +68,7 @@ static AstSimpleExpr ParseSimpleExpr(PascalParser *Parser);
 static AstTerm ParseTerm(PascalParser *Parser);
 static AstFactor ParseFactor(PascalParser *Parser);
 static AstFactor ParseVariable(PascalParser *Parser);
-static AstExprList *ParseArgumentList(PascalParser *Parser);
+static ArgumentList ParseArgumentList(PascalParser *Parser);
 
 
 static bool IsAtEnd(const PascalParser *Parser);
@@ -231,7 +239,7 @@ AstStmt *ParseStmt(PascalParser *Parser)
     } break;
     default: 
     {
-        Statement = (AstStmt*)ParseAssignStmt(Parser);
+        Statement = (AstStmt*)ParseIdentifierStmt(Parser);
     } break;
     }
 
@@ -326,18 +334,10 @@ static void ParseType(PascalParser *Parser)
 
 static AstStmtBlock *ParseBeginEndBlock(PascalParser *Parser)
 {
-    AstStmtBlock *Statements = ArenaAllocateZero(Parser->Arena, sizeof(*Statements));
-    Statements->Base.Type = AST_BLOCK_STATEMENTS;
-    AstStmtList **CurrStmt = &Statements->Statements;
-
-    while (!IsAtEnd(Parser) && !ConsumeIfNextIs(Parser, TOKEN_END))
-    {
-        *CurrStmt = ArenaAllocateZero(Parser->Arena, sizeof(**CurrStmt));
-        (*CurrStmt)->Statement = ParseStmt(Parser);
-        ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after statement.");
-        CurrStmt = &(*CurrStmt)->Next;
-    }
-    return Statements;
+    AstStmtBlock *BeginEndBlock = ArenaAllocateZero(Parser->Arena, sizeof(*BeginEndBlock));
+    BeginEndBlock->Base.Type = AST_BLOCK_BEGINEND;
+    BeginEndBlock->BeginEnd = ParseBeginEndStmt(Parser);
+    return BeginEndBlock;
 }
 
 
@@ -379,17 +379,24 @@ static AstVarList *ParseVarList(PascalParser *Parser, AstVarList *List)
 static AstVarBlock *ParseVar(PascalParser *Parser)
 {
     AstVarBlock *BlockDeclaration = ArenaAllocateZero(Parser->Arena, sizeof(*BlockDeclaration));
+
+    BlockDeclaration->Line = Parser->Next.Line;
+    BlockDeclaration->Src = Parser->Next.Str;
     BlockDeclaration->Base.Type = AST_BLOCK_VAR;
     AstVarList *Decl = &BlockDeclaration->Decl;
 
     Decl = ParseVarList(Parser, Decl);
     ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after type name.");
+
     while (NextTokenIs(Parser, TOKEN_IDENTIFIER))
     {
         Decl->Next = ArenaAllocateZero(Parser->Arena, sizeof(*Decl));
         Decl = ParseVarList(Parser, Decl->Next);
+
         ConsumeOrError(Parser, TOKEN_SEMICOLON, "Expected ';' after type name.");
     }
+    BlockDeclaration->Len = Parser->Curr.Str - BlockDeclaration->Src;
+
     return BlockDeclaration;
 }
 
@@ -411,13 +418,11 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type)
     /* Name */
     ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected %s name.", Type);
     Token FunctionName = Parser->Curr;
-    Function->ID = ParserDefineIdentifier(Parser, &Parser->Curr, TYPE_FUNCTION, Function);
-
+    Function->ID = ParserDefineIdentifier(Parser, &FunctionName, TYPE_FUNCTION, Function);
 
 
     /* args */
     ParserBeginScope(Parser);
-
     if (ConsumeIfNextIs(Parser, TOKEN_LEFT_PAREN)
     && !ConsumeIfNextIs(Parser, TOKEN_RIGHT_PAREN))
     {
@@ -431,6 +436,15 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type)
                 break;
             }
         } while (!IsAtEnd(Parser));
+
+
+        /* TODO: array instead of linked list to avoid counting */
+        ArgList = Function->Params;
+        while (NULL != ArgList)
+        {
+            Function->ArgCount++;
+            ArgList = ArgList->Next;
+        }
     }
     Token BeforeColon = Parser->Curr;
 
@@ -482,8 +496,8 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type)
 
 static AstBeginEndStmt *ParseBeginEndStmt(PascalParser *Parser)
 {
-    AstBeginEndStmt *BeginEnd = ArenaAllocateZero(Parser->Arena, sizeof(*BeginEnd));
-    BeginEnd->Base.Type = AST_STMT_BEGINEND;
+    AstBeginEndStmt *BeginEnd = StmtInit(Parser, sizeof(*BeginEnd), AST_STMT_BEGINEND);
+    StmtEndLine(Parser, &BeginEnd->Base);
 
     AstStmtList **Stmts = &BeginEnd->Statements;
     while (!IsAtEnd(Parser) && !NextTokenIs(Parser, TOKEN_END))
@@ -495,6 +509,9 @@ static AstBeginEndStmt *ParseBeginEndStmt(PascalParser *Parser)
     }
 
     ConsumeOrError(Parser, TOKEN_END, "Expected 'end' after statement.");
+    BeginEnd->EndLine = Parser->Curr.Line;
+    BeginEnd->EndStr = Parser->Curr.Str;
+    BeginEnd->EndLen = Parser->Curr.Len;
     return BeginEnd;
 }
 
@@ -520,7 +537,13 @@ static AstForStmt *ParseForStmt(PascalParser *Parser)
 {
     AstForStmt *ForStmt = StmtInit(Parser, sizeof *ForStmt, AST_STMT_FOR);
 
-    ForStmt->InitStmt = ParseAssignStmt(Parser);
+    /* loop variable */
+    ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected identifier after 'for'.");
+    ConsumeOrError(Parser, TOKEN_COLON_EQUAL, "Expected ':=' after variable name.");
+    ForStmt->InitExpr = ParseExpr(Parser);
+
+
+    /* downto/to */
     ForStmt->Comparison = TOKEN_GREATER;
     ForStmt->Imm = -1;
     if (!ConsumeIfNextIs(Parser, TOKEN_DOWNTO))
@@ -530,15 +553,18 @@ static AstForStmt *ParseForStmt(PascalParser *Parser)
         ForStmt->Imm = 1;
     }
 
+    /* do */
     ForStmt->StopExpr = ParseExpr(Parser);
     ConsumeOrError(Parser, TOKEN_DO, "Expected 'do' after expression.");
     ForStmt->StopExpr.Type = ParserCoerceTypes(Parser, 
-            ForStmt->InitStmt->LhsType, 
+            ForStmt->VarType,
             ForStmt->StopExpr.Type
     );
     StmtEndLine(Parser, &ForStmt->Base);
 
+    /* body */
     ForStmt->Stmt = ParseStmt(Parser);
+
     return ForStmt;
 }
 
@@ -556,19 +582,59 @@ static AstWhileStmt *ParseWhileStmt(PascalParser *Parser)
 }
 
 
-static AstAssignStmt *ParseAssignStmt(PascalParser *Parser)
+static AstStmt *ParseIdentifierStmt(PascalParser *Parser)
+{
+    ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected identifier.");
+
+    PascalVar *IdenInfo = ParserGetIdentifierInfo(Parser, &Parser->Curr, "Undefined variable '%.*s'.", 
+            Parser->Curr.Len, Parser->Curr.Str
+    );
+    if (NULL != IdenInfo)
+    {
+        if (TYPE_FUNCTION == IdenInfo->Type)
+        {
+            return (AstStmt*)ParseCallStmt(Parser, IdenInfo->ID, IdenInfo->Data);
+        }
+    }
+    return (AstStmt*)ParseAssignStmt(Parser, IdenInfo);
+}
+
+
+static AstCallStmt *ParseCallStmt(PascalParser *Parser, U32 ID, const AstFunctionBlock *Function)
+{
+    AstCallStmt *CallStmt = StmtInit(Parser, sizeof(*CallStmt), AST_STMT_CALL);
+    CallStmt->ProcedureID = ID;
+    Token FunctionName = Parser->Curr;
+
+    if (ConsumeIfNextIs(Parser, TOKEN_LEFT_PAREN))
+    {
+        ArgumentList ArgList = ParseArgumentList(Parser);
+        
+        CallStmt->ArgList = ArgList.Args;
+        if (ArgList.Count != Function->ArgCount)
+        {
+            Error(Parser, "Expected %d arguments but call to '%.*s' has %d.", 
+                    Function->ArgCount, FunctionName.Len, FunctionName.Str, ArgList.Count
+            );
+        }
+        ConsumeOrError(Parser, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
+    }
+    /* TODO: check argument count */
+
+    StmtEndLine(Parser, &CallStmt->Base);
+    return CallStmt;
+}
+
+static AstAssignStmt *ParseAssignStmt(PascalParser *Parser, const PascalVar *IdenInfo)
 {
     /* TODO: assignment to function */
-    ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected identifier.");
     AstAssignStmt *Assignment = StmtInit(Parser, sizeof(*Assignment), AST_STMT_ASSIGNMENT);
 
-    PascalVar *Lhs = ParserGetIdentifierInfo(Parser, &Parser->Curr, "Assignment target is undefined.");
-    Assignment->VariableID = VAR_ID_INVALID;
     ParserType LhsType = TYPE_INVALID;
-    if (NULL != Lhs)
+    if (NULL != IdenInfo)
     {
-        Assignment->VariableID = Lhs->ID;
-        LhsType = Lhs->Type;
+        Assignment->VariableID = IdenInfo->ID;
+        LhsType = IdenInfo->Type;
     }
 
     ConsumeOrError(Parser, TOKEN_COLON_EQUAL, "TODO: other assignment operators");
@@ -837,17 +903,31 @@ static AstFactor ParseVariable(PascalParser *Parser)
     if (NULL != Info)
     {
         Factor.Type = Info->Type;
-        Factor.As.VarID = Info->ID;
         if (TYPE_FUNCTION == Info->Type)
         {
             Factor.FactorType = FACTOR_CALL;
             if (ConsumeIfNextIs(Parser, TOKEN_LEFT_PAREN))
             {
-                Factor.As.CallArgList = ParseArgumentList(Parser);
+                const AstFunctionBlock *Function = Info->Data;
+                if (Function->HasReturnType)
+                {
+                    Factor.Type = Function->ReturnType;
+                }
+                Factor.As.Function.ID = Info->ID;
+                ArgumentList ArgList = ParseArgumentList(Parser);
+                Factor.As.Function.ArgList = ArgList.Args;
+
+                if (ArgList.Count != Function->ArgCount)
+                {
+                    Error(Parser, "Expected %d arguments but call to '%.*s' has %d.", 
+                            Function->ArgCount, Info->Len, Info->Str, ArgList.Count
+                    );
+                }
             }
         }
         else
         {
+            Factor.As.VarID = Info->ID;
             Factor.FactorType = FACTOR_VARIABLE;
         }
     }
@@ -856,20 +936,23 @@ static AstFactor ParseVariable(PascalParser *Parser)
 
 
 
-static AstExprList *ParseArgumentList(PascalParser *Parser)
+static ArgumentList ParseArgumentList(PascalParser *Parser)
 {
-    AstExprList *Args = NULL;
-    AstExprList **Current = &Args;
+    ArgumentList ArgList = { 0 };
+    AstExprList **Current = &ArgList.Args;
     while (!IsAtEnd(Parser))
     {
         *Current = ArenaAllocate(Parser->Arena, sizeof **Current);
         (*Current)->Expr = ParseExpr(Parser);
+        ArgList.Count++;
         if (ConsumeIfNextIs(Parser, TOKEN_RIGHT_PAREN))
+        {
             break;
+        }
         ConsumeOrError(Parser, TOKEN_COMMA, "Expected ',' or ')' after expression.");
         Current = &(*Current)->Next;
     }
-    return Args;
+    return ArgList;
 }
 
 

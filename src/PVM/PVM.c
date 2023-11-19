@@ -365,9 +365,9 @@ do {\
                 if (PVM->RetStack.Val == PVM->RetStack.Start)
                     goto CallstackUnderflow;
 
+                PVM->RetStack.Val--;
                 IP = PVM->RetStack.Val->IP;
                 FP = PVM->RetStack.Val->Frame;
-                PVM->RetStack.Val--;
                 PVM->RetStack.SizeLeft++;
             }
             else /* BSR */

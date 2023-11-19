@@ -37,7 +37,7 @@ CodeChunk ChunkInit(U32 InitialCap);
 void ChunkDeinit(CodeChunk *Chunk);
 
 U32 ChunkWriteCode(CodeChunk *Chunk, U32 Word);
-U32 ChunkWriteData(CodeChunk *Chunk, F64 Real);
+U32 ChunkReserveData(CodeChunk *Chunk, U32 Size);
 U32 ChunkWriteDebugInfo(CodeChunk *Chunk, UInt Len, const U8 *SrcString, U32 Line);
 const LineDebugInfo *ChunkGetDebugInfo(const CodeChunk *Chunk, U32 InstructionOffset);
 

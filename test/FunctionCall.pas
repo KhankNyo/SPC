@@ -7,11 +7,15 @@ begin
 end;
 
 
-var 
-    a, b: int32;
+procedure proc;
+var
+    a: int32;
 begin
-    b := 2;
-    a := 10;
-    a := f(a, b);
+    a := f(1 + 2, 3);
+end;
+
+
+begin
+    proc;
 end.
 

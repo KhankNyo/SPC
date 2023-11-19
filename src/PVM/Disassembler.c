@@ -66,13 +66,11 @@ void PVMDisasm(FILE *f, const CodeChunk *Chunk, const char *ChunkName)
     fprintf(f, "<========== %s ==========>\n", ChunkName);
 
     const LineDebugInfo *Info = NULL;
-    const U8 *LastLine = NULL;
     for (PVMWord i = 0; i < Chunk->Count; i++)
     {
         Info = ChunkGetDebugInfo(Chunk, i);
-        if (Info->Str > LastLine)
+        if (Info->InstructionOffset == i)
         {
-            LastLine = Info->Str;
             fprintf(f, "\n[Line %d]: '%.*s'\n", 
                     Info->Line, Info->Len, Info->Str
             );
@@ -457,12 +455,16 @@ static void DisasmRegList(FILE *f, const char *Mnemonic, PVMWord Opcode, bool Up
 
     char RegisterListStr[256];
     char *Tmp = RegisterListStr;
-    int Written = 0;
     UInt SizeLeft = sizeof RegisterListStr;
+    int Written = 0;
+
     UInt RegisterList = PVM_IRD_GET_IMM(Opcode);
-    for (UInt i = 0; i < 16; i++)
+
+#define REGISTER_SELECTED(Idx) ((RegisterList >> (Idx)) & 0x1)
+    UInt i = 0;
+    while (i < 16)
     {
-        if (((RegisterList >> i) & 0x1) && SizeLeft > 0)
+        if ((REGISTER_SELECTED(i) && SizeLeft > 0))
         {
             if (Written)
             {
@@ -470,11 +472,26 @@ static void DisasmRegList(FILE *f, const char *Mnemonic, PVMWord Opcode, bool Up
                 Tmp += Written;
                 SizeLeft -= Written;
             }
+
+            /* go through a line of selected reg */
+            if (REGISTER_SELECTED(i + 1))
+            {
+                Written = snprintf(Tmp, SizeLeft, "%s ... ", Registers[i]);
+                Tmp += Written;
+                SizeLeft -= Written;
+                do {
+                    i++;
+                } while (REGISTER_SELECTED(i + 1));
+            }
+
             Written = snprintf(Tmp, SizeLeft, "%s", Registers[i]);
             Tmp += Written;
             SizeLeft -= Written;
         }
+        i++;
     }
+#undef REGISTER_SELECTED
+
     fprintf(f, "%s { %s }\n", Mnemonic, RegisterListStr);
 }
 
