@@ -400,7 +400,11 @@ static void DisasmImmRdMem(FILE *f, PVMWord Opcode)
     case PVM_IRD_POPL: DisasmRegList(f, "POP", Opcode, false); break;
     case PVM_IRD_PSHL: DisasmRegList(f, "PSH", Opcode, false); break;
     case PVM_IRD_PSHU: DisasmRegList(f, "PSH", Opcode, true); break;
+
     case PVM_IRD_ADDSPI: DisasmLongImm(f, "ADDSP", Opcode, true); break;
+
+    case PVM_IRD_LDG: DisasmImmReg(f, "LDG", sIntRegName, Opcode, IMM_INDIRECT); break;
+    case PVM_IRD_STG: DisasmImmReg(f, "STG", sIntRegName, Opcode, IMM_INDIRECT); break;
     }
 }
 

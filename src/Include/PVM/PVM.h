@@ -95,10 +95,10 @@ typedef enum PVMReturnValue
     PVM_CALLSTACK_OVERFLOW,
     PVM_CALLSTACK_UNDERFLOW,
 } PVMReturnValue;
-PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk);
+PVMReturnValue PVMInterpret(PascalVM *PVM, CodeChunk *Chunk);
 
 /* Same as PVMInterpret, but handles and prints error to stdout */
-bool PVMRun(PascalVM *PVM, const CodeChunk *Chunk);
+bool PVMRun(PascalVM *PVM, CodeChunk *Chunk);
 
 void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine);
 

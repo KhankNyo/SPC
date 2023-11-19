@@ -14,7 +14,7 @@ CodeChunk ChunkInit(U32 InitialCapacity)
         .DataSection = {
             .Count = 0,
             .Cap = InitialCapacity,
-            .Data = MemAllocateArray(F64, InitialCapacity),
+            .Data = MemAllocateArray(PVMPtr, InitialCapacity),
         },
         .Debug = {
             .Count = 0,
@@ -53,7 +53,9 @@ U32 ChunkReserveData(CodeChunk *Chunk, U32 Size)
     if (Count + Size >= DataSection->Cap)
     {
         DataSection->Cap *= CODECHUNK_GROW_RATE;
-        DataSection->Data = MemReallocateArray(F64, DataSection->Data, DataSection->Cap);
+        DataSection->Data = MemReallocateArray(*DataSection->Data, 
+                DataSection->Data, DataSection->Cap
+        );
     }
     DataSection->Count += Size;
     return Count;

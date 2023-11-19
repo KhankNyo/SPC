@@ -4,6 +4,7 @@
 
 
 #include "Common.h"
+#include "PVM/Isa.h"
 
 #define CODECHUNK_GROW_RATE 2
 
@@ -22,7 +23,7 @@ typedef struct ChunkDebugInfo
 } ChunkDebugInfo;
 typedef struct DataChunk 
 {
-    F64 *Data;
+    PVMPtr *Data;
     U32 Count, Cap;
 } DataChunk;
 typedef struct CodeChunk 

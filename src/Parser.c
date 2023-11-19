@@ -81,6 +81,7 @@ static ParserType DetermineIntegerSize(U64 Integer);
 
 static void Error(PascalParser *Parser, const char *Fmt, ...);
 static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList);
+static void VaListErrorAtToken(PascalParser *Parser, const Token *Tok, const char *Fmt, va_list VaList);
 static void Unpanic(PascalParser *Parser);
 
 static const char *ParserTypeToStr(ParserType Type);
@@ -459,7 +460,7 @@ static AstFunctionBlock *ParseFunction(PascalParser *Parser, const char *Type)
         BeforeSemicolon = Parser->Curr;
 
         PascalVar *ReturnTypeInfo = ParserGetIdentifierInfo(Parser, &Parser->Curr, 
-                "Return type of '%.*s' is not defined.", FunctionName.Len, FunctionName.Str
+                "Return type of function '%.*s' is not defined.", FunctionName.Len, FunctionName.Str
         );
         if (NULL != ReturnTypeInfo)
         {
@@ -539,6 +540,12 @@ static AstForStmt *ParseForStmt(PascalParser *Parser)
 
     /* loop variable */
     ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected identifier after 'for'.");
+    PascalVar *LoopVar = ParserGetIdentifierInfo(Parser, &Parser->Curr, "Undefined variable.");
+    if (NULL != LoopVar)
+    {
+        ForStmt->VarType = LoopVar->Type;
+        ForStmt->VarID = LoopVar->ID;
+    }
     ConsumeOrError(Parser, TOKEN_COLON_EQUAL, "Expected ':=' after variable name.");
     ForStmt->InitExpr = ParseExpr(Parser);
 
@@ -553,18 +560,20 @@ static AstForStmt *ParseForStmt(PascalParser *Parser)
         ForStmt->Imm = 1;
     }
 
-    /* do */
+    /* performs typecheck */
     ForStmt->StopExpr = ParseExpr(Parser);
-    ConsumeOrError(Parser, TOKEN_DO, "Expected 'do' after expression.");
-    ForStmt->StopExpr.Type = ParserCoerceTypes(Parser, 
+    (void)ParserCoerceTypes(Parser, 
             ForStmt->VarType,
             ForStmt->StopExpr.Type
     );
+
+    /* do */
+    ConsumeOrError(Parser, TOKEN_DO, "Expected 'do' after expression.");
     StmtEndLine(Parser, &ForStmt->Base);
+
 
     /* body */
     ForStmt->Stmt = ParseStmt(Parser);
-
     return ForStmt;
 }
 
@@ -586,9 +595,7 @@ static AstStmt *ParseIdentifierStmt(PascalParser *Parser)
 {
     ConsumeOrError(Parser, TOKEN_IDENTIFIER, "Expected identifier.");
 
-    PascalVar *IdenInfo = ParserGetIdentifierInfo(Parser, &Parser->Curr, "Undefined variable '%.*s'.", 
-            Parser->Curr.Len, Parser->Curr.Str
-    );
+    PascalVar *IdenInfo = ParserGetIdentifierInfo(Parser, &Parser->Curr, "Undefined variable.");
     if (NULL != IdenInfo)
     {
         if (TYPE_FUNCTION == IdenInfo->Type)
@@ -613,7 +620,7 @@ static AstCallStmt *ParseCallStmt(PascalParser *Parser, U32 ID, const AstFunctio
         CallStmt->ArgList = ArgList.Args;
         if (ArgList.Count != Function->ArgCount)
         {
-            Error(Parser, "Expected %d arguments but call to '%.*s' has %d.", 
+            Error(Parser, "Expected %d arguments but call to function '%.*s' has %d.", 
                     Function->ArgCount, FunctionName.Len, FunctionName.Str, ArgList.Count
             );
         }
@@ -718,7 +725,7 @@ static PascalVar *ParserGetIdentifierInfo(PascalParser *Parser, const Token *Ide
 
         va_list ArgList;
         va_start(ArgList, ErrFmt);
-        VaListError(Parser, ErrFmt, ArgList);
+        VaListErrorAtToken(Parser, Identifier, ErrFmt, ArgList);
         va_end(ArgList);
         return NULL;
     }
@@ -1059,6 +1066,20 @@ static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList)
     }
 }
 
+static void VaListErrorAtToken(PascalParser *Parser, const Token *Tok, const char *Fmt, va_list VaList)
+{
+    Parser->Error = true;
+    if (!Parser->PanicMode)
+    {
+        Parser->PanicMode = true;
+        fprintf(Parser->ErrorFile, "Parser [line %d]: '%.*s'\n    ", 
+                Tok->Line, Tok->Len, Tok->Str
+        );
+        vfprintf(Parser->ErrorFile, Fmt, VaList);
+        fputc('\n', Parser->ErrorFile);
+    }
+}
+
 
 static void Unpanic(PascalParser *Parser)
 {
@@ -1106,8 +1127,8 @@ static const char *ParserTypeToStr(ParserType Type)
         [TYPE_U16] = "uint16",
         [TYPE_U32] = "uint32",
         [TYPE_U64] = "uint64",
-        [TYPE_F32] = "Ffoat",
-        [TYPE_F64] = "Double",
+        [TYPE_F32] = "float",
+        [TYPE_F64] = "double",
         [TYPE_FUNCTION] = "function",
     };
     PASCAL_STATIC_ASSERT(TYPE_COUNT == STATIC_ARRAY_SIZE(StrLut), "");

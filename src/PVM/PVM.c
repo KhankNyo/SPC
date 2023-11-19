@@ -36,7 +36,7 @@ void PVMDeinit(PascalVM *PVM)
 }
 
 
-bool PVMRun(PascalVM *PVM, const CodeChunk *Chunk)
+bool PVMRun(PascalVM *PVM, CodeChunk *Chunk)
 {
     PVMDisasm(stdout, Chunk, "Compiled Code");
     fprintf(stdout, "Press Enter to execute...\n");
@@ -46,7 +46,7 @@ bool PVMRun(PascalVM *PVM, const CodeChunk *Chunk)
     double Start = clock();
     PVMReturnValue Ret = PVMInterpret(PVM, Chunk);
     double End = clock();
-    PVMDumpState(stdout, PVM, 6);
+    PVMDumpState(stdout, PVM, 8);
 
 
     switch (Ret)
@@ -85,7 +85,7 @@ bool PVMRun(PascalVM *PVM, const CodeChunk *Chunk)
  * The following code has the ability to cause cancer, eye sore, and even death to the soul.
  *                                  Viewer discretion advised.
  *============================================================================================*/
-PVMReturnValue PVMInterpret(PascalVM *PVM, const CodeChunk *Chunk)
+PVMReturnValue PVMInterpret(PascalVM *PVM, CodeChunk *Chunk)
 {
 #define R(Opcode, InstructionType, RegType) (PVM->R[GLUE(PVM_ ##InstructionType, _GET_ ##RegType) (Opcode)])
 #define F(Opcode, InstructionType, RegType) (PVM->F[GLUE(PVM_ ##InstructionType, _GET_ ##RegType) (Opcode)])
@@ -341,6 +341,15 @@ do {\
             {
                 SP += (PVMSPtr)(I32)BIT_SEX32(BIT_AT32(Opcode, 21, 0), 20);
             } break;
+            case PVM_IRD_LDG:
+            {
+                /* TODO: bound checking */
+                R(Opcode, IRD, RD).Ptr = Chunk->DataSection.Data[PVM_IRD_GET_IMM(Opcode)];
+            } break;
+            case PVM_IRD_STG:
+            {
+                Chunk->DataSection.Data[PVM_IRD_GET_IMM(Opcode)] = R(Opcode, IRD, RD).Ptr;
+            } break;
             }
         } break;
 
@@ -476,7 +485,7 @@ void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
         {
             fprintf(f, "\n");
         }
-        fprintf(f, "[R%02d: 0x%08lld]", i, PVM->R[i].Ptr);
+        fprintf(f, "[R%02d: %lld]", i, PVM->R[i].Ptr);
     }
 
     fprintf(f, "\n===================== F%d REGISTERS ======================", (int)sizeof(PVM->F[0])*8);

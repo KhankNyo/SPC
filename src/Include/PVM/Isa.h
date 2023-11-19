@@ -168,6 +168,12 @@
  *                          Ri.Ptr := [SP--];
  *          01000:  ADDSP Imm21
  *                  SP += SExPtr(Imm21)
+ *
+ *          01001:  LDG RD, [Imm16]
+ *                  RD.Ptr := GlobalTable[Imm16]
+ *          01010:  STG RD, [Imm16]
+ *                  GlobalTable[Imm16] := RD.Ptr;
+ *
  *      10:
  *      11:
  */
@@ -305,7 +311,11 @@ typedef enum PVMIRDMem
     PVM_IRD_POPL,
     PVM_IRD_PSHU,
     PVM_IRD_POPU,
+
     PVM_IRD_ADDSPI,
+
+    PVM_IRD_LDG,
+    PVM_IRD_STG,
 } PVMIRDMem;
 
 typedef enum PVMSysOp 

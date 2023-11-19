@@ -71,15 +71,19 @@ typedef struct PVMCompiler
 {
     const PascalAst *Ast;
     CodeChunk *Chunk;
+
     UInt SpilledRegCount;
     U32 RegisterList;
+    U32 SavedRegisters[PVM_SCOPE_COUNT];
+
     UInt CurrentScopeDepth;
     U32 EntryPoint;
     U32 SP;
 
     U32 GlobalDataSize;
     U32 VarCount;
-    VarLocation Vars    [PVM_VAR_COUNT];
+    U32 GlobalCount;
+    VarLocation Vars[PVM_VAR_COUNT];
 
     bool HasError;
 } PVMCompiler;
@@ -225,6 +229,7 @@ PVMCompiler PVMCompilerInit(CodeChunk *Chunk, const PascalAst *Ast)
         .VarCount = 0,
         .Vars = { {0} },
         .EntryPoint = 0,
+        .SavedRegisters = { 0 },
     };
     return Compiler;
 }
@@ -272,6 +277,7 @@ static void PVMDeclareGlobal(PVMCompiler *Compiler, U32 ID, ParserType Type, Glo
     NewGlobal->LocationType = VAR_GLOBAL;
     NewGlobal->As.Global = Global;
     Compiler->VarCount++;
+    Compiler->GlobalCount++;
 }
 
 static void PVMDeclareFunction(PVMCompiler *Compiler, U32 ID, ParserType Type, FunctionVar Function)
@@ -361,12 +367,11 @@ static void PVMCompileVarBlock(PVMCompiler *Compiler, const AstVarBlock *Declara
     const AstVarList *I = &Declarations->Decl;
     if (0 == Compiler->CurrentScopeDepth)
     {
-        PASCAL_UNREACHABLE("TODO: global variable instructions");
         U32 TotalSize = 0;
         do {
             GlobalVar Global = {
                 .Size = PVMSizeOfType(Compiler, I->Type),
-                .Location = 0, /* TODO: location of global */
+                .Location = Compiler->GlobalCount,
             };
             TotalSize += Global.Size;
             PVMDeclareGlobal(Compiler, I->ID, I->Type, Global);
@@ -795,13 +800,16 @@ static void PVMCompileFactorInto(PVMCompiler *Compiler, const VarLocation *Dest,
     } break;
     case FACTOR_CALL:
     {
+        /* TODO: this is a hack */
+        PVMFreeRegister(Compiler, Dest);
         PVMEmitSaveCallerRegs(Compiler);
+        PVMMarkRegisterAsAllocated(Compiler, Dest->As.Reg.ID);
+
         PVMCompileArgumentList(Compiler, Factor->As.Function.ArgList);
         PVMEmitCall(Compiler, Factor->As.Function.ID);
-        PVMEmitUnsaveCallerRegs(Compiler);
-
-        /* a function call is an expression, so it must have a return value */
         PVMEmitMov(Compiler, Dest, &sReturnRegister);
+
+        PVMEmitUnsaveCallerRegs(Compiler);
     } break;
     case FACTOR_VARIABLE:
     {
@@ -914,7 +922,9 @@ static bool PVMEmitIntoReg(PVMCompiler *Compiler, VarLocation *Target, const Var
     } break;
     case VAR_GLOBAL:
     {
-        PASCAL_UNREACHABLE("TODO: EmitIntoReg from global");
+        *Target = PVMAllocateRegister(Compiler, Src->IntegralType);
+        PVMEmitCode(Compiler, PVM_IRD_MEM_INS(LDG, Target->As.Reg.ID, Src->As.Global.Location));
+        return true;
     } break;
     /* loads pointer to function */
     case VAR_FUNCTION:
@@ -987,7 +997,7 @@ static void PVMEmitMov(PVMCompiler *Compiler, const VarLocation *Dest, const Var
     } break;
     case VAR_GLOBAL:
     {
-        PASCAL_UNREACHABLE("TODO: mov reg to global");
+        PVMEmitCode(Compiler, PVM_IRD_MEM_INS(STG, Tmp.As.Reg.ID, Dest->As.Global.Location));
     } break;
     }
 
@@ -1007,7 +1017,20 @@ static void PVMEmitLoad(PVMCompiler *Compiler, const VarLocation *Dest, U64 Inte
 
     
     VarLocation Target;
-    bool IsOwning = PVMEmitIntoReg(Compiler, &Target, Dest);
+    bool IsOwning = false;
+    switch (Dest->LocationType)
+    {
+    case VAR_REG:
+    case VAR_TMP_REG:
+    {
+        Target = *Dest;
+    } break;
+    default:
+    {
+        IsOwning = true;
+        Target = PVMAllocateRegister(Compiler, Dest->IntegralType);
+    } break;
+    }
 
     /* fast zeroing idiom */
     if (0 == Integer)
@@ -1073,11 +1096,11 @@ static void PVMEmitLoad(PVMCompiler *Compiler, const VarLocation *Dest, U64 Inte
 static void PVMEmitAddImm(PVMCompiler *Compiler, const VarLocation *Dest, I16 Imm)
 {
     VarLocation Target;
-    bool DestInReg = !PVMEmitIntoReg(Compiler, &Target, Dest);
+    bool IsOwning = PVMEmitIntoReg(Compiler, &Target, Dest);
 
-    PVMEmitCode(Compiler, PVM_IRD_ARITH_INS(ADD, Dest->As.Reg.ID, Imm));
+    PVMEmitCode(Compiler, PVM_IRD_ARITH_INS(ADD, Target.As.Reg.ID, Imm));
 
-    if (!DestInReg)
+    if (IsOwning)
     {
         PVMEmitMov(Compiler, Dest, &Target);
         PVMFreeRegister(Compiler, &Target);
@@ -1299,20 +1322,30 @@ static void PVMEmitAddSp(PVMCompiler *Compiler, I32 Offset)
 
 static void PVMEmitSaveCallerRegs(PVMCompiler *Compiler)
 {
-    /* pushes all caller save regs */
-    PVMEmitCode(Compiler, PVM_IRD_MEM_INS(PSHL, 0, 0xFFFF));
-
     /* check all locals in current scope and update their location */
-    if (Compiler->RegisterList)
+    if (0 == Compiler->RegisterList)
+        return;
+
+    UInt RegList = 0;
+    for (UInt i = 0; i < 16; i++)
     {
-        for (UInt i = 0; i < 16; i++)
+        if (!PVMRegisterIsFree(Compiler, i))
         {
-            if (!PVMRegisterIsFree(Compiler, i))
-            {
-            //    PASCAL_UNREACHABLE("TODO: SaveCallerRegs(): update register location");
-            }
+            RegList |= (UInt)1 << i;
         }
     }
+
+    Compiler->SavedRegisters[Compiler->CurrentScopeDepth] = RegList;
+    for (UInt i = 0; i < Compiler->VarCount; i++)
+    {
+        VarLocation *Var = &Compiler->Vars[i];
+        if (VAR_REG == Var->LocationType 
+        || VAR_TMP_REG == Var->LocationType)
+        {
+            /* update location */
+        }
+    }
+    PVMEmitCode(Compiler, PVM_IRD_MEM_INS(PSHL, 0, RegList));
 }
 
 static void PVMEmitCall(PVMCompiler *Compiler, U32 CalleeID)
@@ -1328,8 +1361,21 @@ static void PVMEmitCall(PVMCompiler *Compiler, U32 CalleeID)
 
 static void PVMEmitUnsaveCallerRegs(PVMCompiler *Compiler)
 {
+    if (Compiler->SavedRegisters[Compiler->CurrentScopeDepth] == 0)
+        return;
+
     /* pop all caller save regs */
-    PVMEmitCode(Compiler, PVM_IRD_MEM_INS(POPL, 0, 0xFFFF));
+    PVMEmitCode(Compiler, PVM_IRD_MEM_INS(POPL, 0, 
+            Compiler->SavedRegisters[Compiler->CurrentScopeDepth]
+    ));
+
+    for (UInt i = 0; i < Compiler->VarCount; i++)
+    {
+        if (Compiler->Vars[i].LocationType == VAR_TMP_STK)
+        {
+        }
+    }
+    Compiler->SavedRegisters[Compiler->CurrentScopeDepth] = 0;
 }
 
 
