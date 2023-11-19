@@ -33,7 +33,7 @@ typedef struct PascalParser
 
 
 PascalParser ParserInit(const U8 *Source, PascalVartab *PredefinedIdentifiers, PascalArena *Arena, FILE *ErrorFile);
-
+void ParserDestroyAst(PascalAst *Ast);
 
 PascalAst *ParserGenerateAst(PascalParser *Parser);
 AstExpr ParseExpr(PascalParser *Parser);
@@ -42,8 +42,9 @@ AstExpr ParseExpr(PascalParser *Parser);
 AstBlock *ParseBlock(PascalParser *Parser);
 AstStmt *ParseStatement(PascalParser *Parser);
 
+const char *ParserTypeToStr(ParserType Type);
 
-void ParserDestroyAst(PascalAst *Ast);
+
 
 
 #endif /* PASCAL_PARSER_H */

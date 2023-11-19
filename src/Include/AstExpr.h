@@ -26,6 +26,7 @@ typedef enum ParserType
     TYPE_U8, TYPE_U16, TYPE_U32, TYPE_U64,
     TYPE_F32, TYPE_F64, 
     TYPE_FUNCTION,
+    TYPE_BOOLEAN,
     TYPE_COUNT,
 } ParserType;
 

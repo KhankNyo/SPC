@@ -669,10 +669,10 @@ static void PVMCompileExprInto(PVMCompiler *Compiler, const VarLocation *Dest, c
         return;
     }
 
-    VarLocation Left = PVMAllocateRegister(Compiler, Expr->Type);
+    VarLocation Left = PVMAllocateRegister(Compiler, Expr->Left.Type);
     PVMCompileSimpleExprInto(Compiler, &Left, &Expr->Left);
 
-    VarLocation Right = PVMAllocateRegister(Compiler, Expr->Type);
+    VarLocation Right = PVMAllocateRegister(Compiler, RightSimpleExpr->Type);
     do {
         PVMCompileSimpleExprInto(Compiler, &Right, &RightSimpleExpr->SimpleExpr);
         PVMEmitSetCC(Compiler, RightSimpleExpr->Op, 
@@ -695,10 +695,10 @@ static void PVMCompileSimpleExprInto(PVMCompiler *Compiler, const VarLocation *D
         return;
     }
 
-    VarLocation Left = PVMAllocateRegister(Compiler, SimpleExpr->Type);
+    VarLocation Left = PVMAllocateRegister(Compiler, SimpleExpr->Left.Type);
     PVMCompileTermInto(Compiler, &Left, &SimpleExpr->Left);
 
-    VarLocation Right = PVMAllocateRegister(Compiler, SimpleExpr->Type);
+    VarLocation Right = PVMAllocateRegister(Compiler, RightTerm->Type);
     do {
         PVMCompileTermInto(Compiler, &Right, &RightTerm->Term);
 
@@ -740,10 +740,10 @@ static void PVMCompileTermInto(PVMCompiler *Compiler, const VarLocation *Dest, c
         return;
     }
 
-    VarLocation Left = PVMAllocateRegister(Compiler, Term->Type);
+    VarLocation Left = PVMAllocateRegister(Compiler, Term->Left.Type);
     PVMCompileFactorInto(Compiler, &Left, &Term->Left);
 
-    VarLocation Right = PVMAllocateRegister(Compiler, Term->Type);
+    VarLocation Right = PVMAllocateRegister(Compiler, RightFactor->Type);
     do {
         PVMCompileFactorInto(Compiler, &Right, &RightFactor->Factor);
 
@@ -1260,7 +1260,7 @@ static void PVMEmitSetCC(PVMCompiler *Compiler, TokenType Op, const VarLocation 
     case TYPE_U32: SET(W, "PVMEmitSetCC: PVMWord: %s is not valid", TokenTypeToStr(Op)); break;
     case TYPE_U16: SET(H, "PVMEmitSetCC: PVMHalf: %s is not valid", TokenTypeToStr(Op)); break;
     case TYPE_U8:  SET(B, "PVMEmitSetCC: PVMByte: %s is not valid", TokenTypeToStr(Op)); break;
-    default: PASCAL_UNREACHABLE("Invalid type for setcc: %d", Dest->IntegralType); break;
+    default: PASCAL_UNREACHABLE("Invalid type for setcc: %s", ParserTypeToStr(Dest->IntegralType)); break;
     }
 
     if (IsOwningTarget)
@@ -1496,6 +1496,7 @@ static USize PVMSizeOfType(PVMCompiler *Compiler, ParserType Type)
     {
     case TYPE_I8:
     case TYPE_U8:
+    case TYPE_BOOLEAN:
         return sizeof(U8);
 
     case TYPE_I16:
@@ -1511,6 +1512,7 @@ static USize PVMSizeOfType(PVMCompiler *Compiler, ParserType Type)
     case TYPE_U64:
     case TYPE_F64:
         return 8;
+
 
     case TYPE_COUNT:
     case TYPE_INVALID:
