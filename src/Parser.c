@@ -309,6 +309,9 @@ AstExpr ParseExpr(PascalParser *Parser)
         (*Right)->Type = LastType;
         Right = &(*Right)->Next;
     }
+
+
+    /* TODO: const folding here */
     Expression.Type = LastType;
     return Expression;
 }
