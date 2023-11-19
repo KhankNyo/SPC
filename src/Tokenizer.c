@@ -10,6 +10,10 @@ static bool IsAtEnd(const PascalTokenizer *Lexer);
 static bool IsNumber(U8 ch);
 static bool IsAlpha(U8 ch);
 static bool IsHex(U8 ch);
+
+/* updates the Line and LineOffset field, only call when a newline si encountered */
+static void UpdateLine(PascalTokenizer *Lexer);
+
 /* returns true if Str1 is equal to UpperStr2, 
  * case does not matter except for Str2 which has to be upper case */
 static bool AlphaArrayEquNoCase(const U8 *Str1, const U8 *UpperStr2, UInt Len);
@@ -60,6 +64,7 @@ PascalTokenizer TokenizerInit(const U8 *Source)
         .Start = Source,
         .Curr = Source,
         .Line = 1,
+        .LinePtr = Source,
     };
 }
 
@@ -179,7 +184,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_ELSE", "TOKEN_END", "TOKEN_EXIT",
         "TOKEN_FALSE", "TOKEN_FILE", "TOKEN_FOR", "TOKEN_FUNCTION", 
         "TOKEN_GOTO",
-        "TOKEN_IF", "TOKEN_IMPLEMENTATION", "TOKEN_IN", "TOKEN_INLINE", "TOKEN_INFERFACE", "TOKEN_INTEGER", 
+        "TOKEN_IF", "TOKEN_IMPLEMENTATION", "TOKEN_IN", "TOKEN_INLINE", "TOKEN_INFERFACE", 
         "TOKEN_LABEL", 
         "TOKEN_MOD", 
         "TOKEN_NIL", "TOKEN_NOT",
@@ -307,20 +312,22 @@ static void SkipWhitespace(PascalTokenizer *Lexer)
 
         case '\n':
         {
-            Lexer->Line++;
             AdvanceChrPtr(Lexer);
+            UpdateLine(Lexer);
         } break;
 
         case '(': /* (* comment *) */
         {
             if ('*' == PeekChr(Lexer))
             {
-                Lexer->Curr += 2; /* skip '(*' */
+                /* skip '(*' */
+                Lexer->Curr += 2;
+
                 while (!IsAtEnd(Lexer) 
                 && !('*' == AdvanceChrPtr(Lexer) && ')' != *Lexer->Curr))
                 {
                     if ('\n' == *Lexer->Curr)
-                        Lexer->Line++;
+                        UpdateLine(Lexer);
                 }
                 /* skip ')', because the above loop did not skip it, 
                  * only skipped the '*' in '*)' */
@@ -332,10 +339,10 @@ static void SkipWhitespace(PascalTokenizer *Lexer)
         case '{': /* { comment } */
         /* TODO: compiler directive */
         {
-            Lexer->Curr++; /* skip '{' */
+            AdvanceChrPtr(Lexer);
             do {
                 if ('\n' == *Lexer->Curr)
-                    Lexer->Line++;
+                    UpdateLine(Lexer);
             } while (!IsAtEnd(Lexer) && ('}' != AdvanceChrPtr(Lexer)));
             /* pointing at EOF or next U8 */
         } break;
@@ -349,7 +356,7 @@ static void SkipWhitespace(PascalTokenizer *Lexer)
                 {
                     AdvanceChrPtr(Lexer);
                 }
-                Lexer->Line++;
+                UpdateLine(Lexer);
             }
             else goto out;
         } break;
@@ -375,6 +382,7 @@ static Token MakeToken(PascalTokenizer *Lexer, TokenType Type)
         .Str = Lexer->Start,
         .Len = Lexer->Curr - Lexer->Start,
         .Line = Lexer->Line,
+        .LineOffset = Lexer->Start - Lexer->LinePtr + 1,
     };
     Lexer->Start = Lexer->Curr;
     return Tok;
@@ -615,7 +623,6 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
             {.Str = (const U8 *)"F", .Len = 1, .Type = TOKEN_IF},
             {.Str = (const U8 *)"N", .Len = 1, .Type = TOKEN_IN},
             {.Str = (const U8 *)"NLINE", .Len = 5, .Type = TOKEN_INLINE},
-            {.Str = (const U8 *)"MNTEGER", .Len = 7, .Type = TOKEN_INTEGER},
             {.Str = (const U8 *)"NTERFACE", .Len = 8, .Type = TOKEN_INTERFACE},
             {.Str = (const U8 *)"MPLEMENTATION", .Len = 13, .Type = TOKEN_IMPLEMENTATION},
         },
@@ -703,6 +710,15 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
 }
 
 
+
+
+
+
+static void UpdateLine(PascalTokenizer *Lexer)
+{
+    Lexer->LinePtr = Lexer->Curr;
+    Lexer->Line++;
+}
 
 
 static bool AlphaArrayEquNoCase(const U8 *Str1, const U8 *UpperStr2, UInt Len)

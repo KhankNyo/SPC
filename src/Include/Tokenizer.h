@@ -8,6 +8,7 @@
 typedef struct PascalTokenizer 
 {
     const U8 *Start, *Curr;
+    const U8 *LinePtr;
     UInt Line;
 } PascalTokenizer;
 
@@ -25,7 +26,7 @@ typedef enum TokenType
     TOKEN_ELSE, TOKEN_END, TOKEN_EXIT,
     TOKEN_FALSE, TOKEN_FILE, TOKEN_FOR, TOKEN_FUNCTION, 
     TOKEN_GOTO,
-    TOKEN_IF, TOKEN_IMPLEMENTATION, TOKEN_IN, TOKEN_INLINE, TOKEN_INTERFACE, TOKEN_INTEGER,
+    TOKEN_IF, TOKEN_IMPLEMENTATION, TOKEN_IN, TOKEN_INLINE, TOKEN_INTERFACE,
     TOKEN_LABEL, 
     TOKEN_MOD, 
     TOKEN_NIL, TOKEN_NOT,
@@ -80,8 +81,10 @@ typedef struct Token
         PascalStr Str;
         TokenErrorInfo Err;
     } Literal;
+
     UInt Len;
     UInt Line;
+    UInt LineOffset;
 } Token;
 
 

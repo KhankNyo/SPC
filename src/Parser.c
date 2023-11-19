@@ -1136,8 +1136,10 @@ static void VaListError(PascalParser *Parser, const char *Fmt, va_list VaList)
     if (!Parser->PanicMode)
     {
         Parser->PanicMode = true;
-        fprintf(Parser->ErrorFile, "[line %d]: '%.*s'\n    ", 
-                Parser->Next.Line, Parser->Next.Len, Parser->Next.Str);
+        fprintf(Parser->ErrorFile, "[line %d, offset %d]: '%.*s'\n    ", 
+                Parser->Next.Line, Parser->Next.LineOffset, 
+                Parser->Next.Len, Parser->Next.Str
+        );
         vfprintf(Parser->ErrorFile, Fmt, VaList);
         fputc('\n', Parser->ErrorFile);
     }
@@ -1151,8 +1153,8 @@ static void VaListErrorAtToken(PascalParser *Parser, const Token *Tok, const cha
     if (!Parser->PanicMode)
     {
         Parser->PanicMode = true;
-        fprintf(Parser->ErrorFile, "[line %d]: '%.*s'\n    ", 
-                Tok->Line, Tok->Len, Tok->Str
+        fprintf(Parser->ErrorFile, "[line %d, offset: %d]: '%.*s'\n    ", 
+                Tok->Line, Tok->LineOffset, Tok->Len, Tok->Str
         );
         vfprintf(Parser->ErrorFile, Fmt, VaList);
         fputc('\n', Parser->ErrorFile);
