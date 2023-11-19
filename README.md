@@ -13,5 +13,4 @@
 
 
 # TODO:
-- Callee and caller register saving
-- Global variable instructions
+- Constant folding
