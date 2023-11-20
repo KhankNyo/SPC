@@ -18,7 +18,6 @@ PVMEmitter PVMEmitterInit(CodeChunk *Chunk)
         .SpilledRegCount = 0,
         .GlobalDataSize = 0,
         .VarCount = 0,
-        .Vars = { {0} },
         .EntryPoint = 0,
         .SavedRegisters = { 0 },
     };
@@ -31,19 +30,20 @@ void PVMEmitterDeinit(PVMEmitter *Emitter)
 }
 
 
-
-
-
-VarLocation *PVMGetLocationOf(PVMEmitter *Emitter, VarID ID)
+GlobalVar PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size)
 {
-    for (U32 i = 0; i < Emitter->VarCount; i++)
-    {
-        if (Emitter->Vars[i].ID == ID)
-            return &Emitter->Vars[i];
-    }
-    PASCAL_UNREACHABLE("Variable is not defined in PVMGetLocationOf");
-    return NULL;
+    GlobalVar Global = {
+        .Size = Size,
+        .Location = Emitter->GlobalDataSize,
+    };
+    Emitter->GlobalDataSize += Size / sizeof(PVMPtr);
+    if (Size % sizeof(PVMPtr))
+        Emitter->GlobalDataSize += 1;
+    return Global;
 }
+
+
+
 
 
 U32 PVMEmitCode(PVMEmitter *Emitter, U32 Instruction)
@@ -57,12 +57,10 @@ void PVMEmitGlobal(PVMEmitter *Emitter, GlobalVar Global)
 }
 
 
-void PVMEmitDebugInfo(PVMEmitter *Emitter, const AstStmt *BaseStmt)
+void PVMEmitDebugInfo(PVMEmitter *Emitter, const U8 *Src, UInt Len, U32 Line)
 {
     ChunkWriteDebugInfo(PVMCurrentChunk(Emitter), 
-            BaseStmt->Len, 
-            BaseStmt->Src,
-            BaseStmt->Line
+            Len, Src, Line
     );
 }
 
@@ -81,13 +79,13 @@ bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *Target, const VarLocation 
     case VAR_TMP_STK:
     case VAR_LOCAL:
     {
-        *Target = PVMAllocateRegister(Emitter, Src->IntegralType);
+        *Target = PVMAllocateRegister(Emitter, Src->Type);
         PVMEmitCode(Emitter, PVM_IRD_MEM_INS(LDRS, Target->As.Reg.ID, Src->As.Local.FPOffset));
         return true;
     } break;
     case VAR_GLOBAL:
     {
-        *Target = PVMAllocateRegister(Emitter, Src->IntegralType);
+        *Target = PVMAllocateRegister(Emitter, Src->Type);
         PVMEmitCode(Emitter, PVM_IRD_MEM_INS(LDG, Target->As.Reg.ID, Src->As.Global.Location));
         return true;
     } break;
@@ -175,8 +173,8 @@ void PVMEmitMov(PVMEmitter *Emitter, const VarLocation *Dest, const VarLocation 
 void PVMEmitLoad(PVMEmitter *Emitter, const VarLocation *Dest, U64 Integer, IntegralType IntegerType)
 {
     /* TODO: sign type */
-    if (IntegerType > Dest->IntegralType)
-        IntegerType = Dest->IntegralType;
+    if (IntegerType > Dest->Type)
+        IntegerType = Dest->Type;
 
     CodeChunk *Current = PVMCurrentChunk(Emitter);
 
@@ -193,7 +191,7 @@ void PVMEmitLoad(PVMEmitter *Emitter, const VarLocation *Dest, U64 Integer, Inte
     default:
     {
         IsOwning = true;
-        Target = PVMAllocateRegister(Emitter, Dest->IntegralType);
+        Target = PVMAllocateRegister(Emitter, Dest->Type);
     } break;
     }
 
@@ -415,7 +413,7 @@ void PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dest, co
 
 
 
-    switch (Dest->IntegralType)
+    switch (Dest->Type)
     {
     case TYPE_I64: SIGNEDSET(P, "(Signed) PVMEmitSetCC: PVMPtr: %s is not valid", TokenTypeToStr(Op)); break;
     case TYPE_I32: SIGNEDSET(W, "(Signed) PVMEmitSetCC: PVMWord: %s is not valid", TokenTypeToStr(Op)); break;
@@ -425,7 +423,7 @@ void PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dest, co
     case TYPE_U32: SET(W, "PVMEmitSetCC: PVMWord: %s is not valid", TokenTypeToStr(Op)); break;
     case TYPE_U16: SET(H, "PVMEmitSetCC: PVMHalf: %s is not valid", TokenTypeToStr(Op)); break;
     case TYPE_U8:  SET(B, "PVMEmitSetCC: PVMByte: %s is not valid", TokenTypeToStr(Op)); break;
-    default: PASCAL_UNREACHABLE("Invalid type for setcc: %s", IntegralTypeToStr(Dest->IntegralType)); break;
+    default: PASCAL_UNREACHABLE("Invalid type for setcc: %s", IntegralTypeToStr(Dest->Type)); break;
     }
 
     if (IsOwningTarget)
@@ -501,27 +499,18 @@ void PVMEmitSaveCallerRegs(PVMEmitter *Emitter)
     }
 
     Emitter->SavedRegisters[Emitter->CurrentScopeDepth] = RegList;
-    for (UInt i = 0; i < Emitter->VarCount; i++)
-    {
-        VarLocation *Var = &Emitter->Vars[i];
-        if (VAR_REG == Var->LocationType 
-        || VAR_TMP_REG == Var->LocationType)
-        {
-            /* update location */
-        }
-    }
+    PASCAL_UNREACHABLE("TODO: update location of saved variables");
     PVMEmitCode(Emitter, PVM_IRD_MEM_INS(PSHL, 0, RegList));
 }
 
-void PVMEmitCall(PVMEmitter *Emitter, U32 CalleeID)
+void PVMEmitCall(PVMEmitter *Emitter, FunctionVar *Function)
 {
     /* TODO: function is assumed to have been defined before a call,
      *  though they can be forward declared without defined */
 
-    VarLocation *Function = PVMGetLocationOf(Emitter, CalleeID);
     PASCAL_ASSERT(NULL != Function, "TODO: forward decl");
     U32 CurrentLocation = PVMCurrentChunk(Emitter)->Count;
-    PVMEmitCode(Emitter, PVM_BSR_INS(Function->As.Function.Location - CurrentLocation - 1));
+    PVMEmitCode(Emitter, PVM_BSR_INS(Function->Location - CurrentLocation - 1));
 }
 
 void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter)
@@ -534,12 +523,9 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter)
             Emitter->SavedRegisters[Emitter->CurrentScopeDepth]
     ));
 
-    for (UInt i = 0; i < Emitter->VarCount; i++)
-    {
-        if (Emitter->Vars[i].LocationType == VAR_TMP_STK)
-        {
-        }
-    }
+    /* TODO: */
+    PASCAL_UNREACHABLE("TODO: unsave caller regs");
+
     Emitter->SavedRegisters[Emitter->CurrentScopeDepth] = 0;
 }
 
@@ -583,7 +569,7 @@ VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type)
             PVMMarkRegisterAsAllocated(Emitter, i);
             return (VarLocation) {
                 .LocationType = VAR_TMP_REG,
-                .IntegralType = Type,
+                .Type = Type,
                 .As.Reg.ID = i,
             };
         }
@@ -597,7 +583,7 @@ VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type)
 
     return (VarLocation) {
         .LocationType = VAR_TMP_REG,
-        .IntegralType = Type,
+        .Type = Type,
         .As.Reg.ID = Reg,
     };
 }

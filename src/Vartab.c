@@ -46,19 +46,19 @@ PascalVartab VartabInit(PascalGPA *Allocator, ISize InitialCap)
 PascalVartab VartabPredefinedIdentifiers(PascalGPA *Allocator, ISize InitialCap)
 {
     PascalVartab Identifiers = VartabInit(Allocator, InitialCap);
-    VartabSet(&Identifiers, (const U8*)"INTEGER", 7, TYPE_I16, VAR_ID_TYPE, NULL);
-    VartabSet(&Identifiers, (const U8*)"REAL", 4, TYPE_F32, VAR_ID_TYPE, NULL);
-    VartabSet(&Identifiers, (const U8*)"BOOLEAN", 7, TYPE_BOOLEAN, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"INTEGER", 7, TYPE_I16, NULL);
+    VartabSet(&Identifiers, (const U8*)"REAL", 4, TYPE_F32, NULL);
+    VartabSet(&Identifiers, (const U8*)"BOOLEAN", 7, TYPE_BOOLEAN, NULL);
 
-    VartabSet(&Identifiers, (const U8*)"int8", 4, TYPE_I8, VAR_ID_TYPE, NULL);
-    VartabSet(&Identifiers, (const U8*)"int16", 5, TYPE_I16, VAR_ID_TYPE, NULL);
-    VartabSet(&Identifiers, (const U8*)"int32", 5, TYPE_I32, VAR_ID_TYPE, NULL);
-    VartabSet(&Identifiers, (const U8*)"int64", 5, TYPE_I64, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"int8", 4, TYPE_I8, NULL);
+    VartabSet(&Identifiers, (const U8*)"int16", 5, TYPE_I16, NULL);
+    VartabSet(&Identifiers, (const U8*)"int32", 5, TYPE_I32, NULL);
+    VartabSet(&Identifiers, (const U8*)"int64", 5, TYPE_I64, NULL);
 
-    VartabSet(&Identifiers, (const U8*)"uint8", 5, TYPE_U8, VAR_ID_TYPE, NULL);
-    VartabSet(&Identifiers, (const U8*)"uint16", 6, TYPE_U16, VAR_ID_TYPE, NULL);
-    VartabSet(&Identifiers, (const U8*)"uint32", 6, TYPE_U32, VAR_ID_TYPE, NULL);
-    VartabSet(&Identifiers, (const U8*)"uint64", 6, TYPE_U64, VAR_ID_TYPE, NULL);
+    VartabSet(&Identifiers, (const U8*)"uint8", 5, TYPE_U8, NULL);
+    VartabSet(&Identifiers, (const U8*)"uint16", 6, TYPE_U16, NULL);
+    VartabSet(&Identifiers, (const U8*)"uint32", 6, TYPE_U32, NULL);
+    VartabSet(&Identifiers, (const U8*)"uint64", 6, TYPE_U64, NULL);
     return Identifiers;
 }
 
@@ -93,7 +93,7 @@ PascalVar *VartabFindWithHash(PascalVartab *Vartab, const U8 *Key, UInt Len, U32
 
 
 
-bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, IntegralType Type, U32 ID, void *Data)
+PascalVar *VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, IntegralType Type, VarLocation *Location)
 {
     bool ExceededMaxLoad = Vartab->Count + 1 > Vartab->Cap * VARTAB_MAX_LOAD;
     if (ExceededMaxLoad)
@@ -118,22 +118,21 @@ bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, IntegralType Type,
     Slot->Hash = Hash;
 
     Slot->Type = Type;
-    Slot->ID = ID;
-    Slot->Data = Data;
-    return IsNewKey;
+    Slot->Location = Location;
+    return Slot;
 }
 
 
-bool VartabDelete(PascalVartab *Vartab, const U8 *Key, UInt Len)
+PascalVar *VartabDelete(PascalVartab *Vartab, const U8 *Key, UInt Len)
 {
     PascalVar *Slot = VartabFindValidSlot(Vartab->Table, Vartab->Cap, 
             Key, Len, VartabHashStr(Key, Len)
     );
     if (IS_TOMBSTONED(Slot) || IS_EMPTY(Slot))
-        return false;
+        return NULL;
 
     SET_TOMBSTONE(Slot);
-    return true;
+    return Slot;
 }
 
 

@@ -12,15 +12,14 @@ set "INCPATH=%SRCDIR%\Include"
 if "%ARG1%"=="cl" (
     set "CC=cl"
     set "CCF=/Zi /DEBUG /FC /I%INCPATH% /DDEBUG /DPVM_DEBUGGER"
-    set "LD=/DEBUG /Zi"
-    set "LIBS=/MDd /MTd /DEBUG /Zi"
+    set "LDF=/MTd /DEBUG /Zi"
     set "OBJ_SWITCH=/Fo"
     set "SRC_SWITCH=/c "
     set "EXE_SWITCH=/Fe"
     set "OBJ_EXTENSION=obj"
 ) else (
     set "CC=gcc"
-    set "CCF=-g -Ofast -Wall -Wextra -Wpedantic -I%INCPATH% -DDEBUG -DPVM_DEBUGGER"
+    set "CCF=-g -O0 -Wall -Wextra -Wpedantic -I%INCPATH% -DDEBUG -DPVM_DEBUGGER"
     set "LDF="
     set "LIBS="
     set "OBJ_SWITCH=-o "
@@ -31,8 +30,13 @@ if "%ARG1%"=="cl" (
 
 set "MSG="
 set "SRCS=%SRCDIR%\PascalString.c %SRCDIR%\main.c %SRCDIR%\Pascal.c %SRCDIR%\Memory.c"
-set "SRCS=%SRCS% %SRCDIR%\Tokenizer.c %SRCDIR%\Parser.c %SRCDIR%\Ast.c %SRCDIR%\Vartab.c"
-set "SRCS=%SRCS% %SRCDIR%\PVM\Disassembler.c %SRCDIR%\PVM\PVM.c %SRCDIR%\PVM\CodeChunk.c %SRCDIR%\PVM\CodeGen.c"
+
+rem set "SRCS=%SRCS% %SRCDIR%\Tokenizer.c %SRCDIR%\Parser.c %SRCDIR%\Ast.c %SRCDIR%\Vartab.c"
+rem set "SRCS=%SRCS% %SRCDIR%\PVM\Disassembler.c %SRCDIR%\PVM\PVM.c %SRCDIR%\PVM\CodeChunk.c %SRCDIR%\PVM\CodeGen.c"
+set "SRCS=%SRCS% %SRCDIR%\Tokenizer.c %SRCDIR%\Vartab.c"
+set "SRCS=%SRCS% %SRCDIR%\PVMCompiler.c %SRCDIR%\PVMEmitter.c %SRCDIR%\IntegralTypes.c"
+set "SRCS=%SRCS% %SRCDIR%\PVM\CodeChunk.c %SRCDIR%\PVM\Disassembler.c %SRCDIR%\PVM\PVM.c"
+
 set "SRCS=%SRCS% %SRCDIR%\PVM\Debugger.c"
 set "SRCS=%SRCS% %SRCDIR%\PascalFile.c %SRCDIR%\PascalRepl.c"
 set "OUTPUT=%BINDIR%\pascal.exe"

@@ -8,10 +8,8 @@
 #include "Pascal.h"
 #include "Memory.h"
 
-#include "Parser.h"
-#include "PVM/CodeGen.h"
-#include "PVM/Disassembler.h"
-#include "PVM/Isa.h"
+#include "PVM/PVM.h"
+#include "PVMCompiler.h"
 
 
 static bool GetCommandLine(PascalVM *PVM, char *Buf, USize Bufsz);
@@ -26,7 +24,6 @@ int PascalRepl(void)
 
     PascalVM PVM = PVMInit(1024, 128);
     CodeChunk Chunk = ChunkInit(1024);
-    PascalParser Parser;
     PascalVartab Identifiers = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);
     
 
@@ -40,14 +37,9 @@ int PascalRepl(void)
         CurrentSource[SourceLen] = '\0';
 
 
-        Parser = ParserInit(CurrentSource, &Identifiers, &Scratch, stderr);
-        PascalAst *Ast = ParserGenerateAst(&Parser);
-        if (NULL != Ast)
+        if (PVMCompile(CurrentSource, &Identifiers, &Chunk, stderr))
         {
-            if (PVMCompile(&Chunk, Ast))
-            {
-                PVMRun(&PVM, &Chunk);
-            }
+            PVMRun(&PVM, &Chunk);
         }
         ArenaReset(&Scratch);
         Chunk.Count = 0;

@@ -6,6 +6,7 @@
 #include "Common.h"
 #include "Memory.h"
 #include "IntegralTypes.h"
+#include "Variable.h"
 
 
 
@@ -19,8 +20,7 @@ typedef struct PascalVar
     U32 Hash;
 
     IntegralType Type;
-    U32 ID;
-    void *Data;
+    VarLocation *Location;
 } PascalVar;
 
 typedef struct PascalVartab 
@@ -45,18 +45,18 @@ PascalVar *VartabFindWithHash(PascalVartab *Vartab,
 );
 
 /* Override an entry with the key and type 
- * returns  true if the entry already exist before,
- *          false if a brand new entry is created */
-bool VartabSet(PascalVartab *Vartab, 
+ * returns the entry, never null
+ */
+PascalVar *VartabSet(PascalVartab *Vartab, 
         const U8 *Key, UInt Len, 
-        IntegralType Type, U32 ID, void *Data
+        IntegralType Type, VarLocation *Location
 );
 
 
 /* Deletes an entry from the table,
- * returns  true if the entry exists before deletion,
- *          or false otherwise */
-bool VartabDelete(PascalVartab *Vartab, const U8 *Key, UInt Len);
+ * returns the entry deleted, or NULL if the key did not exist
+ */
+PascalVar *VartabDelete(PascalVartab *Vartab, const U8 *Key, UInt Len);
 
 
 /* hashes a string */

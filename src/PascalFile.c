@@ -8,8 +8,8 @@
 #include "Parser.h"
 
 #include "PVM/PVM.h"
-#include "PVM/CodeGen.h"
-#include "PVM/Disassembler.h"
+#include "PVMCompiler.h"
+
 
 
 
@@ -75,14 +75,9 @@ static void UnloadFile(U8 *FileContent)
 static bool PascalRun(const U8 *Source, PascalArena *Arena)
 {
     PascalVartab Identifiers = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);    
-    PascalParser Parser = ParserInit(Source, &Identifiers, Arena, stderr);
-    PascalAst *Ast = ParserGenerateAst(&Parser);
-    if (NULL == Ast)
-        goto ParseError;
-
 
     CodeChunk Code = ChunkInit(1024);
-    if (!PVMCompile(&Code, Ast))
+    if (!PVMCompile(Source, &Identifiers, &Code, stderr))
         goto CompileError;
 
     PascalVM VM = PVMInit(1024, 128);
@@ -90,14 +85,11 @@ static bool PascalRun(const U8 *Source, PascalArena *Arena)
     bool NoError = PVMRun(&VM, &Code);
 
     PVMDeinit(&VM);
-    ParserDestroyAst(Ast);
     ChunkDeinit(&Code);
     return NoError;
 
 CompileError:
-    ParserDestroyAst(Ast);
     ChunkDeinit(&Code);
-ParseError:
     return false;
 }
 

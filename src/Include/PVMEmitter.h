@@ -3,64 +3,11 @@
 
 
 #include "Common.h"
-#include "Ast.h"
-
-
-#include "PVMCompiler.h"
 #include "IntegralTypes.h"
-
-
-typedef struct LocalVar 
-{
-    UInt Size;
-    U32 FPOffset;
-} LocalVar;
-typedef struct GlobalVar 
-{
-    UInt Size;
-    U32 Location;
-} GlobalVar;
-typedef struct FunctionVar
-{
-    U32 Location;
-    IntegralType ReturnType;
-    bool HasReturnType;
-} FunctionVar;
-typedef struct RegisterVar 
-{
-    VarID ID;
-} RegisterVar;
-
-typedef enum VarLocationType 
-{
-    VAR_INVALID = 0,
-    VAR_REG,
-    VAR_LOCAL,
-    VAR_GLOBAL,
-    VAR_FUNCTION,
-
-    VAR_TMP_REG,
-    VAR_TMP_STK,
-} VarLocationType;
-
-typedef struct VarLocation 
-{
-    VarID ID;
-    VarLocationType LocationType;
-    IntegralType IntegralType;
-    union {
-        RegisterVar Reg;
-        
-        LocalVar Local;
-        GlobalVar Global;
-        FunctionVar Function;
-    } As;
-} VarLocation;
-
-
-
-
-
+#include "Tokenizer.h"
+#include "Variable.h"
+#include "PVM/CodeChunk.h"
+#include "PVMCompiler.h"
 
 typedef struct PVMEmitter 
 {
@@ -77,7 +24,6 @@ typedef struct PVMEmitter
     U32 GlobalDataSize;
     U32 VarCount;
     U32 GlobalCount;
-    VarLocation Vars[PVM_MAX_VAR_PER_SCOPE];
 } PVMEmitter;
 
 
@@ -85,11 +31,12 @@ PVMEmitter PVMEmitterInit(CodeChunk *Chunk);
 void PVMEmitterDeinit(PVMEmitter *Emitter);
 
 
-VarLocation *PVMGetLocationOf(PVMEmitter *Emitter, VarID ID);
+GlobalVar PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
+
 
 U32 PVMEmitCode(PVMEmitter *Emitter, U32 Instruction);
 void PVMEmitGlobal(PVMEmitter *Emitter, GlobalVar Global);
-void PVMEmitDebugInfo(PVMEmitter *Emitter, const AstStmt *BaseStmt);
+void PVMEmitDebugInfo(PVMEmitter *Emitter, const U8 *Src, UInt Len, U32 Line);
 bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *Target, const VarLocation *Src);
 U64 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition);
 void PVMPatchBranch(PVMEmitter *Emitter, U32 StreamOffset, U32 Location, UInt ImmSize);
@@ -113,7 +60,7 @@ void PVMEmitPush(PVMEmitter *Emitter, UInt RegID);
 void PVMEmitPop(PVMEmitter *Emitter, UInt RegID);
 void PVMEmitAddSp(PVMEmitter *Emitter, I32 Offset);
 void PVMEmitSaveCallerRegs(PVMEmitter *Emitter);
-void PVMEmitCall(PVMEmitter *Emitter, U32 CalleeID);
+void PVMEmitCall(PVMEmitter *Emitter, FunctionVar *Callee);
 void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter);
 void PVMEmitReturn(PVMEmitter *Emitter);
 void PVMEmitExit(PVMEmitter *Emitter);
