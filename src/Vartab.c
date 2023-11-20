@@ -3,9 +3,9 @@
 #include <string.h> /* memset */
 
 #include "Tokenizer.h"
-#include "Parser.h"
 #include "Common.h"
 #include "Vartab.h"
+#include "PVMCompiler.h"
 
 
 
@@ -93,7 +93,7 @@ PascalVar *VartabFindWithHash(PascalVartab *Vartab, const U8 *Key, UInt Len, U32
 
 
 
-bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, ParserType Type, U32 ID, void *Data)
+bool VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, IntegralType Type, U32 ID, void *Data)
 {
     bool ExceededMaxLoad = Vartab->Count + 1 > Vartab->Cap * VARTAB_MAX_LOAD;
     if (ExceededMaxLoad)

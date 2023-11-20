@@ -19,18 +19,6 @@ typedef struct AstOpExpr AstExOppr;
 
 typedef struct AstExprList AstExprList;
 
-typedef enum ParserType 
-{
-    TYPE_INVALID = 0,
-    TYPE_I8, TYPE_I16, TYPE_I32, TYPE_I64,
-    TYPE_U8, TYPE_U16, TYPE_U32, TYPE_U64,
-    TYPE_F32, TYPE_F64, 
-    TYPE_FUNCTION,
-    TYPE_BOOLEAN,
-    TYPE_COUNT,
-} ParserType;
-
-
 typedef enum AstFactorType 
 {
     FACTOR_INVALID = 0,
@@ -41,6 +29,8 @@ typedef enum AstFactorType
     FACTOR_CALL,
     FACTOR_VARIABLE,
 } AstFactorType;
+
+typedef U32 ParserType;
 
 
 struct AstFactor 

@@ -6,15 +6,14 @@
 #include "Common.h"
 #include "Tokenizer.h"
 #include "Memory.h"
-#include "Ast.h"
 #include "Vartab.h"
 
 
-#define VAR_ID_TYPE UINT32_MAX
-#define VAR_ID_INVALID (UINT32_MAX - 1)
 #define PARSER_MAX_SCOPE 8
 #define PARSER_VAR_PER_SCOPE 256
 
+
+#if 0
 typedef struct PascalParser 
 {
     PascalArena *Arena;
@@ -43,6 +42,7 @@ AstBlock *ParseBlock(PascalParser *Parser);
 AstStmt *ParseStatement(PascalParser *Parser);
 
 const char *ParserTypeToStr(ParserType Type);
+#endif 
 
 
 

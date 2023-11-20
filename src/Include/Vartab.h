@@ -5,7 +5,7 @@
 
 #include "Common.h"
 #include "Memory.h"
-#include "AstExpr.h"
+#include "IntegralTypes.h"
 
 
 
@@ -18,7 +18,7 @@ typedef struct PascalVar
     UInt Len;
     U32 Hash;
 
-    ParserType Type;
+    IntegralType Type;
     U32 ID;
     void *Data;
 } PascalVar;
@@ -49,7 +49,7 @@ PascalVar *VartabFindWithHash(PascalVartab *Vartab,
  *          false if a brand new entry is created */
 bool VartabSet(PascalVartab *Vartab, 
         const U8 *Key, UInt Len, 
-        ParserType Type, U32 ID, void *Data
+        IntegralType Type, U32 ID, void *Data
 );
 
 
