@@ -68,7 +68,7 @@ void PVMDisasm(FILE *f, const CodeChunk *Chunk, const char *ChunkName)
     const LineDebugInfo *Info = NULL;
     for (PVMWord i = 0; i < Chunk->Count; i++)
     {
-        Info = ChunkGetDebugInfo(Chunk, i);
+        Info = ChunkGetDebugInfo((CodeChunk *)Chunk, i);
         if (Info->InstructionOffset == i)
         {
             fprintf(f, "\n[Line %d]: '%.*s'\n", 

@@ -36,7 +36,8 @@ GlobalVar PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
 
 U32 PVMEmitCode(PVMEmitter *Emitter, U32 Instruction);
 void PVMEmitGlobal(PVMEmitter *Emitter, GlobalVar Global);
-void PVMEmitDebugInfo(PVMEmitter *Emitter, const U8 *Src, UInt Len, U32 Line);
+void PVMEmitDebugInfo(PVMEmitter *Emitter, const U8 *Src, U32 Line);
+void PVMUpdateDebugInfo(PVMEmitter *Emitter, UInt LineLen);
 bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *Target, const VarLocation *Src);
 U64 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition);
 void PVMPatchBranch(PVMEmitter *Emitter, U32 StreamOffset, U32 Location, UInt ImmSize);

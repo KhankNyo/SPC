@@ -42,7 +42,7 @@ int PascalRepl(void)
             PVMRun(&PVM, &Chunk);
         }
         ArenaReset(&Scratch);
-        Chunk.Count = 0;
+        ChunkReset(&Chunk);
     }
 
 

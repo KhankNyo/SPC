@@ -32,6 +32,13 @@ void ChunkDeinit(CodeChunk *Chunk)
     *Chunk = (CodeChunk) { 0 };
 }
 
+void ChunkReset(CodeChunk *Chunk)
+{
+    Chunk->Count = 0;
+    Chunk->Debug.Count = 0;
+    Chunk->DataSection.Count = 0;
+}
+
 
 U32 ChunkWriteCode(CodeChunk *Chunk, U32 Word)
 {
@@ -82,20 +89,20 @@ U32 ChunkWriteDebugInfo(CodeChunk *Chunk, UInt Len, const U8 *SrcString, U32 Lin
 }
 
 
-const LineDebugInfo *ChunkGetDebugInfo(const CodeChunk *Chunk, U32 InstructionOffset)
+LineDebugInfo *ChunkGetDebugInfo(CodeChunk *Chunk, U32 InstructionOffset)
 {
-    const ChunkDebugInfo *Dbg = &Chunk->Debug;
-    if (Dbg->Count != 0 && InstructionOffset >= Dbg->Info[Dbg->Count - 1].InstructionOffset)
-    {
-        return &Dbg->Info[Dbg->Count - 1];
-    }
+    ChunkDebugInfo *Dbg = &Chunk->Debug;
     if (Dbg->Count == 0)
     {
         static LineDebugInfo NoInfo = {0};
         return &NoInfo;
     }
+    if (InstructionOffset >= Dbg->Info[Dbg->Count - 1].InstructionOffset)
+    {
+        return &Dbg->Info[Dbg->Count - 1];
+    }
 
-    const LineDebugInfo *Info = &Dbg->Info[0];
+    LineDebugInfo *Info = &Dbg->Info[0];
     for (U32 i = 0; i < Dbg->Count; i++)
     {
         if (Dbg->Info[i].InstructionOffset == InstructionOffset)

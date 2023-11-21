@@ -581,11 +581,15 @@ static IntegralType CoerceTypes(PVMCompiler *Compiler, const Token *Op, Integral
  */
 /*===============================================================================*/
 
+static void CompilerInitDebugInfo(PVMCompiler *Compiler, const Token *From)
+{
+    PVMEmitDebugInfo(&Compiler->Emitter, From->Str, From->Line);
+}
 
 static void CompilerEmitDebugInfo(PVMCompiler *Compiler, const Token *From)
 {
     U32 LineLen = Compiler->Curr.Str - From->Str + Compiler->Curr.Len;
-    PVMEmitDebugInfo(&Compiler->Emitter, From->Str, LineLen, From->Line);
+    PVMUpdateDebugInfo(&Compiler->Emitter, LineLen);
 }
 
 
@@ -703,7 +707,6 @@ static bool IsTemporary(const VarLocation *Location)
     }
 }
 
-
 static void CompileParameterList(PVMCompiler *Compiler, FunctionVar *CurrentFunction)
 {
     PASCAL_ASSERT(!IsAtGlobalScope(Compiler), "Cannot compile param list at global scope");
@@ -779,9 +782,16 @@ static void FactorIntLit(PVMCompiler *Compiler, VarLocation *Into)
     );
 }
 
+static void FactorVariable(PVMCompiler *Compiler, VarLocation *Into)
+{
+    PascalVar *Variable = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined variable.");
+    PVMEmitMov(&Compiler->Emitter, Into, Variable->Location);
+}
+
 static void FactorGrouping(PVMCompiler *Compiler, VarLocation *Into)
 {
     ParsePrecedence(Compiler, PREC_EXPR, Into);
+    ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
 }
 
 static void FactorCall(PVMCompiler *Compiler, VarLocation *Into)
@@ -872,6 +882,7 @@ static void ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
 static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] = 
 {
     [TOKEN_INTEGER_LITERAL] = { FactorIntLit,       NULL,           PREC_SINGLE },
+    [TOKEN_IDENTIFIER]      = { FactorVariable,     NULL,           PREC_SINGLE },
     [TOKEN_LEFT_PAREN]      = { FactorGrouping,     FactorCall,     PREC_SINGLE },
 
     [TOKEN_STAR]            = { NULL,               ExprBinary,     PREC_TERM },
@@ -907,13 +918,9 @@ static void ParsePrecedence(PVMCompiler *Compiler, Precedence Prec, VarLocation 
         return;
     }
 
-    VarLocation Tmp, *Target = Into;
-    if (!IsTemporary(Into))
-    {
-        Tmp = PVMAllocateRegister(&Compiler->Emitter, Target->Type);
-        Target = &Tmp;
-    }
-    PrefixRoutine(Compiler, Target);
+    VarLocation Target;
+    bool IsOwning = PVMEmitIntoReg(&Compiler->Emitter, &Target, Into);
+    PrefixRoutine(Compiler, &Target);
 
 
     /* only parse next op if they have the same or lower precedence */
@@ -925,13 +932,13 @@ static void ParsePrecedence(PVMCompiler *Compiler, Precedence Prec, VarLocation 
 
         PASCAL_ASSERT(NULL != InfixRoutine, "null routine in ParsePrecedence");
 
-        InfixRoutine(Compiler, Target);
+        InfixRoutine(Compiler, &Target);
     }
 
-    if (!IsTemporary(Into))
+    if (IsOwning)
     {
-        PVMEmitMov(&Compiler->Emitter, Into, Target);
-        PVMFreeRegister(&Compiler->Emitter, Target);
+        PVMEmitMov(&Compiler->Emitter, Into, &Target);
+        PVMFreeRegister(&Compiler->Emitter, &Target);
     }
 }
 
@@ -972,6 +979,7 @@ static void CompileBeginStmt(PVMCompiler *Compiler)
         /* TODO: this semi forces last stmt to not have semi */
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' between statements.");
     }
+
     ConsumeOrError(Compiler, TOKEN_END, "Expected 'end' instead.");
 }
 
@@ -981,6 +989,7 @@ static void CompileAssignStmt(PVMCompiler *Compiler, PascalVar *IdenInfo)
 {
     /* iden consumed */
     Token Identifier = Compiler->Curr;
+    CompilerInitDebugInfo(Compiler, &Identifier);
 
     /* TODO: field access and array indexing */
     ConsumeOrError(Compiler, TOKEN_COLON_EQUAL, "TODO: other assignment operator.");
@@ -996,6 +1005,7 @@ static void CompileAssignStmt(PVMCompiler *Compiler, PascalVar *IdenInfo)
         CoerceTypes(Compiler, &Op, Type, IdenInfo->Type);
         IdenInfo->Location->Type = Type;
     }
+
     CompilerEmitDebugInfo(Compiler, &Identifier);
 }
 
@@ -1117,6 +1127,8 @@ static void CompileVarBlock(PVMCompiler *Compiler)
         Error(Compiler, "Var block must have at least 1 declaration.");
         return;
     }
+    if (!IsAtGlobalScope(Compiler))
+        CompilerInitDebugInfo(Compiler, &Keyword);
 
     USize TotalSize = 0;
     while (!IsAtEnd(Compiler) && TOKEN_IDENTIFIER == Compiler->Next.Type)
@@ -1126,7 +1138,8 @@ static void CompileVarBlock(PVMCompiler *Compiler)
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after variable declaration.");
     }
 
-    CompilerEmitDebugInfo(Compiler, &Keyword);
+    if (!IsAtGlobalScope(Compiler))
+        CompilerEmitDebugInfo(Compiler, &Keyword);
 }
 
 

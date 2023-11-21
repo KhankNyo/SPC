@@ -57,12 +57,22 @@ void PVMEmitGlobal(PVMEmitter *Emitter, GlobalVar Global)
 }
 
 
-void PVMEmitDebugInfo(PVMEmitter *Emitter, const U8 *Src, UInt Len, U32 Line)
+
+void PVMEmitDebugInfo(PVMEmitter *Emitter, const U8 *Src, U32 Line)
 {
     ChunkWriteDebugInfo(PVMCurrentChunk(Emitter), 
-            Len, Src, Line
+            10, Src, Line
     );
 }
+
+void PVMUpdateDebugInfo(PVMEmitter *Emitter, UInt Len)
+{
+    /* latest debug info */
+    LineDebugInfo *Info = ChunkGetDebugInfo(PVMCurrentChunk(Emitter), 0xFFFFFFFF);
+    PASCAL_ASSERT(NULL != Info, "Must not be NULL");
+    Info->Len = Len;
+}
+
 
 bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *Target, const VarLocation *Src)
 {

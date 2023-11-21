@@ -36,11 +36,12 @@ typedef struct CodeChunk
 
 CodeChunk ChunkInit(U32 InitialCap);
 void ChunkDeinit(CodeChunk *Chunk);
+void ChunkReset(CodeChunk *Chunk);
 
 U32 ChunkWriteCode(CodeChunk *Chunk, U32 Word);
 U32 ChunkReserveData(CodeChunk *Chunk, U32 Size);
 U32 ChunkWriteDebugInfo(CodeChunk *Chunk, UInt Len, const U8 *SrcString, U32 Line);
-const LineDebugInfo *ChunkGetDebugInfo(const CodeChunk *Chunk, U32 InstructionOffset);
+LineDebugInfo *ChunkGetDebugInfo(CodeChunk *Chunk, U32 InstructionOffset);
 
 
 
