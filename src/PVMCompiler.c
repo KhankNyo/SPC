@@ -984,6 +984,44 @@ static void CompileBeginStmt(PVMCompiler *Compiler)
 }
 
 
+static void CompileIfStmt(PVMCompiler *Compiler)
+{
+    /* 'if' consumed */
+    Token Keyword = Compiler->Curr;
+    CompilerInitDebugInfo(Compiler, &Keyword);
+    
+    VarLocation Tmp = PVMAllocateRegister(&Compiler->Emitter, TYPE_U32);
+    CompileExpr(Compiler, &Tmp);
+    ConsumeOrError(Compiler, TOKEN_THEN, "Expected 'then' after expression.");
+    CompilerEmitDebugInfo(Compiler, &Keyword);
+
+    /* 
+     * IF: 
+     *      BEZ Tmp, ELSE 
+     *      Stmt...
+     *      BAL DONE
+     * ELSE:
+     *      Stmt...
+     * DONE:
+     * */
+
+    U32 FromIf = PVMEmitBranchIfFalse(&Compiler->Emitter, &Tmp);
+    PVMFreeRegister(&Compiler->Emitter, &Tmp);
+        CompileStmt(Compiler);
+    if (TOKEN_ELSE == Compiler->Next.Type)
+    {
+        CompilerInitDebugInfo(Compiler, &Compiler->Next);
+        ConsumeToken(Compiler);
+        CompilerEmitDebugInfo(Compiler, &Compiler->Curr);
+
+        U32 FromEndIf = PVMEmitBranch(&Compiler->Emitter, 0);
+        CompileStmt(Compiler);
+        PVMPatchBranchToCurrent(&Compiler->Emitter, FromEndIf, PVM_UNCONDITIONAL_BRANCH);
+    }
+    PVMPatchBranchToCurrent(&Compiler->Emitter, FromIf, PVM_CONDITIONAL_BRANCH);
+}
+
+
 
 static void CompileAssignStmt(PVMCompiler *Compiler, PascalVar *IdenInfo)
 {
@@ -1066,7 +1104,7 @@ static void CompileStmt(PVMCompiler *Compiler)
     case TOKEN_IF:
     {
         ConsumeToken(Compiler);
-        PASCAL_UNREACHABLE("TODO: if");
+        CompileIfStmt(Compiler);
     } break;
     case TOKEN_BEGIN:
     {

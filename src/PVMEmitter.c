@@ -109,11 +109,11 @@ bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *Target, const VarLocation 
 }
 
 
-U64 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition)
+U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition)
 {
     VarLocation Target;
     bool IsOwning = PVMEmitIntoReg(Emitter, &Target, Condition);
-    U64 CurrentOffset = PVMEmitCode(Emitter, PVM_BRIF_INS(EZ, Target.As.Reg.ID, -1));
+    U32 CurrentOffset = PVMEmitCode(Emitter, PVM_BRIF_INS(EZ, Target.As.Reg.ID, -1));
     if (IsOwning)
     {
         PVMFreeRegister(Emitter, &Target);
@@ -121,9 +121,9 @@ U64 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition)
     return CurrentOffset;
 }
 
-U64 PVMEmitBranch(PVMEmitter *Emitter, U64 Location)
+U32 PVMEmitBranch(PVMEmitter *Emitter, U32 Location)
 {
-    I64 BrOffset = Location - PVMCurrentChunk(Emitter)->Count - 1;
+    I32 BrOffset = Location - PVMCurrentChunk(Emitter)->Count - 1;
     return PVMEmitCode(Emitter, PVM_BRAL_INS(BrOffset));
 }
 
@@ -137,7 +137,7 @@ void PVMPatchBranch(PVMEmitter *Emitter, U32 StreamOffset, U32 Location, UInt Im
     Chunk->Code[StreamOffset] = (Instruction & ~Mask) | (Offset & Mask);
 }
 
-void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U64 StreamOffset, UInt ImmSize)
+void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 StreamOffset, UInt ImmSize)
 {
     PVMPatchBranch(Emitter, StreamOffset, PVMCurrentChunk(Emitter)->Count, ImmSize);
 }
