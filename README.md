@@ -13,4 +13,5 @@
 
 
 # TODO:
-- Constant folding
+- peephole optimization
+- New PVM instruction format: 16 bit thumb-like
