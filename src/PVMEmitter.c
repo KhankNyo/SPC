@@ -62,7 +62,7 @@ void PVMEmitterOptimize(PVMEmitter *Emitter, U32 StreamBegin, U32 StreamEnd)
         {
         case MEM(LDG):
         {
-            if (PVM_IRD_GET_RD(Current[i]) != PVM_IDAT_GET_RB(Current[i + 1]))
+            if (PVM_IRD_GET_RD(Current[i]) != PVM_IDAT_GET_RA(Current[i + 1]))
                 goto Copy;
 
             UInt Rd = PVM_IDAT_GET_RD(Current[i + 1]);
@@ -131,11 +131,6 @@ void PVMEmitterOptimize(PVMEmitter *Emitter, U32 StreamBegin, U32 StreamEnd)
             if (RARITH(ADD) == BIT_AT32(Current[i + 1], 11, 21))
             {
                 Tmp[Count] = PVM_IRD_ARITH_INS(ADD, Rd, Imm);
-                i++;
-            }
-            else if (TRANSFER(MOV) == BIT_AT32(Current[i + 1], 11, 21))
-            {
-                Tmp[Count] = PVM_IRD_ARITH_INS(LDI, Rd, Imm);
                 i++;
             }
             else goto Copy;
