@@ -13,6 +13,14 @@
 #include "PVMEmitter.h"
 
 
+
+typedef struct CompilerFrame 
+{
+    U32 Location;
+    FunctionVar *Current;
+} CompilerFrame;
+
+
 typedef struct PVMCompiler 
 {
     PascalTokenizer Lexer;
@@ -36,11 +44,8 @@ typedef struct PVMCompiler
         VarLocation **Location;
         U32 Count, Cap;
     } Var;
-    struct {
         /* TODO: dynamic */
-        U32 Location[PVM_MAX_SCOPE_COUNT];
-        U32 Count;
-    } Frame;
+    CompilerFrame Frame[PVM_MAX_SCOPE_COUNT];
 
     PVMEmitter Emitter;
 
@@ -197,6 +202,7 @@ static PVMCompiler CompilerInit(const U8 *Source,
             .Cap = 8,
             .Count = 0,
         },
+        .Frame = { {0} },
         .Emitter = PVMEmitterInit(Chunk),
     };
 
@@ -220,15 +226,17 @@ static void CompilerDeinit(PVMCompiler *Compiler)
 
 
 
-static void CompilerStackAllocateFrame(PVMCompiler *Compiler)
+static void CompilerStackAllocateFrame(PVMCompiler *Compiler, FunctionVar *Subroutine)
 {
-    Compiler->Frame.Location[Compiler->Frame.Count] = Compiler->Var.Count;
-    Compiler->Frame.Count++;
+    Compiler->Frame[Compiler->Scope].Current = Subroutine;
+    Compiler->Frame[Compiler->Scope].Location = Compiler->Var.Count;
+    Compiler->Scope++;
 }
 
 static void CompilerStackDeallocateFrame(PVMCompiler *Compiler)
 {
-    Compiler->Frame.Count--;
+    Compiler->Scope--;
+    Compiler->Var.Count = Compiler->Frame[Compiler->Scope].Location;
 }
 
 
@@ -474,13 +482,10 @@ static void CalmDownAtBlock(PVMCompiler *Compiler)
 
 
 
-static void BeginScope(PVMCompiler *Compiler)
+static void BeginScope(PVMCompiler *Compiler, FunctionVar *Subroutine)
 {
-    /* mark allocation point */
-    CompilerStackAllocateFrame(Compiler);
-
     /* creates new variable table */
-    PascalVartab *NewScope = &Compiler->Locals[Compiler->Scope++];
+    PascalVartab *NewScope = &Compiler->Locals[Compiler->Scope];
     PASCAL_ASSERT(Compiler->Scope <= PVM_MAX_SCOPE_COUNT, "Too many scopes");
 
     if (0 == NewScope->Cap)
@@ -491,12 +496,14 @@ static void BeginScope(PVMCompiler *Compiler)
     {
         VartabReset(NewScope);
     }
+
+    /* mark allocation point */
+    CompilerStackAllocateFrame(Compiler, Subroutine);
 }
 
 static void EndScope(PVMCompiler *Compiler)
 {
     CompilerStackDeallocateFrame(Compiler);
-    Compiler->Scope--;
 }
 
 
@@ -702,20 +709,21 @@ static U32 CompileAndDeclareVarList(PVMCompiler *Compiler, FunctionVar *Function
 
         if (NULL != Function)
         {
-            FunctionDataPushParameter(&Compiler->Allocator, Function, 
-                    Var->Str, Var->Len, Var->Type
-            );
-
             if (Function->ArgCount < PVM_REG_ARGCOUNT)
             {
                 Location->LocationType = VAR_REG;
                 Location->As.Reg.ID = sArgumentRegister[Function->ArgCount].As.Reg.ID;
+                PVMMarkRegisterAsAllocated(&Compiler->Emitter, Location->As.Reg.ID);
             }
             else
             {
                 PASCAL_UNREACHABLE("TODO: param list for function");
                 Location->LocationType = VAR_LOCAL;
             }
+
+            FunctionDataPushParameter(&Compiler->Allocator, Function, 
+                    Var->Str, Var->Len, Var->Type
+            );
         }
         else if (IsAtGlobalScope(Compiler))
         {
@@ -885,7 +893,7 @@ static void FactorVariable(PVMCompiler *Compiler, VarLocation *Into)
 static void FactorGrouping(PVMCompiler *Compiler, VarLocation *Into)
 {
     /* '(' consumed */
-    ParsePrecedence(Compiler, PREC_EXPR, Into);
+    CompileExpr(Compiler, Into);
     ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
 }
 
@@ -1014,7 +1022,7 @@ static void ParsePrecedence(PVMCompiler *Compiler, Precedence Prec, VarLocation 
     }
 
     VarLocation Target = *Into;
-    bool IsOwning = !(Into->LocationType == VAR_REG || Into->LocationType == VAR_TMP_REG); 
+    bool IsOwning = !(Into->LocationType == VAR_TMP_REG); 
     if (IsOwning)
         Target = PVMAllocateRegister(&Compiler->Emitter, Into->Type);
     PrefixRoutine(Compiler, &Target);
@@ -1062,6 +1070,40 @@ static void CompileExpr(PVMCompiler *Compiler, VarLocation *Into)
 
 
 static void CompileStmt(PVMCompiler *Compiler);
+
+
+
+static void CompileExitStmt(PVMCompiler *Compiler)
+{
+    /* 'exit' consumed */
+    Token Keyword = Compiler->Curr;
+    CompilerInitDebugInfo(Compiler, &Keyword);
+
+
+    if (IsAtGlobalScope(Compiler))
+    {
+        if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+        {
+            /* TODO: use function's return type */
+            sReturnRegister.Type = TYPE_U32;
+            CompileExpr(Compiler, &sReturnRegister);
+        }
+        PVMEmitExit(&Compiler->Emitter);
+    }
+    else
+    {
+        if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+        {
+            /* TODO: use function's return type */
+            sReturnRegister.Type = Compiler->Frame[Compiler->Scope - 1].Current->ReturnType;
+            CompileExpr(Compiler, &sReturnRegister);
+        }
+        PVMEmitReturn(&Compiler->Emitter);
+    }
+    ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
+    CompilerEmitDebugInfo(Compiler, &Keyword);
+}
+
 
 
 static void CompileBeginStmt(PVMCompiler *Compiler)
@@ -1319,6 +1361,11 @@ static void CompileStmt(PVMCompiler *Compiler)
         ConsumeToken(Compiler);
         CompileBeginStmt(Compiler);
     } break;
+    case TOKEN_EXIT:
+    {
+        ConsumeToken(Compiler);
+        CompileExitStmt(Compiler);
+    } break;
     case TOKEN_SEMICOLON:
     {
         /* no statement */
@@ -1378,7 +1425,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
 
 
     /* param list */
-    BeginScope(Compiler);
+    BeginScope(Compiler, Subroutine);
     CompileParameterList(Compiler, Subroutine);
 
 

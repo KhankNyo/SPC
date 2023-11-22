@@ -1,4 +1,5 @@
 
+#include "PVM/Isa.h"
 #include "PVMEmitter.h"
 
 
@@ -30,14 +31,78 @@ void PVMEmitterDeinit(PVMEmitter *Emitter)
 
 
 
+static bool PVMSameInstruction(PVMWord Op1, PVMWord Op2)
+{
+    return BIT_AT32(Op1, 11, 21) == BIT_AT32(Op2, 11, 21);
+}
 
 
 void PVMEmitterOptimize(PVMEmitter *Emitter, U32 StreamBegin, U32 StreamEnd)
 {
+    static PVMWord Tmp[1024];
     PASCAL_ASSERT(StreamBegin <= StreamEnd, "Unreachable");
+    if (StreamEnd == 0)
+        return;
     if (StreamBegin == StreamEnd)
         return;
-    (void)Emitter;
+    if (StreamBegin + STATIC_ARRAY_SIZE(Tmp) < StreamEnd)
+        return;
+
+#define TRANSFER(Ins)   BIT_AT32(PVM_IDAT_TRANSFER_INS(Ins, 0, 0), 11, 21)
+#define IRD(Ins)        BIT_AT32(PVM_IRD_ARITH_INS(Ins, 0, 0), 11, 21)
+#define RARITH(Ins)     BIT_AT32(PVM_IDAT_ARITH_INS(Ins, 0, 0, 0, 0), 11, 21)
+
+
+    U32 Count = 0;
+    PVMWord *Current = PVMCurrentChunk(Emitter)->Code;
+    for (U32 i = StreamBegin; i < StreamEnd - 1; i++, Count++)
+    {
+        switch (BIT_AT32(Current[i], 11, 21))
+        {
+        case TRANSFER(MOV):
+        {
+            if (PVMSameInstruction(Current[i], Current[i + 1])
+            && PVM_IDAT_GET_RD(Current[i]) == PVM_IDAT_GET_RA(Current[i + 1]))
+            {
+                Tmp[Count] = PVM_IDAT_TRANSFER_INS(MOV, 
+                        PVM_IDAT_GET_RD(Current[i + 1]),
+                        PVM_IDAT_GET_RA(Current[i])
+                );
+                i++;
+            }
+            else
+            {
+                Tmp[Count] = Current[i];
+            }
+        } break;
+        case IRD(LDI):
+        {
+            if (RARITH(ADD) == BIT_AT32(Current[i + 1], 11, 21) &&
+            PVM_IRD_GET_RD(Current[i]) == PVM_IDAT_GET_RB(Current[i + 1]))
+            {
+                Tmp[Count] = PVM_IRD_ARITH_INS(ADD, 
+                        PVM_IRD_GET_RD(Current[i + 1]),
+                        PVM_IRD_GET_IMM(Current[i])
+                );
+                i++;
+            }
+            else 
+            {
+                Tmp[Count] = Current[i];
+            }
+        } break;
+
+        default:
+        {
+            Tmp[Count] = Current[i];
+        } break;
+        }
+    }
+
+#undef TRANSFER
+
+    memcpy(&Current[StreamBegin], Tmp, Count * sizeof(PVMWord));
+    PVMCurrentChunk(Emitter)->Count -= StreamEnd - StreamBegin - Count;
 }
 
 
