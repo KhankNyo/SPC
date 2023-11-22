@@ -43,6 +43,10 @@ GlobalVar PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size)
 }
 
 
+U32 PVMGetCurrentLocation(PVMEmitter *Emitter)
+{
+    return PVMCurrentChunk(Emitter)->Count;
+}
 
 
 
@@ -108,6 +112,11 @@ bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *Target, const VarLocation 
     return false;
 }
 
+
+U32 PVMMarkBranchTarget(PVMEmitter *Emitter)
+{
+    return PVMGetCurrentLocation(Emitter);
+}
 
 U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition)
 {
@@ -422,7 +431,6 @@ void PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dest, co
     }while(0)
 
 
-
     switch (Dest->Type)
     {
     case TYPE_I64: SIGNEDSET(P, "(Signed) PVMEmitSetCC: PVMPtr: %s is not valid", TokenTypeToStr(Op)); break;
@@ -565,6 +573,8 @@ U32 PVMAllocateStackSpace(PVMEmitter *Emitter, UInt Slots)
         PVMEmitAddSp(Emitter, (I32)Slots);
     return CurrentSP;
 }
+
+
 
 
 VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type)
