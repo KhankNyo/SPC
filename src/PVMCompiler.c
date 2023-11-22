@@ -19,6 +19,7 @@ typedef struct PVMCompiler
     Token Curr, Next;
 
     U32 Scope;
+    U32 EntryPoint;
 
     PascalVartab *Global;
     PascalVartab Locals[PVM_MAX_SCOPE_COUNT];
@@ -204,11 +205,14 @@ static PVMCompiler CompilerInit(const U8 *Source,
     {
         Compiler.Var.Location[i] = ArenaAllocateZero(&Compiler.Arena, sizeof Compiler.Var.Location[0][0]);
     }
+
+    PVMEmitBranch(&Compiler.Emitter, 0);
     return Compiler;
 }
 
 static void CompilerDeinit(PVMCompiler *Compiler)
 {
+    PVMPatchBranch(&Compiler->Emitter, 0, Compiler->EntryPoint, PVM_UNCONDITIONAL_BRANCH);
     PVMEmitterDeinit(&Compiler->Emitter);
     GPADeinit(&Compiler->Allocator);
     ArenaDeinit(&Compiler->Arena);
@@ -324,7 +328,7 @@ static void VaListError(PVMCompiler *Compiler, const Token *Tok, const char *Fmt
         );
         PrintAndHighlightSource(Compiler->LogFile, Tok);
 
-        fprintf(Compiler->LogFile, "\nError: ");
+        fprintf(Compiler->LogFile, "\n    Error: ");
         vfprintf(Compiler->LogFile, Fmt, Args);
         fputc('\n', Compiler->LogFile);
     }
@@ -1009,8 +1013,10 @@ static void ParsePrecedence(PVMCompiler *Compiler, Precedence Prec, VarLocation 
         return;
     }
 
-    VarLocation Target;
-    bool IsOwning = PVMEmitIntoReg(&Compiler->Emitter, &Target, Into);
+    VarLocation Target = *Into;
+    bool IsOwning = !(Into->LocationType == VAR_REG || Into->LocationType == VAR_TMP_REG); 
+    if (IsOwning)
+        Target = PVMAllocateRegister(&Compiler->Emitter, Into->Type);
     PrefixRoutine(Compiler, &Target);
 
 
@@ -1036,7 +1042,10 @@ static void ParsePrecedence(PVMCompiler *Compiler, Precedence Prec, VarLocation 
 
 static void CompileExpr(PVMCompiler *Compiler, VarLocation *Into)
 {
+    U32 OptBegin = PVMGetCurrentLocation(&Compiler->Emitter);
     ParsePrecedence(Compiler, PREC_EXPR, Into);
+    U32 OptEnd = PVMGetCurrentLocation(&Compiler->Emitter);
+    PVMEmitterOptimize(&Compiler->Emitter, OptBegin, OptEnd);
 }
 
 
@@ -1344,6 +1353,7 @@ static bool CompileBlock(PVMCompiler *Compiler);
 
 static void CompileBeginBlock(PVMCompiler *Compiler)
 {
+    Compiler->EntryPoint = PVMGetCurrentLocation(&Compiler->Emitter);
     CompileBeginStmt(Compiler);
 }
 
@@ -1384,7 +1394,15 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     }
     else
     {
-        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after parameter list.");
+        if (ConsumeIfNextIs(Compiler, TOKEN_COLON) 
+        && TOKEN_IDENTIFIER == Compiler->Next.Type)
+        {
+            Error(Compiler, "Procedure does not have a return value.");
+        }
+        else
+        {
+            ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after parameter list.");
+        }
     }
 
 
@@ -1394,8 +1412,10 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
 
     Token End = Compiler->Curr;
     CompilerInitDebugInfo(Compiler, &End);
-    ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s body.", SubroutineType);
+    PVMEmitReturn(&Compiler->Emitter);
     CompilerEmitDebugInfo(Compiler, &End);
+
+    ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s body.", SubroutineType);
 }
 
 

@@ -18,7 +18,6 @@ PVMEmitter PVMEmitterInit(CodeChunk *Chunk)
         .SpilledRegCount = 0,
         .GlobalDataSize = 0,
         .VarCount = 0,
-        .EntryPoint = 0,
         .SavedRegisters = { 0 },
     };
     return Emitter;
@@ -28,6 +27,20 @@ void PVMEmitterDeinit(PVMEmitter *Emitter)
 {
     PVMEmitExit(Emitter);
 }
+
+
+
+
+
+void PVMEmitterOptimize(PVMEmitter *Emitter, U32 StreamBegin, U32 StreamEnd)
+{
+    PASCAL_ASSERT(StreamBegin <= StreamEnd, "Unreachable");
+    if (StreamBegin == StreamEnd)
+        return;
+    (void)Emitter;
+}
+
+
 
 
 GlobalVar PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size)

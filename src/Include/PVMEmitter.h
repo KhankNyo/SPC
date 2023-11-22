@@ -23,7 +23,6 @@ typedef struct PVMEmitter
     U32 SavedRegisters[PVM_MAX_SCOPE_COUNT];
 
     UInt CurrentScopeDepth;
-    U32 EntryPoint;
     U32 SP;
 
     U32 GlobalDataSize;
@@ -32,9 +31,14 @@ typedef struct PVMEmitter
 } PVMEmitter;
 
 
+
+
+
 PVMEmitter PVMEmitterInit(CodeChunk *Chunk);
 void PVMEmitterDeinit(PVMEmitter *Emitter);
 
+
+void PVMEmitterOptimize(PVMEmitter *Emitter, U32 StreamBegin, U32 StreamEnd);
 
 GlobalVar PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
 U32 PVMGetCurrentLocation(PVMEmitter *Emitter);
