@@ -50,6 +50,7 @@ void PVMEmitterOptimize(PVMEmitter *Emitter, U32 StreamBegin, U32 StreamEnd)
 
 #define TRANSFER(Ins)   BIT_AT32(PVM_IDAT_TRANSFER_INS(Ins, 0, 0), 11, 21)
 #define IRD(Ins)        BIT_AT32(PVM_IRD_ARITH_INS(Ins, 0, 0), 11, 21)
+#define MEM(Ins)        BIT_AT32(PVM_IRD_MEM_INS(Ins, 0, 0), 11, 21)
 #define RARITH(Ins)     BIT_AT32(PVM_IDAT_ARITH_INS(Ins, 0, 0, 0, 0), 11, 21)
 
 
@@ -59,50 +60,99 @@ void PVMEmitterOptimize(PVMEmitter *Emitter, U32 StreamBegin, U32 StreamEnd)
     {
         switch (BIT_AT32(Current[i], 11, 21))
         {
-        case TRANSFER(MOV):
+        case MEM(LDG):
         {
-            if (PVMSameInstruction(Current[i], Current[i + 1])
-            && PVM_IDAT_GET_RD(Current[i]) == PVM_IDAT_GET_RA(Current[i + 1]))
+            if (PVM_IRD_GET_RD(Current[i]) != PVM_IDAT_GET_RB(Current[i + 1]))
+                goto Copy;
+
+            UInt Rd = PVM_IDAT_GET_RD(Current[i + 1]);
+            UInt Ra = PVM_IDAT_GET_RA(Current[i]);
+            if (TRANSFER(MOV) == BIT_AT32(Current[i + 1], 11, 21))
             {
-                Tmp[Count] = PVM_IDAT_TRANSFER_INS(MOV, 
-                        PVM_IDAT_GET_RD(Current[i + 1]),
-                        PVM_IDAT_GET_RA(Current[i])
-                );
+                Tmp[Count] = PVM_IRD_MEM_INS(LDG, Rd, Ra);
                 i++;
             }
-            else
+            else goto Copy;
+        } break;
+        case RARITH(SUB):
+        {
+            if (PVM_IDAT_GET_RD(Current[i]) != PVM_IDAT_GET_RA(Current[i + 1]))
+                goto Copy;
+
+            UInt Rd = PVM_IDAT_GET_RD(Current[i + 1]);
+            UInt Ra = PVM_IDAT_GET_RA(Current[i]);
+            if (TRANSFER(MOV) == BIT_AT32(Current[i + 1], 11, 21))
             {
-                Tmp[Count] = Current[i];
+                Tmp[Count] = PVM_IDAT_ARITH_INS(SUB, Rd, Rd, Ra, 0);
+                i++;
             }
+            else goto Copy;
+        } break;
+        case RARITH(ADD):
+        {
+            if (PVM_IDAT_GET_RD(Current[i]) != PVM_IDAT_GET_RA(Current[i + 1]))
+                goto Copy;
+
+            UInt Rd = PVM_IDAT_GET_RD(Current[i + 1]);
+            UInt Ra = PVM_IDAT_GET_RA(Current[i]);
+            if (TRANSFER(MOV) == BIT_AT32(Current[i + 1], 11, 21))
+            {
+                Tmp[Count] = PVM_IDAT_ARITH_INS(ADD, Rd, Rd, Ra, 0);
+                i++;
+            }
+            else goto Copy;
+        } break;
+        case TRANSFER(MOV):
+        {
+            if (PVM_IDAT_GET_RD(Current[i]) != PVM_IDAT_GET_RA(Current[i + 1]))
+                goto Copy;
+
+            UInt Rd = PVM_IDAT_GET_RD(Current[i + 1]);
+            UInt Ra = PVM_IDAT_GET_RA(Current[i]);
+            if (PVMSameInstruction(Current[i], Current[i + 1]))
+            {
+                Tmp[Count] = PVM_IDAT_TRANSFER_INS(MOV, Rd, Ra);
+                i++;
+            }
+            else if (RARITH(ADD) == BIT_AT32(Current[i + 1], 11, 21))
+            {
+                Tmp[Count] = PVM_IDAT_ARITH_INS(ADD, Rd, Rd, Ra, 0);
+                i++;
+            }
+            else goto Copy;
         } break;
         case IRD(LDI):
         {
-            if (RARITH(ADD) == BIT_AT32(Current[i + 1], 11, 21) &&
-            PVM_IRD_GET_RD(Current[i]) == PVM_IDAT_GET_RB(Current[i + 1]))
+            if (PVM_IRD_GET_RD(Current[i]) != PVM_IDAT_GET_RB(Current[i + 1]))
+                goto Copy;
+
+            UInt Rd = PVM_IDAT_GET_RD(Current[i + 1]);
+            UInt Imm = PVM_IRD_GET_IMM(Current[i]);
+            if (RARITH(ADD) == BIT_AT32(Current[i + 1], 11, 21))
             {
-                Tmp[Count] = PVM_IRD_ARITH_INS(ADD, 
-                        PVM_IRD_GET_RD(Current[i + 1]),
-                        PVM_IRD_GET_IMM(Current[i])
-                );
+                Tmp[Count] = PVM_IRD_ARITH_INS(ADD, Rd, Imm);
                 i++;
             }
-            else 
+            else if (TRANSFER(MOV) == BIT_AT32(Current[i + 1], 11, 21))
             {
-                Tmp[Count] = Current[i];
+                Tmp[Count] = PVM_IRD_ARITH_INS(LDI, Rd, Imm);
+                i++;
             }
+            else goto Copy;
         } break;
 
         default:
         {
+Copy:
             Tmp[Count] = Current[i];
         } break;
         }
     }
 
 #undef TRANSFER
-
+    Tmp[Count++] = Current[StreamEnd - 1];
     memcpy(&Current[StreamBegin], Tmp, Count * sizeof(PVMWord));
-    PVMCurrentChunk(Emitter)->Count -= StreamEnd - StreamBegin - Count;
+    PVMCurrentChunk(Emitter)->Count = StreamBegin + Count;
 }
 
 
