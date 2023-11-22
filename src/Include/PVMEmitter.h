@@ -72,12 +72,15 @@ void PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op,
 void PVMEmitPush(PVMEmitter *Emitter, UInt RegID);
 void PVMEmitPop(PVMEmitter *Emitter, UInt RegID);
 void PVMEmitAddSp(PVMEmitter *Emitter, I32 Offset);
-void PVMEmitSaveCallerRegs(PVMEmitter *Emitter);
+
+void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, FunctionVar *Caller, FunctionVar *Callee, UInt ReturnRegID);
 void PVMEmitCall(PVMEmitter *Emitter, FunctionVar *Callee);
-void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter);
+void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, FunctionVar *Callee);
 void PVMEmitReturn(PVMEmitter *Emitter);
 void PVMEmitExit(PVMEmitter *Emitter);
 
+LocalVar PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size);
+void PVMCommitStackAllocation(PVMEmitter *Emitter);
 U32 PVMAllocateStackSpace(PVMEmitter *Emitter, UInt Size);
 
 VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type);

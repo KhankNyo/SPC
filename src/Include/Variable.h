@@ -6,12 +6,18 @@
 #include "IntegralTypes.h"
 
 
-typedef struct NameAndType 
+typedef struct VarLocation VarLocation;
+typedef struct PascalVar
 {
-    const U8 *Name;
+    const U8 *Str;
     UInt Len;
+    U32 Hash;
+
     IntegralType Type;
-} NameAndType;
+    VarLocation *Location;
+} PascalVar;
+
+
 
 
 
@@ -30,7 +36,7 @@ typedef struct FunctionVar
     U32 Location;
 
     U32 ArgCount, Cap;
-    NameAndType *Args;
+    PascalVar **Args;
 
     IntegralType ReturnType;
     bool HasReturnType;
@@ -52,7 +58,7 @@ typedef enum VarLocationType
     VAR_TMP_STK,
 } VarLocationType;
 
-typedef struct VarLocation 
+struct VarLocation 
 {
     VarLocationType LocationType;
     IntegralType Type;
@@ -63,7 +69,7 @@ typedef struct VarLocation
         GlobalVar Global;
         FunctionVar Function;
     } As;
-} VarLocation;
+};
 
 
 

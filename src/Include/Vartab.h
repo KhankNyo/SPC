@@ -13,16 +13,6 @@
 #define VARTAB_MAX_LOAD 3/4
 #define VARTAB_GROW_FACTOR 2 /* should be powers of 2 */
 
-typedef struct PascalVar
-{
-    const U8 *Str;
-    UInt Len;
-    U32 Hash;
-
-    IntegralType Type;
-    VarLocation *Location;
-} PascalVar;
-
 typedef struct PascalVartab 
 {
     PascalVar *Table;

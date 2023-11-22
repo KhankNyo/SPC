@@ -8,11 +8,18 @@ begin
 end;
 
 
+procedure die;
+begin die end;
+
+
+
 procedure main;
 var
     a: uint32;
 begin
-    a := fib(35);
+    if fib(35) = 9227465 then
+        Exit
+    else die;
 end;
 
 

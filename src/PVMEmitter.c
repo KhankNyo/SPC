@@ -31,123 +31,12 @@ void PVMEmitterDeinit(PVMEmitter *Emitter)
 
 
 
-static bool PVMSameInstruction(PVMWord Op1, PVMWord Op2)
-{
-    return BIT_AT32(Op1, 11, 21) == BIT_AT32(Op2, 11, 21);
-}
 
 
 void PVMEmitterOptimize(PVMEmitter *Emitter, U32 StreamBegin, U32 StreamEnd)
 {
-    static PVMWord Tmp[1024];
-    PASCAL_ASSERT(StreamBegin <= StreamEnd, "Unreachable");
-    if (StreamEnd == 0)
-        return;
-    if (StreamBegin == StreamEnd)
-        return;
-    if (StreamBegin + STATIC_ARRAY_SIZE(Tmp) < StreamEnd)
-        return;
-
-#define TRANSFER(Ins)   BIT_AT32(PVM_IDAT_TRANSFER_INS(Ins, 0, 0), 11, 21)
-#define IRD(Ins)        BIT_AT32(PVM_IRD_ARITH_INS(Ins, 0, 0), 11, 21)
-#define MEM(Ins)        BIT_AT32(PVM_IRD_MEM_INS(Ins, 0, 0), 11, 21)
-#define RARITH(Ins)     BIT_AT32(PVM_IDAT_ARITH_INS(Ins, 0, 0, 0, 0), 11, 21)
-
-
-    U32 Count = 0;
-    PVMWord *Current = PVMCurrentChunk(Emitter)->Code;
-    for (U32 i = StreamBegin; i < StreamEnd - 1; i++, Count++)
-    {
-        switch (BIT_AT32(Current[i], 11, 21))
-        {
-        case MEM(LDG):
-        {
-            if (PVM_IRD_GET_RD(Current[i]) != PVM_IDAT_GET_RA(Current[i + 1]))
-                goto Copy;
-
-            UInt Rd = PVM_IDAT_GET_RD(Current[i + 1]);
-            UInt Ra = PVM_IDAT_GET_RA(Current[i]);
-            if (TRANSFER(MOV) == BIT_AT32(Current[i + 1], 11, 21))
-            {
-                Tmp[Count] = PVM_IRD_MEM_INS(LDG, Rd, Ra);
-                i++;
-            }
-            else goto Copy;
-        } break;
-        case RARITH(SUB):
-        {
-            if (PVM_IDAT_GET_RD(Current[i]) != PVM_IDAT_GET_RA(Current[i + 1]))
-                goto Copy;
-
-            UInt Rd = PVM_IDAT_GET_RD(Current[i + 1]);
-            UInt Ra = PVM_IDAT_GET_RA(Current[i]);
-            if (TRANSFER(MOV) == BIT_AT32(Current[i + 1], 11, 21))
-            {
-                Tmp[Count] = PVM_IDAT_ARITH_INS(SUB, Rd, Rd, Ra, 0);
-                i++;
-            }
-            else goto Copy;
-        } break;
-        case RARITH(ADD):
-        {
-            if (PVM_IDAT_GET_RD(Current[i]) != PVM_IDAT_GET_RA(Current[i + 1]))
-                goto Copy;
-
-            UInt Rd = PVM_IDAT_GET_RD(Current[i + 1]);
-            UInt Ra = PVM_IDAT_GET_RA(Current[i]);
-            if (TRANSFER(MOV) == BIT_AT32(Current[i + 1], 11, 21))
-            {
-                Tmp[Count] = PVM_IDAT_ARITH_INS(ADD, Rd, Rd, Ra, 0);
-                i++;
-            }
-            else goto Copy;
-        } break;
-        case TRANSFER(MOV):
-        {
-            if (PVM_IDAT_GET_RD(Current[i]) != PVM_IDAT_GET_RA(Current[i + 1]))
-                goto Copy;
-
-            UInt Rd = PVM_IDAT_GET_RD(Current[i + 1]);
-            UInt Ra = PVM_IDAT_GET_RA(Current[i]);
-            if (PVMSameInstruction(Current[i], Current[i + 1]))
-            {
-                Tmp[Count] = PVM_IDAT_TRANSFER_INS(MOV, Rd, Ra);
-                i++;
-            }
-            else if (RARITH(ADD) == BIT_AT32(Current[i + 1], 11, 21))
-            {
-                Tmp[Count] = PVM_IDAT_ARITH_INS(ADD, Rd, Rd, Ra, 0);
-                i++;
-            }
-            else goto Copy;
-        } break;
-        case IRD(LDI):
-        {
-            if (PVM_IRD_GET_RD(Current[i]) != PVM_IDAT_GET_RB(Current[i + 1]))
-                goto Copy;
-
-            UInt Rd = PVM_IDAT_GET_RD(Current[i + 1]);
-            UInt Imm = PVM_IRD_GET_IMM(Current[i]);
-            if (RARITH(ADD) == BIT_AT32(Current[i + 1], 11, 21))
-            {
-                Tmp[Count] = PVM_IRD_ARITH_INS(ADD, Rd, Imm);
-                i++;
-            }
-            else goto Copy;
-        } break;
-
-        default:
-        {
-Copy:
-            Tmp[Count] = Current[i];
-        } break;
-        }
-    }
-
-#undef TRANSFER
-    Tmp[Count++] = Current[StreamEnd - 1];
-    memcpy(&Current[StreamBegin], Tmp, Count * sizeof(PVMWord));
-    PVMCurrentChunk(Emitter)->Count = StreamBegin + Count;
+    (void)Emitter, (void)StreamBegin, (void)StreamEnd;
+    return;
 }
 
 
@@ -624,24 +513,12 @@ void PVMEmitAddSp(PVMEmitter *Emitter, I32 Offset)
 }
 
 
-void PVMEmitSaveCallerRegs(PVMEmitter *Emitter)
+void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, FunctionVar *Caller, FunctionVar *Callee, UInt ReturnLocationRegID)
 {
-    /* check all locals in current scope and update their location */
-    if (0 == Emitter->RegisterList)
-        return;
-
-    UInt RegList = 0;
-    for (UInt i = 0; i < 16; i++)
-    {
-        if (!PVMRegisterIsFree(Emitter, i))
-        {
-            RegList |= (UInt)1 << i;
-        }
-    }
-
-    Emitter->SavedRegisters[Emitter->CurrentScopeDepth] = RegList;
-    PASCAL_UNREACHABLE("TODO: update location of saved variables");
-    PVMEmitCode(Emitter, PVM_IRD_MEM_INS(PSHL, 0, RegList));
+    UInt NeedToSave = Emitter->RegisterList & ~((UInt)1 << ReturnLocationRegID);
+    if (0 != NeedToSave)
+        PVMEmitCode(Emitter, PVM_IRD_MEM_INS(PSHL, 0, NeedToSave));
+    Emitter->SavedRegisters[Emitter->CurrentScopeDepth] = NeedToSave;
 }
 
 void PVMEmitCall(PVMEmitter *Emitter, FunctionVar *Function)
@@ -654,19 +531,11 @@ void PVMEmitCall(PVMEmitter *Emitter, FunctionVar *Function)
     PVMEmitCode(Emitter, PVM_BSR_INS(Function->Location - CurrentLocation - 1));
 }
 
-void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter)
+void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, FunctionVar *Caller)
 {
-    if (Emitter->SavedRegisters[Emitter->CurrentScopeDepth] == 0)
-        return;
-
-    /* pop all caller save regs */
-    PVMEmitCode(Emitter, PVM_IRD_MEM_INS(POPL, 0, 
-            Emitter->SavedRegisters[Emitter->CurrentScopeDepth]
-    ));
-
-    /* TODO: */
-    PASCAL_UNREACHABLE("TODO: unsave caller regs");
-
+    U32 NeedToRestore = Emitter->SavedRegisters[Emitter->CurrentScopeDepth];
+    if (0 != NeedToRestore)
+        PVMEmitCode(Emitter, PVM_IRD_MEM_INS(POPL, 0, NeedToRestore));
     Emitter->SavedRegisters[Emitter->CurrentScopeDepth] = 0;
 }
 
@@ -686,6 +555,25 @@ void PVMEmitExit(PVMEmitter *Emitter)
 
 
 
+LocalVar PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size)
+{
+    U32 NewOffset = Emitter->SP + Size;
+    NewOffset /= sizeof(PVMPtr);
+    if (NewOffset % sizeof(PVMPtr))
+        NewOffset += 1;
+
+    LocalVar Local = {
+        .Size = Size,
+        .FPOffset = NewOffset,
+    };
+    Emitter->SP = NewOffset;
+    return Local;
+}
+
+void PVMCommitStackAllocation(PVMEmitter *Emitter)
+{
+    PVMAllocateStackSpace(Emitter, Emitter->SP);
+}
 
 
 U32 PVMAllocateStackSpace(PVMEmitter *Emitter, UInt Slots)
