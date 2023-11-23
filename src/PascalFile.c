@@ -5,7 +5,6 @@
 
 #include "Pascal.h"
 #include "Memory.h"
-#include "Parser.h"
 
 #include "PVM/PVM.h"
 #include "PVMCompiler.h"
