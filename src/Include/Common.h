@@ -94,6 +94,19 @@ typedef long double LargeType;
     (((Value) & ((U32)1 << (SignBitIndex))) \
         ? (U32)(Value) | ~(((U32)1 << (SignBitIndex)) - 1)\
         : (U32)(Value))
+static inline I32 BitSex32Safe(U32 Value, UInt SignIndex)
+{
+    return BIT_SEX32(Value, SignIndex);
+}
+
+static inline I64 BitSex64(U64 Value, UInt SignIndex)
+{
+    if ((Value >> SignIndex) & 1)
+    {
+        Value |= ~(((U64)1 << SignIndex) - 1);
+    }
+    return Value;
+}
 
 
 
@@ -130,16 +143,38 @@ typedef long double LargeType;
 
 #define INT21_MAX (I32)(((U32)1 << 20) - 1)
 #define INT21_MIN (I32)(BIT_SEX32(((U32)1 << 20), 20))
+#define INT48_MIN (I64)~(((U64)1 << 47) - 1)
+#define INT48_MAX (I64)(((U64)1 << 47) - 1)
 
 #define IN_I8(x) ((I64)INT8_MIN <= (I64)(x) && ((I64)(x) <= (I64)INT8_MAX))
 #define IN_I16(x) ((I64)INT16_MIN <= (I64)(x) && ((I64)(x) <= (I64)INT16_MAX))
-#define IN_I32(x) ((I64)INT32_MIN <= (I64)(x)) && ((I64)(x) <= (I64)INT32_MAX)
+#define IN_I32(x) (((I64)INT32_MIN <= (I64)(x)) && ((I64)(x) <= (I64)INT32_MAX))
+#define IN_I48(x) (((I64)INT48_MIN <= (I64)(x)) && ((I64)(x) <= (I64)INT48_MAX))
 
 #define IN_U8(x) ((U64)(x) < 0xFF)
 #define IN_U16(x) ((U64)(x) < 0xFFFF)
 #define IN_U32(x) ((U64)(x) < 0xFFFFFFFF)
+#define IN_U48(x) ((U64)(x) < (U64)0xFFFFFFFFFFFF)
 
 #define CHR_TO_UPPER(chr) ((U8)(chr) & ~(1u << 5))
+
+typedef struct GenericPtr
+{
+    union {
+        void *Raw;
+        U8 *u8;
+        U16 *u16;
+        U32 *u32;
+        U64 *u64;
+        I8 *i8;
+        I16 *i16;
+        I32 *i32;
+        I64 *i64;
+        F32 *f32;
+        F64 *f64;
+        long double *ldbl;
+    } As;
+} GenericPtr;
 
 
 
