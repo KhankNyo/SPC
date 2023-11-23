@@ -105,6 +105,12 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
             return MakeToken(Lexer, TOKEN_EQUAL_EQUAL);
         else return MakeToken(Lexer, TOKEN_EQUAL);
     } break;
+    case '!': 
+    {
+        if (AdvanceIfEqual(Lexer, '='))
+            return MakeToken(Lexer, TOKEN_BANG_EQUAL);
+        return MakeToken(Lexer, TOKEN_BANG);
+    } break;
     case '\'': return ConsumeString(Lexer);
 
     case ':': 
@@ -207,7 +213,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_PLUS", "TOKEN_MINUS", "TOKEN_STAR", "TOKEN_SLASH",
         "TOKEN_PLUS_EQUAL", "TOKEN_MINUS_EQUAL", "TOKEN_STAR_EQUAL", "TOKEN_SLASH_EQUAL",
         "TOKEN_STAR_STAR",
-        "TOKEN_EQUAL_EQUAL",
+        "TOKEN_EQUAL_EQUAL", "TOKEN_BANG", "TOKEN_BANG_EQUAL",
         "TOKEN_EQUAL", "TOKEN_LESS", "TOKEN_GREATER", "TOKEN_LESS_GREATER",
         "TOKEN_LESS_EQUAL", "TOKEN_GREATER_EQUAL",
         "TOKEN_LESS_LESS", "TOKEN_GREATER_GREATER",

@@ -35,8 +35,22 @@ void PVMEmitterDeinit(PVMEmitter *Emitter)
 
 void PVMEmitterOptimize(PVMEmitter *Emitter, U32 StreamBegin, U32 StreamEnd)
 {
+    /* TODO: peephole optimization */
     (void)Emitter, (void)StreamBegin, (void)StreamEnd;
     return;
+}
+
+
+
+void PVMEmitterBeginScope(PVMEmitter *Emitter)
+{
+    Emitter->SavedRegisters[Emitter->CurrentScopeDepth++] = Emitter->RegisterList;
+}
+
+void PVMEmitterEndScope(PVMEmitter *Emitter)
+{
+    PASCAL_ASSERT(Emitter->CurrentScopeDepth > 0, "Unreachable");
+    Emitter->RegisterList = Emitter->SavedRegisters[--Emitter->CurrentScopeDepth];
 }
 
 
@@ -49,7 +63,7 @@ GlobalVar PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size)
         .Location = Emitter->GlobalDataSize,
     };
     Emitter->GlobalDataSize += Size / sizeof(PVMPtr);
-    if (Size % sizeof(PVMPtr))
+    if (0 == Size || Size % sizeof(PVMPtr))
         Emitter->GlobalDataSize += 1;
     return Global;
 }
@@ -559,7 +573,7 @@ LocalVar PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size)
 {
     U32 NewOffset = Emitter->SP + Size;
     NewOffset /= sizeof(PVMPtr);
-    if (NewOffset % sizeof(PVMPtr))
+    if (0 == NewOffset || NewOffset % sizeof(PVMPtr))
         NewOffset += 1;
 
     LocalVar Local = {
@@ -645,12 +659,6 @@ bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt RegID)
 {
     return ((Emitter->RegisterList >> RegID) & 1u) == 0;
 }
-
-void PVMSaveRegister(PVMEmitter *Emitter, UInt RegID)
-{
-    PASCAL_UNREACHABLE("TODO: save register");
-}
-
 
 
 

@@ -489,12 +489,14 @@ static void BeginScope(PVMCompiler *Compiler, FunctionVar *Subroutine)
 
     /* mark allocation point */
     CompilerStackAllocateFrame(Compiler, Subroutine);
+    PVMEmitterBeginScope(&Compiler->Emitter);
 }
 
 static void EndScope(PVMCompiler *Compiler)
 {
     /* TODO: deallocate regs alloc'ed from Declare param list here? */
     CompilerStackDeallocateFrame(Compiler);
+    PVMEmitterEndScope(&Compiler->Emitter);
 }
 
 
@@ -1001,11 +1003,6 @@ static void ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
         PVMEmitSetCC(&Compiler->Emitter, Operator, Left, Left, &Right);
     } break;
 
-    case TOKEN_EQUAL_EQUAL:
-    {
-        ErrorAt(Compiler, &OperatorToken, "This is Pascal, use '=' to test for equality.");
-    } break;
-
     case TOKEN_AND:
     case TOKEN_OR:
 
@@ -1013,6 +1010,24 @@ static void ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
     }
 
     PVMFreeRegister(&Compiler->Emitter, &Right);
+}
+
+static void TrapTokens(PVMCompiler *Compiler, VarLocation *Dummy)
+{
+    (void)Dummy;
+    switch (Compiler->Curr.Type)
+    {
+    case TOKEN_EQUAL_EQUAL: 
+        ErrorAt(Compiler, &Compiler->Curr, "This is Pascal, use '=' to check for equality.");
+        break;
+    case TOKEN_BANG:
+        ErrorAt(Compiler, &Compiler->Curr, "This is Pascal, use 'not' to negate booleans.");
+        break;
+    case TOKEN_BANG_EQUAL:
+        ErrorAt(Compiler, &Compiler->Curr, "This is Pascal, use '<>' to check for inequality.");
+        break;
+    default: PASCAL_UNREACHABLE("Unhandled token: %s", TokenTypeToStr(Compiler->Curr.Type));
+    }
 }
 
 
@@ -1034,13 +1049,16 @@ static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] =
     [TOKEN_PLUS]            = { ExprUnary,          ExprBinary,     PREC_SIMPLE },
     [TOKEN_MINUS]           = { ExprUnary,          ExprBinary,     PREC_SIMPLE },
 
-    [TOKEN_EQUAL_EQUAL]     = { NULL,               ExprBinary,     PREC_EXPR },
     [TOKEN_LESS]            = { NULL,               ExprBinary,     PREC_EXPR },
     [TOKEN_GREATER]         = { NULL,               ExprBinary,     PREC_EXPR },
     [TOKEN_LESS_EQUAL]      = { NULL,               ExprBinary,     PREC_EXPR },
     [TOKEN_GREATER_EQUAL]   = { NULL,               ExprBinary,     PREC_EXPR },
     [TOKEN_EQUAL]           = { NULL,               ExprBinary,     PREC_EXPR },
     [TOKEN_LESS_GREATER]    = { NULL,               ExprBinary,     PREC_EXPR },
+
+    [TOKEN_EQUAL_EQUAL]     = { NULL,               TrapTokens,     PREC_HIGHEST },
+    [TOKEN_BANG]            = { TrapTokens,         NULL,           PREC_HIGHEST },
+    [TOKEN_BANG_EQUAL]      = { NULL,               TrapTokens,     PREC_HIGHEST },
 };
 
 

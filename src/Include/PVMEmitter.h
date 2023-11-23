@@ -40,6 +40,8 @@ void PVMEmitterDeinit(PVMEmitter *Emitter);
 
 void PVMEmitterOptimize(PVMEmitter *Emitter, U32 StreamBegin, U32 StreamEnd);
 
+void PVMEmitterBeginScope(PVMEmitter *Emitter);
+void PVMEmitterEndScope(PVMEmitter *Emitter);
 GlobalVar PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
 U32 PVMGetCurrentLocation(PVMEmitter *Emitter);
 
@@ -87,7 +89,6 @@ VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type);
 void PVMFreeRegister(PVMEmitter *Emitter, const VarLocation *Register);
 void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, UInt RegID);
 bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt RegID);
-void PVMSaveRegister(PVMEmitter *Emitter, UInt RegID);
 
 
 
