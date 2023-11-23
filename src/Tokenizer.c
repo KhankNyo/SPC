@@ -658,8 +658,8 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
         },
         ['Q'] = { {0} },
         ['R'] = {
-            {.Str = (const U8 *)"EPEAT", .Len = 5, .Type = TOKEN_RECORD},
-            {.Str = (const U8 *)"ECORD", .Len = 5, .Type = TOKEN_REPEAT},
+            {.Str = (const U8 *)"EPEAT", .Len = 5, .Type = TOKEN_REPEAT},
+            {.Str = (const U8 *)"ECORD", .Len = 5, .Type = TOKEN_RECORD},
             {.Str = (const U8 *)"ESULT", .Len = 5, .Type = TOKEN_RESULT},
         },
         ['S'] = {

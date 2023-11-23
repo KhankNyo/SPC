@@ -513,7 +513,7 @@ void PVMEmitAddSp(PVMEmitter *Emitter, I32 Offset)
 }
 
 
-void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, FunctionVar *Caller, FunctionVar *Callee, UInt ReturnLocationRegID)
+void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnLocationRegID)
 {
     UInt NeedToSave = Emitter->RegisterList & ~((UInt)1 << ReturnLocationRegID);
     if (0 != NeedToSave)
@@ -531,7 +531,7 @@ void PVMEmitCall(PVMEmitter *Emitter, FunctionVar *Function)
     PVMEmitCode(Emitter, PVM_BSR_INS(Function->Location - CurrentLocation - 1));
 }
 
-void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, FunctionVar *Caller)
+void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter)
 {
     U32 NeedToRestore = Emitter->SavedRegisters[Emitter->CurrentScopeDepth];
     if (0 != NeedToRestore)

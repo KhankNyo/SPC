@@ -256,14 +256,6 @@ static void CompilerStackDeallocateFrame(PVMCompiler *Compiler)
     Compiler->Var.Count = Compiler->Frame[Compiler->Scope].Location;
 }
 
-static FunctionVar *CompilerCurrentSubroutine(PVMCompiler *Compiler)
-{
-    if (IsAtGlobalScope(Compiler))
-        return NULL;
-    else
-        return Compiler->Frame[Compiler->Scope - 1].Current;
-}
-
 
 static VarLocation *CompilerStackAlloc(PVMCompiler *Compiler)
 {
@@ -433,29 +425,6 @@ static void CalmDownDog(PVMCompiler *Compiler)
     }
 }
 
-static void CalmDownAtFunction(PVMCompiler *Compiler)
-{
-    Compiler->Panic = false;
-    while (!IsAtEnd(Compiler))
-    {
-        switch (Compiler->Next.Type)
-        {
-        case TOKEN_LABEL:
-        case TOKEN_CONST:
-        case TOKEN_TYPE:
-        case TOKEN_VAR:
-        case TOKEN_PROCEDURE:
-        case TOKEN_FUNCTION:
-        case TOKEN_BEGIN:
-        case TOKEN_END:
-            return;
-
-
-        default: break;
-        }
-        ConsumeToken(Compiler);
-    }
-}
 
 static void CalmDownAtBlock(PVMCompiler *Compiler)
 {
@@ -938,16 +907,13 @@ static void FactorVariable(PVMCompiler *Compiler, VarLocation *Into)
             if (Into->LocationType == VAR_REG || VAR_TMP_REG == Into->LocationType)
                 ReturnReg = Into->As.Reg.ID;
 
-            PVMEmitSaveCallerRegs(&Compiler->Emitter, 
-                    CompilerCurrentSubroutine(Compiler), Callee, 
-                    ReturnReg
-            );
+            PVMEmitSaveCallerRegs(&Compiler->Emitter, ReturnReg);
             CompileArgumentList(Compiler, &Identifier, Callee);
             PVMEmitCall(&Compiler->Emitter, Callee);
 
             sReturnRegister.Type = Callee->ReturnType;
             PVMEmitMov(&Compiler->Emitter, Into, &sReturnRegister);
-            PVMEmitUnsaveCallerRegs(&Compiler->Emitter, CompilerCurrentSubroutine(Compiler));
+            PVMEmitUnsaveCallerRegs(&Compiler->Emitter);
         }
     }
     else
@@ -1200,7 +1166,38 @@ static void CompileBeginStmt(PVMCompiler *Compiler)
             return;
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' between statements.");
     }
-    ConsumeOrError(Compiler, TOKEN_END, "Expected 'end' after statement.");
+    ConsumeOrError(Compiler, TOKEN_END, "Expected 'end'.");
+}
+
+static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
+{
+    /* 'repeat' consumed */
+    U32 LoopHead = PVMMarkBranchTarget(&Compiler->Emitter);
+    while (!IsAtEnd(Compiler) && TOKEN_UNTIL != Compiler->Next.Type)
+    {
+        CompileStmt(Compiler);
+        if (TOKEN_UNTIL == Compiler->Next.Type)
+            break;
+        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' in between statements.");
+    }
+
+
+    if (!ConsumeOrError(Compiler, TOKEN_UNTIL, "Expected 'until'."))
+        return;
+
+    Token UntilKeyword = Compiler->Curr;
+    CompilerInitDebugInfo(Compiler, &UntilKeyword);
+
+    VarLocation Tmp = PVMAllocateRegister(&Compiler->Emitter, TYPE_U32);
+    CompileExpr(Compiler, &Tmp);
+    PVMPatchBranch(&Compiler->Emitter, 
+            PVMEmitBranchIfFalse(&Compiler->Emitter, &Tmp), 
+            LoopHead,
+            PVM_CONDITIONAL_BRANCH
+    );
+    PVMFreeRegister(&Compiler->Emitter, &Tmp);
+
+    CompilerEmitDebugInfo(Compiler, &UntilKeyword);
 }
 
 
@@ -1345,13 +1342,10 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token *Callee, PascalVa
     CompilerInitDebugInfo(Compiler, Callee);
 
     FunctionVar *Subroutine = &IdenInfo->Location->As.Function;
-    PVMEmitSaveCallerRegs(&Compiler->Emitter, 
-            CompilerCurrentSubroutine(Compiler), Subroutine, 
-            NO_RETURN_REG
-    );
+    PVMEmitSaveCallerRegs(&Compiler->Emitter, NO_RETURN_REG);
     CompileArgumentList(Compiler, Callee, Subroutine);
     PVMEmitCall(&Compiler->Emitter, Subroutine);
-    PVMEmitUnsaveCallerRegs(&Compiler->Emitter, CompilerCurrentSubroutine(Compiler));
+    PVMEmitUnsaveCallerRegs(&Compiler->Emitter);
 
     CompilerEmitDebugInfo(Compiler, Callee);
 }
@@ -1424,7 +1418,7 @@ static void CompileStmt(PVMCompiler *Compiler)
     case TOKEN_REPEAT:
     {
         ConsumeToken(Compiler);
-        PASCAL_UNREACHABLE("TODO: repeat");
+        CompileRepeatUntilStmt(Compiler);
     } break;
     case TOKEN_WHILE:
     {
@@ -1600,15 +1594,11 @@ static bool CompileBlock(PVMCompiler *Compiler)
         {
             ConsumeToken(Compiler);
             CompileSubroutineBlock(Compiler, "function");
-            if (Compiler->Panic)
-                CalmDownAtFunction(Compiler);
         } break;
         case TOKEN_PROCEDURE:
         {
             ConsumeToken(Compiler);
             CompileSubroutineBlock(Compiler, "procedure");
-            if (Compiler->Panic)
-                CalmDownAtFunction(Compiler);
         } break;
         case TOKEN_VAR:
         {
