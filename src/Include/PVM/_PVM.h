@@ -10,6 +10,7 @@
 typedef union PVMPTR 
 {
     uintptr_t UInt;
+    intptr_t Int;
     void *Raw;
     U64 *DWord;
     I64 *SDWord;

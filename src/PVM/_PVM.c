@@ -85,7 +85,11 @@ bool PVMRun(PascalVM *PVM, PVMChunk *Chunk)
 
 PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
 {
+#define FP() PVM->R[PVM_REG_FP]
+#define SP() PVM->R[PVM_REG_SP]
+
 #define ASSIGNMENT 
+
 #define INTEGER_BINARY_OP(Operator, Opc, RegType)\
     PVM->R[PVM_GET_RD(Opc)]RegType GLUE(Operator,=) PVM->R[PVM_GET_RS(Opc)]RegType
 #define INTEGER_SET_IF(Operator, Opc, RegType)\
@@ -109,7 +113,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
     UInt i = Base_;\
     while (RegList && i < Base_ + PVM_REG_COUNT/2) {\
         if (RegList & 1) {\
-            *(++SP.DWord) = PVM->R[i].DWord;\
+            *(++SP().Ptr.DWord) = PVM->R[i].DWord;\
         }\
         i++;\
         RegList >>= 1;\
@@ -122,7 +126,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
     UInt i = Base_;\
     while (RegList && i < Base_ + PVM_REG_COUNT/2) {\
         if (RegList & 0x80) {\
-            PVM->R[(Base + (PVM_REG_COUNT/2)-1) - i].DWord = *(SP.DWord--);\
+            PVM->R[(Base + (PVM_REG_COUNT/2)-1) - i].DWord = *(SP().Ptr.DWord--);\
         }\
         i++;\
         RegList = (RegList << 1) & 0xFF;\
@@ -135,25 +139,55 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
     }\
 } while(0)
 
-#define LOAD_INTEGER_FROM_STACK(Opc, IP, DestSize, AddrMode)\
-    memcpy(&PVM->R[PVM_GET_RD(Opc)]DestSize, &FP AddrMode [GET_LONG_IMM(Opc, IP)], sizeof PVM->R[0]DestSize)
-#define STORE_INTEGER_TO_STACK(Opc, IP, SrcSize, AddrMode)\
-    memcpy(&FP AddrMode [GET_LONG_IMM(Opc, IP)], &PVM->R[PVM_GET_RD(Opc)]SrcSize, sizeof PVM->R[0]SrcSize)
+#define MOVE_REGISTER(Opc, DestSize, SrcSize)\
+    PVM->R[PVM_GET_RD(Opc)]DestSize = PVM->R[PVM_GET_RS(Opc)]SrcSize
 
-#define LOAD_INTEGER_FROM_GLOBAL(Opc, IP, DestSize)\
-    memcpy(&PVM->R[PVM_GET_RD(Opc)]DestSize, &Chunk->Global.Data.As.u8[GET_LONG_IMM(Opc, IP)], sizeof PVM->R[0]DestSize)
-#define STORE_INTEGER_TO_GLOBAL(Opc, IP, SrcSize)\
-    memcpy(&Chunk->Global.Data.As.u8[GET_LONG_IMM(Opc, IP)], &PVM->R[PVM_GET_RD(Opc)]SrcSize, sizeof PVM->R[0]SrcSize)
+#define LOAD_INTEGER(Opc, ImmType, IP, DestSize, AddrMode)\
+do {\
+    U64 Offset = 0;\
+    GET_SEX_IMM(Offset, ImmType, IP);\
+    memcpy(&PVM->R[PVM_GET_RD(Opc)]DestSize, PVM->R[PVM_GET_RS(Opcode)]AddrMode + Offset, sizeof PVM->R[0]DestSize);\
+} while(0)
+#define STORE_INTEGER(Opc, ImmType, IP, SrcSize, AddrMode)\
+do {\
+    U64 Offset = 0;\
+    GET_SEX_IMM(Offset, ImmType, IP);\
+    memcpy(PVM->R[PVM_GET_RS(Opcode)]AddrMode + Offset, &PVM->R[PVM_GET_RD(Opc)]SrcSize, sizeof PVM->R[0]SrcSize);\
+} while(0)
 
-#define LOAD_FLOAT_FROM_GLOBAL(Opc, IP, DestSize)\
-    memcpy(&PVM->F[PVM_GET_RD(Opc)]DestSize, &Chunk->Global.Data.As.u8[GET_LONG_IMM(Opc, IP)], sizeof PVM->F[0]DestSize)
-#define STORE_FLOAT_TO_GLOBAL(Opc, IP, SrcSize)\
-    memcpy(&Chunk->Global.Data.As.u8[GET_LONG_IMM(Opc, IP)], &PVM->F[PVM_GET_RD(Opc)]SrcSize, sizeof PVM->F[0]SrcSize)
+#define LOAD_FLOAT(Opc, ImmType, IP, DestSize, AddrMode)\
+do {\
+    U64 Offset = 0;\
+    GET_SEX_IMM(Offset, ImmType, IP);\
+    memcpy(&PVM->F[PVM_GET_RD(Opc)]DestSize, PVM->R[PVM_GET_RS(Opcode)]AddrMode + Offset, sizeof PVM->F[0]DestSize);\
+} while(0)
+#define STORE_FLOAT(Opc, ImmType, IP, SrcSize, AddrMode)\
+do {\
+    U64 Offset = 0;\
+    GET_SEX_IMM(Offset, ImmType, IP);\
+    memcpy(PVM->R[PVM_GET_RS(Opcode)]AddrMode + Offset, &PVM->F[PVM_GET_RD(Opc)]SrcSize, sizeof PVM->F[0]SrcSize);\
+} while(0)
 
-#define LOAD_FLOAT_FROM_STACK(Opc, IP, DestSize, AddrMode)\
-    memcpy(&PVM->F[PVM_GET_RD(Opc)]DestSize, &FP AddrMode [GET_LONG_IMM(Opc, IP)], sizeof PVM->F[0]DestSize)
-#define STORE_FLOAT_TO_STACK(Opc, IP, SrcSize, AddrMode)\
-    memcpy(&FP AddrMode [GET_LONG_IMM(Opc, IP)], &PVM->F[PVM_GET_RD(Opc)]SrcSize, sizeof PVM->F[0]SrcSize)
+#define GET_SEX_IMM(U64_OutVariable, ImmType, IP)\
+do {\
+    UInt Count = 0;\
+    UInt SexIndex = 0; /* Sign EXtend */\
+    switch (ImmType) {\
+    case IMMTYPE_I16: SexIndex = 15;\
+    case IMMTYPE_U16: Count = 1; break;\
+    case IMMTYPE_I32: SexIndex = 31;\
+    case IMMTYPE_U32: Count = 2; break;\
+    case IMMTYPE_I48: SexIndex = 47;\
+    case IMMTYPE_U48: Count = 3; break;\
+    case IMMTYPE_U64: Count = 4; break;\
+    }\
+    for (UInt i = 0; i < Count; i++) {\
+        U64_OutVariable |= (U64)*IP++ << i*16;\
+    }\
+    if (SexIndex)\
+        U64_OutVariable = BitSex64(U64_OutVariable, SexIndex);\
+} while(0)
+
 
 
 
@@ -162,8 +196,9 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
 
 
     U16 *IP = Chunk->Code;
-    PVMPTR FP = { .Raw = PVM->Stack.Start.Raw };
-    PVMPTR SP = FP;
+    SP().Ptr = PVM->Stack.Start;
+    FP().Ptr = SP().Ptr;
+    PVM->R[PVM_REG_GP].Ptr.Raw = Chunk->Global.Data.As.Raw;
 
     while (1)
     {
@@ -181,7 +216,8 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
 
                 PVM->RetStack.Val--;
                 IP = PVM->RetStack.Val->IP;
-                FP = PVM->RetStack.Val->FP;
+                SP().Ptr = FP().Ptr;
+                FP().Ptr = PVM->RetStack.Val->FP;
                 PVM->RetStack.SizeLeft++;
             } break;
             }
@@ -217,7 +253,6 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
         case OP_ISLT: INTEGER_SET_IF(<, Opcode, .SWord.First); break;
         case OP_ISGT: INTEGER_SET_IF(>, Opcode, .SWord.First); break;
 
-
         case OP_BR:
         {
             I32 Offset = GET_BR_IMM(Opcode, IP);
@@ -230,7 +265,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
                 goto CallStackOverflow;
 
             PVM->RetStack.Val->IP = IP;
-            PVM->RetStack.Val->FP = FP;
+            PVM->RetStack.Val->FP = FP().Ptr;
             PVM->RetStack.Val++;
             PVM->RetStack.SizeLeft--;
 
@@ -278,74 +313,64 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
         case OP_FSGT: FLOAT_SET_IF(>, Opcode, .Word.First, .Single); break;
 
 
-        case OP_MOV: INTEGER_BINARY_OP(ASSIGNMENT, Opcode, .Word.First); break;
+        case OP_MOV64: MOVE_REGISTER(Opcode, .DWord, .DWord); break;
+        case OP_MOV32: MOVE_REGISTER(Opcode, .Word.First, .Word.First); break;
+        case OP_MOV16: MOVE_REGISTER(Opcode, .Half.First, .Half.First); break;
+        case OP_MOV8:  MOVE_REGISTER(Opcode, .Byte[PVM_LEAST_SIGNIF_BYTE], .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
+        case OP_MOVSEX64_32: MOVE_REGISTER(Opcode, .SDWord, .SWord.First); break;
+        case OP_MOVSEX64_16: MOVE_REGISTER(Opcode, .SDWord, .SHalf.First); break;
+        case OP_MOVSEX64_8:  MOVE_REGISTER(Opcode, .SDWord, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
+        case OP_MOVSEX32_16: MOVE_REGISTER(Opcode, .SWord.First, .SHalf.First); break;
+        case OP_MOVSEX32_8:  MOVE_REGISTER(Opcode, .SWord.First, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
+        case OP_MOVSEXP_32:  MOVE_REGISTER(Opcode, .Ptr.Int, .SWord.First); break;
+        case OP_MOVSEXP_16:  MOVE_REGISTER(Opcode, .Ptr.Int, .SWord.First); break;
+        case OP_MOVSEXP_8:   MOVE_REGISTER(Opcode, .Ptr.Int, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
+
+        case OP_MOVZEX64_32: MOVE_REGISTER(Opcode, .DWord, .Word.First); break;
+        case OP_MOVZEX64_16: MOVE_REGISTER(Opcode, .DWord, .SHalf.First); break;
+        case OP_MOVZEX64_8:  MOVE_REGISTER(Opcode, .DWord, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
+        case OP_MOVZEX32_16: MOVE_REGISTER(Opcode, .Word.First, .SHalf.First); break;
+        case OP_MOVZEX32_8:  MOVE_REGISTER(Opcode, .Word.First, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
+        case OP_MOVZEXP_32:  MOVE_REGISTER(Opcode, .Ptr.UInt, .SWord.First); break;
+        case OP_MOVZEXP_16:  MOVE_REGISTER(Opcode, .Ptr.UInt, .SWord.First); break;
+        case OP_MOVZEXP_8:   MOVE_REGISTER(Opcode, .Ptr.UInt, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
         case OP_MOVI:
         {
-            switch (PVM_GET_IMMTYPE(Opcode))
-            {
-            case IMMTYPE_I16:
-            {
-                PVM->R[PVM_GET_RD(Opcode)].SWord.First = (I32)(I16)*IP++;
-            } break;
-            case IMMTYPE_I32:
-            {
-                U32 Imm = *IP++;
-                Imm |= (U32)*IP++ << 16;
-                PVM->R[PVM_GET_RD(Opcode)].SWord.First = (I64)(I32)Imm;
-            } break;
-            case IMMTYPE_I48:
-            {
-                U64 Imm = *IP++;
-                Imm |= (U32)*IP++ << 16;
-                Imm |= (U64)*IP++ << 32;
-                PVM->R[PVM_GET_RD(Opcode)].SDWord = BitSex64(Imm, 47);
-            } break;
-            case IMMTYPE_U16:
-            {
-                U32 Imm = *IP++;
-                Imm |= (U32)*IP++ << 16;
-                PVM->R[PVM_GET_RD(Opcode)].Word.First = Imm;
-            } break;
-            case IMMTYPE_U32:
-            {
-                U32 Imm = *IP++;
-                Imm |= (U32)*IP++ << 16;
-                PVM->R[PVM_GET_RD(Opcode)].Word.First = Imm;
-            } break;
-            case IMMTYPE_U48:
-            {
-                U32 Imm = *IP++;
-                Imm |= (U32)*IP++ << 16;
-                Imm |= (U64)*IP++ << 32;
-                PVM->R[PVM_GET_RD(Opcode)].DWord = Imm;
-            } break;
-            case IMMTYPE_U64:
-            {
-                U32 Imm = *IP++;
-                Imm |= (U32)*IP++ << 16;
-                Imm |= (U64)*IP++ << 32;
-                Imm |= (U64)*IP++ << 48;
-                PVM->R[PVM_GET_RD(Opcode)].DWord = Imm;
-            } break;
-            }
-        }
+            U64 Imm = 0;
+            GET_SEX_IMM(Imm, PVM_GET_IMMTYPE(Opcode), IP);
+            PVM->R[PVM_GET_RD(Opcode)].DWord = Imm;
+        } break;
         case OP_FMOV: FLOAT_BINARY_OP(ASSIGNMENT, Opcode, .Single); break;
 
 
-        case OP_LDRS: LOAD_INTEGER_FROM_STACK(Opcode, IP, .Word.First, .Word); break;
-        case OP_LDRG: LOAD_INTEGER_FROM_GLOBAL(Opcode, IP, .Word.First); break;
-        case OP_STRS: STORE_INTEGER_TO_STACK(Opcode, IP, .Word.First, .Word); break;
-        case OP_STRG: STORE_INTEGER_TO_GLOBAL(Opcode, IP, .Word.First); break;
+        case OP_LD8: LOAD_INTEGER(Opcode, IMMTYPE_U16, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
+        case OP_LD16: LOAD_INTEGER(Opcode, IMMTYPE_U16, IP, .Half.First, .Ptr.Byte); break;
+        case OP_LD32: LOAD_INTEGER(Opcode, IMMTYPE_U16, IP, .Word.First, .Ptr.Byte); break;
+        case OP_LD64: LOAD_INTEGER(Opcode, IMMTYPE_U16, IP, .DWord, .Ptr.Byte); break;
+        case OP_ST8: STORE_INTEGER(Opcode, IMMTYPE_U16, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
+        case OP_ST16: STORE_INTEGER(Opcode, IMMTYPE_U16, IP, .Half.First, .Ptr.Byte); break;
+        case OP_ST32: STORE_INTEGER(Opcode, IMMTYPE_U16, IP, .Word.First, .Ptr.Byte); break;
+        case OP_ST64: STORE_INTEGER(Opcode, IMMTYPE_U16, IP, .DWord, .Ptr.Byte); break;
 
-        case OP_LDFS: LOAD_FLOAT_FROM_STACK(Opcode, IP, .Single, .Word); break;
-        case OP_LDFG: LOAD_FLOAT_FROM_GLOBAL(Opcode, IP, .Single); break;
-        case OP_STFS: STORE_FLOAT_TO_STACK(Opcode, IP, .Single, .Word); break;
-        case OP_STFG: STORE_FLOAT_TO_GLOBAL(Opcode, IP, .Single); break;
+        case OP_LD8L: LOAD_INTEGER(Opcode, IMMTYPE_U32, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
+        case OP_LD16L: LOAD_INTEGER(Opcode, IMMTYPE_U32, IP, .Half.First, .Ptr.Byte); break;
+        case OP_LD32L: LOAD_INTEGER(Opcode, IMMTYPE_U32, IP, .Word.First, .Ptr.Byte); break;
+        case OP_LD64L: LOAD_INTEGER(Opcode, IMMTYPE_U32, IP, .DWord, .Ptr.Byte); break;
+        case OP_ST8L: STORE_INTEGER(Opcode, IMMTYPE_U32, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
+        case OP_ST16L: STORE_INTEGER(Opcode, IMMTYPE_U32, IP, .Half.First, .Ptr.Byte); break;
+        case OP_ST32L: STORE_INTEGER(Opcode, IMMTYPE_U32, IP, .Word.First, .Ptr.Byte); break;
+        case OP_ST64L: STORE_INTEGER(Opcode, IMMTYPE_U32, IP, .DWord, .Ptr.Byte); break;
 
-        case OP_DWORD:
-        {
-        } break;
 
+        case OP_LDF32: LOAD_FLOAT(Opcode, IMMTYPE_U16, IP, .Single, .Ptr.Word); break;
+        case OP_STF32: STORE_FLOAT(Opcode, IMMTYPE_U16, IP, .Single, .Ptr.Word); break;
+        case OP_LDF64: LOAD_FLOAT(Opcode, IMMTYPE_U16, IP, .Double, .Ptr.DWord); break;
+        case OP_STF64: STORE_FLOAT(Opcode, IMMTYPE_U16, IP, .Double, .Ptr.DWord); break;
+
+        case OP_LDF32L: LOAD_FLOAT(Opcode, IMMTYPE_U32, IP, .Single, .Ptr.Word); break;
+        case OP_STF32L: STORE_FLOAT(Opcode, IMMTYPE_U32, IP, .Single, .Ptr.Word); break;
+        case OP_LDF64L: LOAD_FLOAT(Opcode, IMMTYPE_U32, IP, .Double, .Ptr.DWord); break;
+        case OP_STF64L: STORE_FLOAT(Opcode, IMMTYPE_U32, IP, .Double, .Ptr.DWord); break;
         }
     }
 DivisionBy0:
@@ -355,13 +380,10 @@ CallStackOverflow:
 Exit:
     return PVM_NO_ERROR;
 
-#undef LOAD_FLOAT_FROM_STACK
-#undef STORE_INTEGER_TO_STACK
-#undef LOAD_FLOAT_FROM_GLOBAL
-#undef STORE_INTEGER_TO_GLOBAL
-#undef LOAD_INTEGER_FROM_GLOBAL
-#undef STORE_INTEGER_TO_STACK
-#undef LOAD_INTEGER_FROM_STACK
+#undef LOAD_FLOAT
+#undef STORE_INTEGER
+#undef STORE_INTEGER
+#undef LOAD_INTEGER
 #undef VERIFY_STACK_ADDR
 #undef PUSH_MULTIPLE
 #undef POP_MULTIPLE

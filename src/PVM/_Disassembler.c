@@ -12,7 +12,16 @@ static const char *sFltReg[PVM_FREG_COUNT] = {
     "f8", "f9", "f10", "f11", "f12", "f13", "f14", "f15",
 };
 
-static const int sBytesPerLine = 4;
+static const UInt sBytesPerLine = 4;
+static const UInt sAddrPad = 8;
+static const UInt sMnemonicPad = 12;
+static const UInt sCommentPad = 10;
+
+typedef struct ImmediateInfo{
+    U32 Addr;
+    UInt SexIndex, Count;
+    U64 Imm;
+} ImmediateInfo;
 
 
 void PVMDisasm(FILE *f, const PVMChunk *Chunk, const char *Name)
@@ -36,8 +45,8 @@ static void DisasmRdRs(FILE *f, const char *Mnemonic, const char *RegSet[], U16 
     const char *Rs = RegSet[PVM_GET_RS(Opcode)];
 
     int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
-    fprintf(f, "%*s%6s %s, %s\n", 3*sBytesPerLine - Pad, "", 
-            Mnemonic, Rd, Rs
+    fprintf(f, "%*s%*s %s, %s\n", 3*sBytesPerLine - Pad, "", 
+            sMnemonicPad, Mnemonic, Rd, Rs
     );
 }
 
@@ -48,8 +57,8 @@ static void DisasmFscc(FILE *f, const char *Mnemonic, U16 Opcode)
     const char *Fs = sFltReg[PVM_GET_RS(Opcode)];
 
     int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
-    fprintf(f, "%*s%6s %s, %s, %s\n", 3*sBytesPerLine - Pad, "", 
-            Mnemonic, Rd, Fd, Fs
+    fprintf(f, "%*s%*s %s, %s, %s\n", 3*sBytesPerLine - Pad, "", 
+            sMnemonicPad, Mnemonic, Rd, Fd, Fs
     );
 }
 
@@ -64,8 +73,8 @@ static U32 DisasmBcc(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *
     int Pad = fprintf(f, "%02x %02x %02x %02x", 
             Opcode >> 8, Opcode & 0xFF, Chunk->Code[Addr] >> 8, Chunk->Code[Addr] & 0xFF
     );
-    fprintf(f, "%*s%6s %s, [%u]\n", 3*sBytesPerLine - Pad, "",
-            Mnemonic, Rd, Addr + BrOffset
+    fprintf(f, "%*s%*s %s, [%u]\n", 3*sBytesPerLine - Pad, "",
+            sMnemonicPad, Mnemonic, Rd, Addr + BrOffset
     );
     return Addr + 2;
 }
@@ -83,8 +92,8 @@ static U32 DisasmBr(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *C
             Opcode >> 8, Opcode & 0xFF, Chunk->Code[Addr] >> 8, Chunk->Code[Addr] & 0xFF
     );
     Addr += 2;
-    fprintf(f, "%*s%6s %s, [%u]\n", 3*sBytesPerLine - Pad, "",
-            Mnemonic, Rd, Addr + BrOffset
+    fprintf(f, "%*s%*s %s, [%u]\n", 3*sBytesPerLine - Pad, "",
+            sMnemonicPad, Mnemonic, Rd, Addr + BrOffset
     );
     return Addr;
 }
@@ -93,8 +102,8 @@ static U32 DisasmBr(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *C
 static void DisasmMnemonic(FILE *f, const char *Mnemonic, U16 Opcode)
 {
     int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
-    fprintf(f, "%*s%6s\n", 3*sBytesPerLine - Pad, "", 
-            Mnemonic
+    fprintf(f, "%*s%*s\n", 3*sBytesPerLine - Pad, "", 
+            sMnemonicPad, Mnemonic
     );
 }
 
@@ -160,9 +169,90 @@ static void DisasmReglist(FILE *f, const char *Mnemonic, U16 Opcode, bool UpperR
 #undef REGISTER_SELECTED
 
     int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
-    fprintf(f, "%*s%6s { %s }\n", 3*sBytesPerLine - Pad, "", 
-            Mnemonic, RegisterListStr
+    fprintf(f, "%*s%*s { %s }\n", 3*sBytesPerLine - Pad, "", 
+            sMnemonicPad, Mnemonic, RegisterListStr
     );
+}
+
+static ImmediateInfo GetImmFromImmType(const PVMChunk *Chunk, U32 Addr, PVMImmType ImmType)
+{
+    ImmediateInfo Info = {
+        .Count = 1,
+        .SexIndex = 0,
+    };
+    switch (ImmType)
+    {
+    default:
+    case IMMTYPE_I16: Info.SexIndex = 15;
+    case IMMTYPE_U16: break;
+    case IMMTYPE_I32: Info.SexIndex = 31;
+    case IMMTYPE_U32: Info.Count = 2; break;
+    case IMMTYPE_I48: Info.SexIndex = 47; 
+    case IMMTYPE_U48: Info.Count = 3; break;
+    case IMMTYPE_U64: Info.Count = 4; break;
+    }
+
+    /* get imm */
+    Info.Imm = Chunk->Code[Addr++];
+    for (UInt i = 1; i < Info.Count; i++)
+    {
+        Info.Imm |= (U64)Chunk->Code[Addr++] << i * 16;
+    }
+    if (Info.SexIndex)
+        Info.Imm = BitSex64(Info.Imm, Info.SexIndex);
+    Info.Addr = Addr;
+    return Info;
+}
+
+static void DisplayImmBytes(FILE *f, const ImmediateInfo Info)
+{
+    /* display hex dump of immediate as how it is represented in memory */
+    for (UInt i = 0; i < Info.Count; i++)
+    {
+        if (i % 2 == 0)
+        {
+            fprintf(f, "\n%*s  ", sAddrPad, "");
+        }
+        U8 High = Info.Imm >> (i * 16 + 8);
+        U8 Lo = (Info.Imm >> i*16) & 0xFF;
+        fprintf(f, "%02x %02x ", High, Lo);
+    }
+}
+
+
+static U32 DisasmRdImm(FILE *f, const char *Mnemonic, const PVMChunk *Chunk, U32 Addr, U16 Opcode)
+{
+    ImmediateInfo Info = GetImmFromImmType(Chunk, Addr, PVM_GET_IMMTYPE(Opcode));
+
+    /* display instruction */
+    const char *Rd = sIntReg[PVM_GET_RD(Opcode)];
+    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    fprintf(f, "%*s%*s%s%d %s, 0x%llx %*s %lld", 3*sBytesPerLine - Pad, "", 
+            sMnemonicPad, Mnemonic, 
+                Info.SexIndex ? "sex64_" : "zex64_", Info.Count*16, 
+                Rd, Info.Imm, 
+            sCommentPad, "# Decimal", Info.Imm
+    );
+
+    DisplayImmBytes(f, Info);
+    return Info.Addr;
+}
+
+static U32 DisasmMem(FILE *f, 
+        const char *Mnemonic, const char **RegSet, 
+        U16 Opcode, PVMImmType ImmType, const PVMChunk *Chunk, U32 Addr)
+{
+    ImmediateInfo Info = GetImmFromImmType(Chunk, Addr, ImmType);
+
+    const char *Rd = RegSet[PVM_GET_RD(Opcode)];
+    const char *Rs = sIntReg[PVM_GET_RS(Opcode)];
+    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    fprintf(f, "%*s%*s %s, [%s + %llu]", 3*sBytesPerLine - Pad, "", 
+            sMnemonicPad, Mnemonic, Rd, Rs, Info.Imm
+    );
+
+    DisplayImmBytes(f, Info);
+    return Info.Addr;
 }
 
 
@@ -171,7 +261,7 @@ static void DisasmReglist(FILE *f, const char *Mnemonic, U16 Opcode, bool UpperR
 U32 PVMDisasSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
 {
     U16 Opcode = Chunk->Code[Addr];
-    fprintf(f, "%08u: ", Addr);
+    fprintf(f, "%0*u: ", sAddrPad, Addr);
 
     switch (PVM_GET_OP(Opcode))
     {
@@ -206,6 +296,36 @@ U32 PVMDisasSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_POPL: DisasmReglist(f, "popl", Opcode, false); break;
     case OP_POPH: DisasmReglist(f, "pshh", Opcode, true); break;
 
+    case OP_LD64: return DisasmMem(f, "ld64", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_ST64: return DisasmMem(f, "st64", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LD32: return DisasmMem(f, "ld32", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_ST32: return DisasmMem(f, "st32", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LD16: return DisasmMem(f, "ld16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_ST16: return DisasmMem(f, "st16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LD8: return DisasmMem(f, "ld8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_ST8: return DisasmMem(f, "st8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+
+    case OP_LD64L: return DisasmMem(f, "ld64l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_ST64L: return DisasmMem(f, "st64l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LD32L: return DisasmMem(f, "ld32l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_ST32L: return DisasmMem(f, "st32l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LD16L: return DisasmMem(f, "ld16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_ST16L: return DisasmMem(f, "st16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LD8L: return DisasmMem(f, "ld8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_ST8L: return DisasmMem(f, "st8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+
+
+    case OP_LDF32: return DisasmMem(f, "ldf32", sFltReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_STF32: return DisasmMem(f, "stf32", sFltReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDF32L: return DisasmMem(f, "ldf32l", sFltReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_STF32L: return DisasmMem(f, "stf32l", sFltReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+ 
+    case OP_LDF64: return DisasmMem(f, "ldf64", sFltReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_STF64: return DisasmMem(f, "stf64", sFltReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDF64L: return DisasmMem(f, "ldf64l", sFltReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_STF64L: return DisasmMem(f, "stf64l", sFltReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+       
+
 
     case OP_FADD: DisasmRdRs(f, "fadd", sFltReg, Opcode); break;
     case OP_FSUB: DisasmRdRs(f, "fsub", sFltReg, Opcode); break;
@@ -213,18 +333,64 @@ U32 PVMDisasSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_FMUL: DisasmRdRs(f, "fmul", sFltReg, Opcode); break;
     case OP_FNEG: DisasmRdRs(f, "fneg", sFltReg, Opcode); break;
 
-    case OP_MOV: DisasmRdRs(f, "mov", sIntReg, Opcode); break;
-    case OP_FMOV: DisasmRdRs(f, "fmov", sIntReg, Opcode); break;
 
+    case OP_MOV64: DisasmRdRs(f, "mov64", sIntReg, Opcode); break;
+    case OP_MOV32: DisasmRdRs(f, "mo32", sIntReg, Opcode); break;
+    case OP_MOV16: DisasmRdRs(f, "mov16", sIntReg, Opcode); break;
+    case OP_MOV8: DisasmRdRs(f, "mov8", sIntReg, Opcode); break;
+
+    case OP_MOVSEX64_32: DisasmRdRs(f, "movsex64_32", sIntReg, Opcode); break;
+    case OP_MOVSEX64_16: DisasmRdRs(f, "movsex64_16", sIntReg, Opcode); break;
+    case OP_MOVSEX64_8:  DisasmRdRs(f, "movsex64_8", sIntReg, Opcode); break;
+    case OP_MOVSEX32_16: DisasmRdRs(f, "movsex32_16", sIntReg, Opcode); break;
+    case OP_MOVSEX32_8:  DisasmRdRs(f, "movsex32_8", sIntReg, Opcode); break;
+    case OP_MOVSEXP_32:  DisasmRdRs(f, "movsexP_32", sIntReg, Opcode); break;
+    case OP_MOVSEXP_16:  DisasmRdRs(f, "movsexP_16", sIntReg, Opcode); break;
+    case OP_MOVSEXP_8:   DisasmRdRs(f, "movsexP_8", sIntReg, Opcode); break;
+
+    case OP_MOVZEX64_32: DisasmRdRs(f, "movzex64_32", sIntReg, Opcode); break;
+    case OP_MOVZEX64_16: DisasmRdRs(f, "movzex64_16", sIntReg, Opcode); break;
+    case OP_MOVZEX64_8:  DisasmRdRs(f, "movzex64_8", sIntReg, Opcode); break;
+    case OP_MOVZEX32_16: DisasmRdRs(f, "movzex32_16", sIntReg, Opcode); break;
+    case OP_MOVZEX32_8:  DisasmRdRs(f, "movzex32_8", sIntReg, Opcode); break;
+    case OP_MOVZEXP_32:  DisasmRdRs(f, "movzexP_32", sIntReg, Opcode); break;
+    case OP_MOVZEXP_16:  DisasmRdRs(f, "movzexP_16", sIntReg, Opcode); break;
+    case OP_MOVZEXP_8:   DisasmRdRs(f, "movzexP_8", sIntReg, Opcode); break;
+
+    case OP_FMOV: DisasmRdRs(f, "fmov", sIntReg, Opcode); break;
+    case OP_MOVI: return DisasmRdImm(f, "movi", Chunk, Addr, Opcode);
 
     case OP_FSEQ: DisasmFscc(f, "fseq", Opcode); break;
     case OP_FSNE: DisasmFscc(f, "fsne", Opcode); break;
     case OP_FSLT: DisasmFscc(f, "fslt", Opcode); break;
     case OP_FSGT: DisasmFscc(f, "fsgt", Opcode); break;
 
-    case OP_DWORD:
-    {
-    } break;
+
+
+
+    case OP_ADD64:  DisasmRdRs(f, "add64", sIntReg, Opcode); break;
+    case OP_SUB64:  DisasmRdRs(f, "sub64", sIntReg, Opcode); break;
+    case OP_DIV64:  DisasmRdRs(f, "div64", sIntReg, Opcode); break;
+    case OP_MUL64:  DisasmRdRs(f, "mul64", sIntReg, Opcode); break;
+    case OP_IDIV64: DisasmRdRs(f, "idiv64", sIntReg, Opcode); break;
+    case OP_IMUL64: DisasmRdRs(f, "imul64", sIntReg, Opcode); break;
+    case OP_NEG64:  DisasmRdRs(f, "neg64", sIntReg, Opcode); break;
+
+    case OP_SEQ64: DisasmRdRs(f, "seq64", sIntReg, Opcode); break;
+    case OP_SNE64: DisasmRdRs(f, "sne64", sIntReg, Opcode); break;
+    case OP_SLT64: DisasmRdRs(f, "slt64", sIntReg, Opcode); break;
+    case OP_SGT64: DisasmRdRs(f, "sgt64", sIntReg, Opcode); break;
+    case OP_ISLT64: DisasmRdRs(f, "islt64", sIntReg, Opcode); break;
+    case OP_ISGT64: DisasmRdRs(f, "isgt64", sIntReg, Opcode); break;
+
+    case OP_SEQP: DisasmRdRs(f, "seqP", sIntReg, Opcode); break;
+    case OP_SNEP: DisasmRdRs(f, "sneP", sIntReg, Opcode); break;
+    case OP_SLTP: DisasmRdRs(f, "sltP", sIntReg, Opcode); break;
+    case OP_SGTP: DisasmRdRs(f, "sgtP", sIntReg, Opcode); break;
+    case OP_ISLTP: DisasmRdRs(f, "isltP", sIntReg, Opcode); break;
+    case OP_ISGTP: DisasmRdRs(f, "isgtP", sIntReg, Opcode); break;
+
+
     }
     return Addr + 1;
 }
