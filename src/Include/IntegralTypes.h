@@ -2,6 +2,8 @@
 #define PASCAL_INTEGRAL_TYPE_H
 
 
+#include "Common.h"
+
 typedef enum IntegralType 
 {
     TYPE_INVALID = 0,
@@ -13,7 +15,10 @@ typedef enum IntegralType
     TYPE_BOOLEAN,
     TYPE_COUNT,
 } IntegralType;
+
 const char *IntegralTypeToStr(IntegralType Type);
+
+bool IntegralTypeIsSigned(IntegralType Type);
 
 
 

@@ -14,14 +14,29 @@ typedef enum PVMOp
     OP_DIV,
     OP_IMUL,
     OP_IDIV,
+    OP_MOD,
     OP_NEG,
+
+    OP_ADDI,
+    OP_ADDQI,
+
+    OP_SHL,
+    OP_SHR,
+    OP_ASR,
+    OP_VSHL,
+    OP_VSHR,
+    OP_VASR,
 
     OP_SEQ,
     OP_SNE,
     OP_SGT,
     OP_SLT,
+    OP_SGE,
+    OP_SLE,
     OP_ISGT,
     OP_ISLT,
+    OP_ISGE,
+    OP_ISLE,
 
     OP_BNZ,
     OP_BEZ,
@@ -44,6 +59,8 @@ typedef enum PVMOp
     OP_FSNE,
     OP_FSGT,
     OP_FSLT,
+    OP_FSGE,
+    OP_FSLE,
 
 
     OP_MOV64,
@@ -51,6 +68,7 @@ typedef enum PVMOp
     OP_MOV16,
     OP_MOV8,
     OP_MOVI,
+    OP_MOVQI,
     OP_FMOV,
 
     OP_MOVSEX64_32,
@@ -89,7 +107,6 @@ typedef enum PVMOp
     OP_LD64L,
     OP_ST64L,
 
-
     OP_LDF32,
     OP_STF32,
     OP_LDF64,
@@ -99,6 +116,37 @@ typedef enum PVMOp
     OP_LDF64L,
     OP_STF64L,
 
+
+    OP_ADD64,
+    OP_SUB64,
+    OP_DIV64,
+    OP_MUL64,
+    OP_IDIV64,
+    OP_IMUL64,
+    OP_MOD64,
+    OP_NEG64,
+
+    OP_SEQ64,
+    OP_SNE64,
+    OP_SLT64,
+    OP_SGT64,
+    OP_SLE64,
+    OP_SGE64,
+    OP_ISLT64,
+    OP_ISGT64,
+    OP_ISLE64,
+    OP_ISGE64,
+
+    OP_SEQP,
+    OP_SNEP,
+    OP_SLTP,
+    OP_SGTP,
+    OP_SLEP,
+    OP_SGEP,
+    OP_ISLTP,
+    OP_ISGTP,
+    OP_ISLEP,
+    OP_ISGEP,
 } PVMOp;
 
 typedef enum PVMSysOp
@@ -121,7 +169,7 @@ typedef enum PVMImmType
 
 
 
-#define PVM_OP32(Ins, Rd, Rs)\
+#define PVM_OP(Ins, Rd, Rs)\
     (BIT_POS32(OP_ ## Ins, 8, 8)\
     | BIT_POS32(Rd, 4, 4)\
     | BIT_POS32(Rs, 4, 0))
@@ -130,7 +178,20 @@ typedef enum PVMImmType
     (BIT_POS32(OP_ ## Ins, 8, 8)\
     | BIT_POS32(List, 8, 0))
 
-#define PVM_MOVI(Rd, ImmType) PVM_OP32(MOVI, Rd, IMMTYPE_ ## ImmType)
+#define PVM_SYS(Op)\
+    (BIT_POS32(OP_SYS, 8, 8)\
+     | BIT_POS32(OP_SYS_ ## Op, 8, 0))
+
+#define PVM_MOVI(Rd, ImmType) PVM_OP(MOVI, Rd, IMMTYPE_ ## ImmType)
+
+#define PVM_B(Condition, Rd, Imm4)\
+    (BIT_POS32(OP_B ## Condition, 8, 8)\
+     | BIT_POS32(Rd, 4, 4)\
+     | BIT_POS32(Imm4, 4, 0))
+
+#define PVM_BR(UpperByte)\
+    (BIT_POS32(OP_BR, 8, 8)\
+     | BIT_POS32(UpperByte, 8, 0))
 
 
 #define PVM_GET_OP(OpcodeHalf) (PVMOp)(((Opcode) >> 8) & 0xFF)
@@ -140,6 +201,10 @@ typedef enum PVMImmType
 #define PVM_GET_IMMTYPE(OpcodeHalf) (PVMImmType)((OpcodeHalf) & 0xF)
 
 #define PVM_GET_SYS_OP(OpcodeHalf) (PVMSysOp)((OpcodeHalf) & 0xFF)
+
+#define IS_SMALL_IMM(Integer) (-8 <= (I64)(Integer) && (I64)(Integer) <= 7)
+
+
 
 #if PVM_LITTLE_ENDIAN
 #  define PVM_LEAST_SIGNIF_BYTE 0

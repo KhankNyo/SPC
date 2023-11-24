@@ -16,8 +16,6 @@ PVMChunk ChunkInit(U32 InitialCap)
 
         .Global.Data.As.Raw = MemAllocateZero(PVM_CHUNK_GLOBAL_MAX_SIZE),
         .Global.Cap = PVM_CHUNK_GLOBAL_MAX_SIZE,
-        .Readonly.Data.As.Raw = MemAllocateZero(PVM_CHUNK_READONLY_MAX_SIZE),
-        .Readonly.Cap = PVM_CHUNK_READONLY_MAX_SIZE,
     };
     return Chunk;
 }
@@ -26,7 +24,6 @@ void ChunkDeinit(PVMChunk *Chunk)
 {
     MemDeallocateArray(Chunk->Code);
     MemDeallocate(Chunk->Global.Data.As.Raw);
-    MemDeallocate(Chunk->Readonly.Data.As.Raw);
     *Chunk = (PVMChunk){ 0 };
 }
 
@@ -44,43 +41,67 @@ U32 ChunkWriteCode(PVMChunk *Chunk, U16 Opcode)
     return Chunk->Count++;
 }
 
-U32 ChunkWriteMovImm(PVMChunk *Chunk, UInt Reg, U64 Imm)
+U32 ChunkWriteMovImm(PVMChunk *Chunk, UInt Reg, U64 Imm, IntegralType DstType)
 {
     U32 Addr = 0;
-    int Count = 1;
-    if (IN_I8(Imm) || IN_U8(Imm) || IN_I16(Imm))
+    int Count = 0;
+    if (IS_SMALL_IMM(Imm))
+    {
+        Addr = ChunkWriteCode(Chunk, PVM_OP(MOVQI, Reg, Imm));
+    }
+    else switch (DstType)
+    {
+    case TYPE_I8:
+    case TYPE_U8:
+    case TYPE_I16:
     {
         Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, I16));
-    }
-    else if (IN_U16(Imm))
+        Count = 1;
+    } break;
+    case TYPE_U16:
     {
         Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U16));
-    }
-    else if (IN_I32(Imm))
+        Count = 1;
+    } break;
+    case TYPE_I32:
     {
         Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, I32));
         Count = 2;
-    }
-    else if (IN_U32(Imm))
+    } break;
+    case TYPE_U32:
     {
         Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U32));
         Count = 2;
-    }
-    else if (IN_I48(Imm))
+    } break;
+
+    case TYPE_I64:
+    case TYPE_U64:
     {
-        Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, I48));
-        Count = 3;
-    }
-    else if (IN_U48(Imm))
+        if (IN_I48(Imm))
+        {
+            Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, I48));
+            Count = 3;
+        }
+        else if (IN_U48(Imm))
+        {
+            Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U48));
+            Count = 3;
+        }
+        else 
+        {
+            Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U64));
+            Count = 4;
+        }
+    } break;
+    case TYPE_F64:
+    case TYPE_F32:
+    default:
     {
-        Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U48));
-        Count = 3;
+        PASCAL_UNREACHABLE("ChunkWriteMovImm: Unreachable");
+    } break;
+
     }
-    else 
-    {
-        Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U64));
-        Count = 4;
-    }
+
 
     for (int i = 0; i < Count; i++)
     {
@@ -92,24 +113,15 @@ U32 ChunkWriteMovImm(PVMChunk *Chunk, UInt Reg, U64 Imm)
 
 
 
-U32 ChunkWriteReadOnlyData(PVMChunk *Chunk, const void *Data, U32 Size)
-{
-    if (Chunk->Readonly.Count + Size > Chunk->Readonly.Cap)
-    {
-        PASCAL_UNREACHABLE("TODO: more graceful way of handling this.");
-    }
-
-    U32 Old = Chunk->Readonly.Count;
-    memcpy(&Chunk->Readonly.Data.As.u8[Chunk->Readonly.Count], Data, Size);
-    Chunk->Readonly.Count += Size;
-    return Old;
-}
-
 U32 ChunkWriteGlobalData(PVMChunk *Chunk, const void *Data, U32 Size)
 {
     if (Chunk->Global.Count + Size > Chunk->Global.Cap)
     {
-        PASCAL_UNREACHABLE("TODO: more graceful way of handling this.");
+        Chunk->Global.Cap = Chunk->Global.Cap * PVM_CHUNK_GROW_RATE + Size;
+        Chunk->Global.Data.As.Raw = MemReallocateArray(*Chunk->Global.Data.As.u8,
+                Chunk->Global.Data.As.u8,
+                Chunk->Global.Cap
+        );
     }
 
     U32 Old = Chunk->Global.Count;

@@ -27,5 +27,10 @@ const char *IntegralTypeToStr(IntegralType Type)
     return "invalid";
 }
 
+bool IntegralTypeIsSigned(IntegralType Type)
+{
+    return TYPE_I8 <= Type && Type <= TYPE_I64;
+}
+
 
 
