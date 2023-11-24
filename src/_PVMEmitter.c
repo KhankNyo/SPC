@@ -3,14 +3,44 @@
 #include "_PVMEmitter.h"
 
 
+
+/*
+ * SP, GP, FP are allocated by default
+ * */
+#define EMPTY_REGLIST 0xE000
+
+
 PVMEmitter PVMEmitterInit(PVMChunk *Chunk)
 {
     PVMEmitter Emitter = {
         .Chunk = Chunk,
-        .Reglist = 0,
+        .Reglist = EMPTY_REGLIST,
         .SpilledRegCount = 0,
         .SavedRegisters = { 0 },
         .CurrentScopeDepth = 0,
+        .Reg = {
+            .SP = {
+                .LocationType = VAR_REG,
+                .As.Register = {
+                    .ID = PVM_REG_SP,
+                    .Type = TYPE_POINTER,
+                },
+            },
+            .FP = {
+                .LocationType = VAR_REG,
+                .As.Register = {
+                    .ID = PVM_REG_FP,
+                    .Type = TYPE_POINTER,
+                },
+            },
+            .GP = {
+                .LocationType = VAR_REG,
+                .As.Register = {
+                    .ID = PVM_REG_GP,
+                    .Type = TYPE_POINTER,
+                },
+            },
+        },
     };
     return Emitter;
 }
@@ -30,6 +60,7 @@ void PVMEmitterEndScope(PVMEmitter *Emitter)
 {
     PASCAL_ASSERT(Emitter->CurrentScopeDepth > 0, "Unreachable");
     Emitter->Reglist = Emitter->SavedRegisters[--Emitter->CurrentScopeDepth];
+    /* TODO: stack space */
 }
 
 
@@ -389,9 +420,9 @@ void FnName (PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src
     bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, Src);\
     if (Rd.As.Register.Type == TYPE_U64\
     || Rd.As.Register.Type == TYPE_I64) {\
-        WriteOp16(Emitter, PVM_OP( Mnemonic , Rd.As.Register.ID, Rs.As.Register.ID));\
-    } else  {\
         WriteOp16(Emitter, PVM_OP( Mnemonic ## 64, Rd.As.Register.ID, Rs.As.Register.ID));\
+    } else  {\
+        WriteOp16(Emitter, PVM_OP( Mnemonic , Rd.As.Register.ID, Rs.As.Register.ID));\
     }\
     if (OwningRd) {\
         LoadFromReg(Emitter, Dst->As.Memory, Rd.As.Register);\
@@ -466,7 +497,6 @@ do {\
             [TYPE_I16] = PVM_OP(MOVSEX64_16, RS, 0),
             [TYPE_U8]  = PVM_OP(MOVSEX64_8, RSWARN, 0),
             [TYPE_I8]  = PVM_OP(MOVSEX64_8, RS, 0),
-            [TYPE_BOOLEAN]  = NOP,
         },
         [TYPE_U64] = {
             [TYPE_I64] = NOPWARN,
@@ -477,7 +507,6 @@ do {\
             [TYPE_U16] = PVM_OP(MOVZEX64_16, RS, 0),
             [TYPE_I8]  = PVM_OP(MOVZEX64_8, RSWARN, 0),
             [TYPE_U8]  = PVM_OP(MOVZEX64_8, RS, 0),
-            [TYPE_BOOLEAN]  = NOP,
         },
         [TYPE_I32] = {
             [TYPE_U64] = PVM_OP(MOVZEX64_32, RDWARN, 0),
@@ -488,7 +517,6 @@ do {\
             [TYPE_I16] = PVM_OP(MOVSEX32_16, RS, 0),
             [TYPE_U8]  = PVM_OP(MOVSEX32_8, RSWARN, 0),
             [TYPE_I8]  = PVM_OP(MOVSEX32_8, RS, 0),
-            [TYPE_BOOLEAN]  = NOP,
         },
         [TYPE_U32] = {
             [TYPE_I64] = PVM_OP(MOVSEX64_32, RDWARN, 0),
@@ -499,7 +527,6 @@ do {\
             [TYPE_U16] = PVM_OP(MOVZEX32_16, RS, 0),
             [TYPE_I8]  = PVM_OP(MOVZEX32_8, RSWARN, 0),
             [TYPE_U8]  = PVM_OP(MOVZEX32_8, RS, 0),        
-            [TYPE_BOOLEAN]  = NOP,
         },
         [TYPE_I16] = {
             [TYPE_U64] = PVM_OP(MOVZEX64_16, RDWARN, 0),
@@ -510,7 +537,6 @@ do {\
             [TYPE_I16] = PVM_OP(MOVSEX32_16, RDRS, 0),
             [TYPE_U8]  = PVM_OP(MOVSEX32_8, RDGRSWARN, 0),
             [TYPE_I8]  = PVM_OP(MOVSEX32_8, RDGRS, 0),
-            [TYPE_BOOLEAN]  = NOP,
         },
         [TYPE_U16] = {
             [TYPE_I64] = PVM_OP(MOVSEX64_16, RDWARN, 0),
@@ -521,7 +547,6 @@ do {\
             [TYPE_U16] = PVM_OP(MOVZEX32_16, RDRS, 0),
             [TYPE_I8]  = PVM_OP(MOVZEX32_8, RDGRSWARN, 0),
             [TYPE_U8]  = PVM_OP(MOVZEX32_8, RDGRS, 0),
-            [TYPE_BOOLEAN]  = NOP,
         },
         [TYPE_I8] = {
             [TYPE_U64] = PVM_OP(MOVZEX64_8, RDWARN, 0),
@@ -532,7 +557,6 @@ do {\
             [TYPE_I16] = PVM_OP(MOVSEX32_8, RDRSG, 0),
             [TYPE_U8]  = PVM_OP(MOVSEX32_8, RDRSWARN, 0),
             [TYPE_I8]  = PVM_OP(MOVSEX32_8, RDRS, 0),
-            [TYPE_BOOLEAN]  = NOP,
         },
         [TYPE_U8] = {
             [TYPE_I64] = PVM_OP(MOVSEX64_8, RDWARN, 0),
@@ -543,7 +567,6 @@ do {\
             [TYPE_U16] = PVM_OP(MOVZEX32_8, RDRSG, 0),
             [TYPE_I8]  = PVM_OP(MOVZEX32_8, RDRSWARN, 0),
             [TYPE_U8]  = PVM_OP(MOVZEX32_8, RDRS, 0),
-            [TYPE_BOOLEAN]  = NOP,
         },
     };
     U16 Opcode = OpcodeLut[Rd.As.Register.Type][Rs.As.Register.Type];
@@ -652,11 +675,76 @@ do {\
 
 
 
+/* stack allocation */
+VarMemory PVMEQueueStackAllocation(PVMEmitter *Emitter, U32 Size, IntegralType Type)
+{
+    U32 NewOffset = Emitter->StackSpace + Size;
+    if (NewOffset % sizeof(PVMPTR))
+        NewOffset = (NewOffset + sizeof(PVMPTR)) & ~(sizeof(PVMPTR) - 1);
+
+    VarMemory Mem = {
+        .IsGlobal = false,
+        .Type = Type,
+        .Location = Emitter->StackSpace,
+    };
+    Emitter->StackSpace = NewOffset;
+    return Mem;
+}
+
+void PVMCommitStackAllocation(PVMEmitter *Emitter)
+{
+    PVMEmitAddImm(Emitter, &Emitter->Reg.SP, Emitter->StackSpace);
+}
 
 
+
+
+
+/* subroutine */
+void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
+{
+    U16 SaveReglist = Emitter->Reglist & ~((U16)1 << ReturnRegID);
+    if (SaveReglist & 0xFF)
+        WriteOp16(Emitter, PVM_REGLIST(PSHH, SaveReglist & 0xFF));
+    if (SaveReglist >> 8)
+        WriteOp16(Emitter, PVM_REGLIST(PSHH, SaveReglist >> 8));
+
+    if (Emitter->NumSavelist > PVM_MAX_CALL_IN_EXPR)
+    {
+        PASCAL_UNREACHABLE("TODO: make the limit on number of calls in expr dynamic or larger.");
+    }
+    Emitter->SavedRegisters[Emitter->NumSavelist++] = SaveReglist;
+}
+
+
+U32 PVMEmitCall(PVMEmitter *Emitter, VarSubroutine *Callee)
+{
+    U32 CurrentLocation = PVMCurrentChunk(Emitter)->Count;
+    U32 Location = Callee->Location - CurrentLocation - 1;
+    WriteOp32(Emitter, PVM_BSR(Location >> 16), Location & 0xFFFF);
+    return CurrentLocation;
+}
+
+
+void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter)
+{
+    U16 Restorelist = Emitter->SavedRegisters[--Emitter->NumSavelist];
+    if (Restorelist >> 8)
+        WriteOp16(Emitter, PVM_REGLIST(POPH, Restorelist >> 8));
+    if (Restorelist & 0xFF)
+        WriteOp16(Emitter, PVM_REGLIST(POPL, Restorelist & 0xFF));
+}
+
+
+
+/* exit/return */
 void PVMEmitExit(PVMEmitter *Emitter)
 {
     WriteOp16(Emitter, PVM_SYS(EXIT));
 }
+
+
+
+
 
 

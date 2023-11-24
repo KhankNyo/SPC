@@ -4,14 +4,24 @@
 #include "PVM/_Chunk.h"
 #include "_Variable.h"
 #include "Tokenizer.h"
+#include "PVMCompiler.h"
+
+
+#define PVM_MAX_CALL_IN_EXPR 32
 
 typedef struct PVMEmitter 
 {
     PVMChunk *Chunk;
     U16 Reglist;
-    U16 SavedRegisters[10];
+    U32 NumSavelist;
+    U16 SavedRegisters[PVM_MAX_CALL_IN_EXPR];
+
     U32 SpilledRegCount;
     UInt CurrentScopeDepth;
+    U32 StackSpace;
+    struct {
+        VarLocation SP, FP, GP;
+    } Reg;
 } PVMEmitter;
 
 typedef enum PVMBranchType
@@ -26,7 +36,7 @@ void PVMEmitterDeinit(PVMEmitter *Emitter);
 
 
 U32 PVMGetCurrentLocation(PVMEmitter *Emitter);
-/* TODO: weird semantics */
+/* TODO: weird semantics between these 2 functions */
 void PVMFreeRegister(PVMEmitter *Emitter, VarRegister Reg);
 VarLocation PVMAllocRegister(PVMEmitter *Emitter, IntegralType Type);
 
@@ -59,7 +69,19 @@ bool PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dst, con
 
 
 
+/* stack instructions */
+VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size);
+void PVMCommitStackAllocation(PVMEmitter *Emitter);
+
+/* call instructions */
+void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
+/* returns the location of the call instruction in case it needs a patch later on */
+U32 PVMEmitCall(PVMEmitter *Emitter, VarSubroutine *Callee);
+void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter);
+
+/* exit/return */
 void PVMEmitExit(PVMEmitter *Emitter);
+
 
 #endif /* PASCAL_VM2_EMITTER_H */
 

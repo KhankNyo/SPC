@@ -279,6 +279,13 @@ do {\
             PVM->R[PVM_GET_RD(Opcode)].Word.First += Imm;
         } break;
 
+        case OP_ADDPI:
+        {
+            uintptr_t Imm = 0;
+            GET_SEX_IMM(Imm, PVM_GET_RS(Opcode), IP);
+            PVM->R[PVM_GET_RD(Opcode)].Ptr.UInt += Imm;
+        } break;
+
 
         case OP_SEQ: INTEGER_SET_IF(==, Opcode, .Word.First); break;
         case OP_SNE: INTEGER_SET_IF(!=, Opcode, .Word.First); break;
