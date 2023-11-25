@@ -19,7 +19,7 @@ if "%ARG1%"=="cl" (
     set "OBJ_EXTENSION=obj"
 ) else (
     set "CC=gcc"
-    set "CCF=-g -O2 -Wall -Wextra -Wpedantic -I%INCPATH% -DDEBUG -DPVM_DEBUGGER"
+    set "CCF=-g -O0 -Wall -Wextra -Wpedantic -I%INCPATH% -DDEBUG -DPVM_DEBUGGER"
     set "LDF="
     set "LIBS="
     set "OBJ_SWITCH=-o "
@@ -31,11 +31,9 @@ if "%ARG1%"=="cl" (
 set "MSG="
 set "SRCS=%SRCDIR%\PascalString.c %SRCDIR%\main.c %SRCDIR%\Pascal.c %SRCDIR%\Memory.c"
 
-rem set "SRCS=%SRCS% %SRCDIR%\Tokenizer.c %SRCDIR%\Parser.c %SRCDIR%\Ast.c %SRCDIR%\Vartab.c"
-rem set "SRCS=%SRCS% %SRCDIR%\PVM\Disassembler.c %SRCDIR%\PVM\PVM.c %SRCDIR%\PVM\CodeChunk.c %SRCDIR%\PVM\CodeGen.c"
 set "SRCS=%SRCS% %SRCDIR%\Tokenizer.c %SRCDIR%\Vartab.c"
-set "SRCS=%SRCS% %SRCDIR%\PVMCompiler.c %SRCDIR%\PVMEmitter.c %SRCDIR%\IntegralTypes.c"
-set "SRCS=%SRCS% %SRCDIR%\PVM\CodeChunk.c %SRCDIR%\PVM\Disassembler.c %SRCDIR%\PVM\PVM.c"
+set "SRCS=%SRCS% %SRCDIR%\PVMCompiler.c %SRCDIR%\_PVMEmitter.c %SRCDIR%\IntegralTypes.c"
+set "SRCS=%SRCS% %SRCDIR%\PVM\_Chunk.c %SRCDIR%\PVM\_Disassembler.c %SRCDIR%\PVM\_PVM.c"
 
 set "SRCS=%SRCS% %SRCDIR%\PVM\Debugger.c"
 set "SRCS=%SRCS% %SRCDIR%\PascalFile.c %SRCDIR%\PascalRepl.c"

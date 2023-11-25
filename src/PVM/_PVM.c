@@ -5,6 +5,7 @@
 #include "Memory.h"
 #include "PVM/_PVM.h"
 #include "PVM/_Disassembler.h"
+#include "PVM/Debugger.h"
 
 
 PascalVM PVMInit(U32 StackSize, UInt RetStackSize)
@@ -201,9 +202,15 @@ do {\
     SP().Ptr = PVM->Stack.Start;
     FP().Ptr = SP().Ptr;
     PVM->R[PVM_REG_GP].Ptr.Raw = Chunk->Global.Data.As.Raw;
+    PVMReturnValue ReturnValue = PVM_NO_ERROR;
 
     while (1)
     {
+        if (PVM->SingleStepMode)
+        {
+            PVMDebugPause(PVM, Chunk, IP, SP().Ptr, FP().Ptr);
+        }
+
         UInt Opcode = *IP++;
         switch (PVM_GET_OP(Opcode))
         {
@@ -476,11 +483,21 @@ do {\
         }
     }
 DivisionBy0:
-    return PVM_DIVISION_BY_0;
+    ReturnValue = PVM_DIVISION_BY_0;
+    goto Exit;
 CallStackOverflow:
-    return PVM_CALLSTACK_OVERFLOW;
+    ReturnValue = PVM_CALLSTACK_OVERFLOW;
+    goto Exit;
+
 Exit:
-    return PVM_NO_ERROR;
+    U32 StreamOffset = IP - Chunk->Code;
+    LineDebugInfo *Info = ChunkGetDebugInfo(Chunk, StreamOffset);
+    if (Info->Count > 0)
+        PVM->Error.Line = Info->Line[Info->Count - 1];
+    else 
+        PVM->Error.Line = Info->Line[0];
+    PVM->Error.PC = StreamOffset;
+    return ReturnValue;
 
 #undef LOAD_FLOAT
 #undef STORE_INTEGER
@@ -502,6 +519,9 @@ Exit:
 void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
 {
     fprintf(f, "\n===================== INT REGISTERS ======================");
+    fprintf(f, "\nR%d: Stack pointer; R%d: Frame Pointer; R%d: Global Pointer",
+            PVM_REG_SP, PVM_REG_FP, PVM_REG_GP
+    );
     for (UInt i = 0; i < PVM_REG_COUNT; i++)
     {
         if (i % RegPerLine == 0)
@@ -521,9 +541,8 @@ void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
         fprintf(f, "[F%02d: %g]", i, PVM->F[i].Double);
     }
 
-    fprintf(f, "\n===================== STACK ======================");
-    fprintf(f, "\nSP: %8p\n", (void*)PVM->Stack.Ptr.Raw);
-    for (PVMPTR Sp = PVM->Stack.Start; Sp.DWord <= PVM->Stack.Ptr.DWord; Sp.DWord++)
+    fprintf(f, "\n===================== STACK ======================\n");
+    for (PVMPTR Sp = PVM->Stack.Start; Sp.DWord <= PVM->R[PVM_REG_SP].Ptr.DWord; Sp.DWord++)
     {
         fprintf(f, "%8p: [0x%08llx]\n", Sp.Raw, *Sp.DWord);
     }

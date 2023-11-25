@@ -4,7 +4,7 @@
 
 
 #include "Common.h"
-#include "PVM/CodeChunk.h"
+#include "PVM/_Chunk.h"
 #include "Vartab.h"
 
 #define PVM_MAX_FUNCTION_COUNT 1024
@@ -14,11 +14,9 @@
 #define VAR_ID_TYPE UINT32_MAX
 #define VAR_ID_INVALID (UINT32_MAX - 1)
 
-typedef U32 VarID;
-
 /* Returns true on success, false on failure and logs error to log file */
 bool PVMCompile(const U8 *Source, 
-        PascalVartab *PredefinedIdentifiers, CodeChunk *Chunk, FILE *LogFile
+        PascalVartab *PredefinedIdentifiers, PVMChunk *Chunk, FILE *LogFile
 );
 
 

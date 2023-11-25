@@ -6,7 +6,7 @@
 #include "Pascal.h"
 #include "Memory.h"
 
-#include "PVM/PVM.h"
+#include "PVM/_PVM.h"
 #include "PVMCompiler.h"
 
 
@@ -75,7 +75,7 @@ static bool PascalRun(const U8 *Source, PascalArena *Arena)
 {
     PascalVartab Identifiers = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);    
 
-    CodeChunk Code = ChunkInit(1024);
+    PVMChunk Code = ChunkInit(1024);
     if (!PVMCompile(Source, &Identifiers, &Code, stderr))
         goto CompileError;
 

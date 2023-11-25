@@ -20,6 +20,7 @@ const char *IntegralTypeToStr(IntegralType Type)
         [TYPE_F64] = "double",
         [TYPE_FUNCTION] = "function",
         [TYPE_BOOLEAN] = "boolean",
+        [TYPE_POINTER] = "pointer",
     };
     PASCAL_STATIC_ASSERT(TYPE_COUNT == STATIC_ARRAY_SIZE(StrLut), "Missing type for ParserIntegralTypeToStr()");
     if (Type < TYPE_COUNT)

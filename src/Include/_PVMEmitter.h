@@ -2,7 +2,8 @@
 #define PASCAL_VM2_EMITTER_H
 
 #include "PVM/_Chunk.h"
-#include "_Variable.h"
+#include "PVM/_Isa.h"
+#include "Variable.h"
 #include "Tokenizer.h"
 #include "PVMCompiler.h"
 
@@ -22,29 +23,42 @@ typedef struct PVMEmitter
     struct {
         VarLocation SP, FP, GP;
     } Reg;
+
+    VarLocation ReturnValue;
+    VarLocation ArgReg[PVM_ARGREG_COUNT];
 } PVMEmitter;
 
 typedef enum PVMBranchType
 {
-    BRANCHTYPE_UNCONDITIONAL = 0xFF,
-    BRANCHTYPE_CONDITIONAL = 0x0F,
+    BRANCHTYPE_UNCONDITIONAL    = 0x00FF,
+    BRANCHTYPE_CONDITIONAL      = 0x000F,
 } PVMBranchType;
 
 
 PVMEmitter PVMEmitterInit(PVMChunk *Chunk);
 void PVMEmitterDeinit(PVMEmitter *Emitter);
 
+void PVMEmitterBeginScope(PVMEmitter *Emitter);
+void PVMEmitterEndScope(PVMEmitter *Emitter);
+
+void PVMEmitDebugInfo(PVMEmitter *Emitter, 
+        const U8 *Src, U32 Len, U32 LineNum
+);
+void PVMUpdateDebugInfo(PVMEmitter *Emitter, U32 LineLen);
+
 
 U32 PVMGetCurrentLocation(PVMEmitter *Emitter);
 /* TODO: weird semantics between these 2 functions */
 void PVMFreeRegister(PVMEmitter *Emitter, VarRegister Reg);
-VarLocation PVMAllocRegister(PVMEmitter *Emitter, IntegralType Type);
+VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type);
+void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, U32 RegID);
 
 
 /* Branching instructions */
 #define PVMMarkBranchTarget(pEmitter) PVMGetCurrentLocation(pEmitter)
 /* returns the offset of the branch instruction for later patching */
 U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition);
+U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition);
 /* returns the offset of the branch instruction for patching if necessary */
 U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To);
 void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMBranchType Type);
@@ -70,10 +84,16 @@ bool PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dst, con
 
 
 /* stack instructions */
-VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size);
+VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size, IntegralType Type);
 void PVMCommitStackAllocation(PVMEmitter *Emitter);
 
+
+/* global instructions */
+VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size, IntegralType Type);
+
+
 /* call instructions */
+#define NO_RETURN_REG 69 /* any number > PVM_REG_COUNT is fine */
 void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
 /* returns the location of the call instruction in case it needs a patch later on */
 U32 PVMEmitCall(PVMEmitter *Emitter, VarSubroutine *Callee);

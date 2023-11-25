@@ -227,6 +227,19 @@ typedef enum PVMImmType
 #define PVM_REG_GP 13
 #define PVM_REG_FP 14
 #define PVM_REG_SP 15
+#define PVM_ARGREG_COUNT 8
+typedef enum PVMArgReg 
+{
+    PVM_ARGREG_0,
+    PVM_ARGREG_1,
+    PVM_ARGREG_2,
+    PVM_ARGREG_3,
+    PVM_ARGREG_4,
+    PVM_ARGREG_5,
+    PVM_ARGREG_6,
+    PVM_ARGREG_7,
+    PVM_RETREG = PVM_ARGREG_0,
+} PVMArgReg;
 
 
 

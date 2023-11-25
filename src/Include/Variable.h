@@ -19,57 +19,65 @@ typedef struct PascalVar
 
 
 
-
-
-typedef struct LocalVar 
+typedef struct VarMemory
 {
-    UInt Size;
-    U32 FPOffset;
-} LocalVar;
-typedef struct GlobalVar 
-{
-    UInt Size;
     U32 Location;
-} GlobalVar;
-typedef struct FunctionVar
+    IntegralType Type;
+    bool IsGlobal;
+} VarMemory;
+
+typedef struct VarRegister
+{
+    IntegralType Type;
+    UInt ID;
+} VarRegister;
+
+typedef struct VarSubroutine
 {
     U32 Location;
 
     U32 ArgCount, Cap;
-    PascalVar **Args;
+    PascalVar **Args; /* owned by the function's scope */
 
-    IntegralType ReturnType;
     bool HasReturnType;
-} FunctionVar;
-typedef struct RegisterVar 
-{
-    UInt ID;
-} RegisterVar;
+    IntegralType ReturnType;
+} VarSubroutine;
 
-typedef enum VarLocationType 
+typedef enum VarLocationType
 {
     VAR_INVALID = 0,
     VAR_REG,
-    VAR_LOCAL,
-    VAR_GLOBAL,
-    VAR_FUNCTION,
-
-    VAR_TMP_REG,
-    VAR_TMP_STK,
+    VAR_MEM,
+    VAR_SUBROUTINE,
 } VarLocationType;
+
+
+
 
 struct VarLocation 
 {
     VarLocationType LocationType;
-    IntegralType Type;
-
     union {
-        RegisterVar Reg;
-        LocalVar Local;
-        GlobalVar Global;
-        FunctionVar Function;
+        VarMemory Memory;
+        VarRegister Register;
+        VarSubroutine Subroutine;
     } As;
 };
+
+static inline IntegralType TypeOfLocation(const VarLocation *Location)
+{
+    switch (Location->LocationType)
+    {
+    case VAR_REG: return Location->As.Register.Type;
+    case VAR_MEM: return Location->As.Memory.Type;
+    case VAR_SUBROUTINE: return TYPE_POINTER;
+    case VAR_INVALID: 
+    {
+        PASCAL_UNREACHABLE("TypeOfLocation: Invalid location type.");
+    } break;
+    }
+    return TYPE_INVALID;
+}
 
 
 

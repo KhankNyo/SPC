@@ -22,7 +22,6 @@ typedef struct PascalVM
 
     struct {
         PVMPTR Start;
-        PVMPTR Ptr;
         PVMPTR End;
     } Stack;
     struct {

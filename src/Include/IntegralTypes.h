@@ -13,6 +13,7 @@ typedef enum IntegralType
     TYPE_FUNCTION,
     TYPE_PROCEDURE = TYPE_FUNCTION,
     TYPE_BOOLEAN,
+    TYPE_POINTER,
     TYPE_COUNT,
 } IntegralType;
 

@@ -14,8 +14,14 @@ PVMChunk ChunkInit(U32 InitialCap)
         .Count = 0,
         .Code = MemAllocateArray(*Chunk.Code, InitialCap),
 
-        .Global.Data.As.Raw = MemAllocateZero(PVM_CHUNK_GLOBAL_MAX_SIZE),
-        .Global.Cap = PVM_CHUNK_GLOBAL_MAX_SIZE,
+        .Global.Data.As.Raw = MemAllocateZero(1024),
+        .Global.Cap = 1024,
+
+        .Debug = {
+            .Cap = 64,
+            .Count = 0,
+            .Info = MemAllocateArray(*Chunk.Debug.Info, 64),
+        },
     };
     return Chunk;
 }
@@ -26,6 +32,17 @@ void ChunkDeinit(PVMChunk *Chunk)
     MemDeallocate(Chunk->Global.Data.As.Raw);
     *Chunk = (PVMChunk){ 0 };
 }
+
+void ChunkReset(PVMChunk *Chunk)
+{
+    Chunk->Count = 0;
+    Chunk->Global.Count = 0;
+    Chunk->Debug.Count = 0;
+}
+
+
+
+
 
 U32 ChunkWriteCode(PVMChunk *Chunk, U16 Opcode)
 {
@@ -125,8 +142,107 @@ U32 ChunkWriteGlobalData(PVMChunk *Chunk, const void *Data, U32 Size)
     }
 
     U32 Old = Chunk->Global.Count;
-    memcpy(&Chunk->Global.Data.As.u8[Chunk->Global.Count], Data, Size);
+    if (NULL != Data)
+    {
+        memcpy(&Chunk->Global.Data.As.u8[Chunk->Global.Count], Data, Size);
+    }
     Chunk->Global.Count += Size;
     return Old;
 }
+
+
+
+
+void ChunkWriteDebugInfo(PVMChunk *Chunk, const U8 *Src, U32 SrcLen, U32 Line)
+{    
+    /* diff src mapped to the same instruction */
+    if (Chunk->Debug.Count > 0 && Chunk->Debug.Info[Chunk->Debug.Count - 1].StreamOffset == Chunk->Count)
+    {
+        LineDebugInfo *CurrentInfo = &Chunk->Debug.Info[Chunk->Debug.Count - 1];
+
+        U32 SrcCount = CurrentInfo->Count;
+        if (SrcCount < 8)
+        {
+            CurrentInfo->Count++;
+        }
+        else
+        {
+            SrcCount = 7;
+        }
+
+        CurrentInfo->Src[SrcCount] = Src;
+        CurrentInfo->SrcLen[SrcCount] = SrcLen;
+        CurrentInfo->Line[SrcCount] = Line;
+        return;
+    }
+
+
+    /* resize */
+    if (Chunk->Debug.Count >= Chunk->Debug.Cap)
+    {
+        Chunk->Debug.Cap *= PVM_CHUNK_GROW_RATE;
+        Chunk->Debug.Info = MemReallocateArray(*Chunk->Debug.Info, 
+                Chunk->Debug.Info, Chunk->Debug.Cap
+        );
+    }
+
+    /* brand new line maps to a branch new instruction */
+    LineDebugInfo *CurrentInfo = &Chunk->Debug.Info[Chunk->Debug.Count++];
+    CurrentInfo->Count = 1;
+
+    CurrentInfo->Src[0] = Src;
+    CurrentInfo->SrcLen[0] = SrcLen;
+    CurrentInfo->Line[0] = Line;
+    CurrentInfo->StreamOffset = Chunk->Count;
+}
+
+
+LineDebugInfo *ChunkGetDebugInfo(PVMChunk *Chunk, U32 StreamOffset)
+{
+    U32 InfoCount = Chunk->Debug.Count;
+
+    /* chk upper bound */
+    if (InfoCount > 0 
+    && Chunk->Debug.Info[InfoCount - 1].StreamOffset <= StreamOffset)
+    {
+        return &Chunk->Debug.Info[InfoCount - 1];
+    }
+
+    LineDebugInfo *Ret = &Chunk->Debug.Info[InfoCount / 2];
+    LineDebugInfo *Upper = &Chunk->Debug.Info[InfoCount - 1];
+    LineDebugInfo *Lower = &Chunk->Debug.Info[0];
+
+    /* bin search */
+    while (Upper - Lower > 10)
+    {
+        if (StreamOffset > Ret->StreamOffset)
+        {
+            Lower = Ret;
+            Ret = Lower + (Upper - Ret) / 2;
+        }
+        else if (StreamOffset < Ret->StreamOffset)
+        {
+            Upper = Ret;
+            Ret = Lower + (Ret - Lower) / 2;
+        }
+        else return Ret;
+    }
+
+    /* linear search */
+    Ret = Lower;
+    while (Ret < Upper)
+    {
+        if (Ret->StreamOffset == StreamOffset
+        || (Ret + 1)->StreamOffset > StreamOffset)
+            break;
+        Ret++;
+    }
+    return Ret;
+}
+
+const LineDebugInfo *ChunkGetConstDebugInfo(const PVMChunk *Chunk, U32 StreamOffset)
+{
+    return ChunkGetDebugInfo((PVMChunk *)Chunk, StreamOffset);
+}
+
 

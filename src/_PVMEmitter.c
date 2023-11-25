@@ -41,7 +41,22 @@ PVMEmitter PVMEmitterInit(PVMChunk *Chunk)
                 },
             },
         },
+        .ReturnValue = {
+            .LocationType = VAR_REG,
+            .As.Register.ID = PVM_RETREG,
+            .As.Register.Type = TYPE_INVALID,
+        },
     };
+    for (int i = PVM_ARGREG_0; i < PVM_ARGREG_COUNT; i++)
+    {
+        Emitter.ArgReg[i] = (VarLocation){
+            .LocationType = VAR_REG,
+            .As.Register = {
+                .ID = i,
+                .Type = TYPE_INVALID,
+            },
+        };
+    }
     return Emitter;
 }
 
@@ -62,7 +77,6 @@ void PVMEmitterEndScope(PVMEmitter *Emitter)
     Emitter->Reglist = Emitter->SavedRegisters[--Emitter->CurrentScopeDepth];
     /* TODO: stack space */
 }
-
 
 
 
@@ -191,7 +205,7 @@ static bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, const Va
     } break;
     case VAR_MEM:
     {
-        *OutTarget = PVMAllocRegister(Emitter, Src->As.Memory.Type);
+        *OutTarget = PVMAllocateRegister(Emitter, Src->As.Memory.Type);
         LoadIntoReg(Emitter, OutTarget->As.Register, Src->As.Memory);
         return true;
     } break;
@@ -212,10 +226,10 @@ static bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, const Va
 
 static bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt Reg)
 {
-    return (Emitter->Reglist >> Reg) & 1;
+    return ((Emitter->Reglist >> Reg) & 1) == 0;
 }
 
-static void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, UInt Reg)
+void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, UInt Reg)
 {
     Emitter->Reglist |= (UInt)1 << Reg;
 }
@@ -256,14 +270,35 @@ static void PVMEmitPop(PVMEmitter *Emitter, UInt Reg)
 
 
 
+void PVMEmitDebugInfo(PVMEmitter *Emitter, const U8 *Src, U32 SrcLen, U32 LineNum)
+{
+    ChunkWriteDebugInfo(PVMCurrentChunk(Emitter), Src, SrcLen, LineNum);
+}
+
+void PVMUpdateDebugInfo(PVMEmitter *Emitter, U32 LineLen)
+{
+    LineDebugInfo *Info = ChunkGetDebugInfo(PVMCurrentChunk(Emitter), UINT32_MAX);
+    PASCAL_ASSERT(NULL != Info, "PVMUpdateDebugInfo: Info is NULL");
+    Info->SrcLen[Info->Count - 1] = LineLen;
+}
+
+
+
+
+
+
+
+
+
+
 U32 PVMGetCurrentLocation(PVMEmitter *Emitter)
 {
     return PVMCurrentChunk(Emitter)->Count;
 }
 
-VarLocation PVMAllocRegister(PVMEmitter *Emitter, IntegralType Type)
+VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type)
 {
-    PASCAL_ASSERT(Type != TYPE_INVALID, "PVMAllocRegister: received invalid type");
+    PASCAL_ASSERT(Type != TYPE_INVALID, "PVMAllocateRegister: received invalid type");
     for (UInt i = 0; i < PVM_REG_COUNT; i++)
     {
         /* found free reg */
@@ -324,16 +359,32 @@ U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition)
     return Location;
 }
 
+U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition)
+{
+    VarLocation Target;
+    bool IsOwning = PVMEmitIntoReg(Emitter, &Target, Condition);
+    U32 Location = WriteOp32(Emitter, PVM_B(NZ, Target.As.Register.ID, 0), 0);
+    if (IsOwning)
+    {
+        PVMFreeRegister(Emitter, Target.As.Register);
+    }
+    return Location;
+}
+
 U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To)
 {
-    U32 Offset = To - PVMCurrentChunk(Emitter)->Count - 1;
+    /* size of the branch instruction is 2 16 opcode word */
+    U32 Offset = To - PVMCurrentChunk(Emitter)->Count - 2;
     return WriteOp32(Emitter, PVM_BR(Offset >> 16), Offset & 0xFFFF);
 }
 
 void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMBranchType Type)
 {
-    U32 Offset = To - From - 1;
-    PVMCurrentChunk(Emitter)->Code[From] |= Type & (Offset >> 16);
+    /* size of the branch instruction is 2 16 opcode word */
+    U32 Offset = To - From - 2;
+    PVMCurrentChunk(Emitter)->Code[From] = 
+        (PVMCurrentChunk(Emitter)->Code[From] & ~(U32)Type)
+        | ((U32)Type & (Offset >> 16));
     PVMCurrentChunk(Emitter)->Code[From + 1] = (U16)Offset;
 }
 
@@ -376,9 +427,9 @@ void PVMEmitMov(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *
 
 void PVMEmitLoad(PVMEmitter *Emitter, const VarLocation *Dst, U64 Integer, IntegralType IntType)
 {
-    VarLocation Target;
+    VarLocation Target = *Dst;
     if (VAR_MEM == Dst->LocationType)
-        Target = PVMAllocRegister(Emitter, IntType);
+        Target = PVMAllocateRegister(Emitter, IntType);
 
     ChunkWriteMovImm(PVMCurrentChunk(Emitter), Target.As.Register.ID, Integer, IntType);
 
@@ -676,7 +727,7 @@ do {\
 
 
 /* stack allocation */
-VarMemory PVMEQueueStackAllocation(PVMEmitter *Emitter, U32 Size, IntegralType Type)
+VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size, IntegralType Type)
 {
     U32 NewOffset = Emitter->StackSpace + Size;
     if (NewOffset % sizeof(PVMPTR))
@@ -698,6 +749,21 @@ void PVMCommitStackAllocation(PVMEmitter *Emitter)
 
 
 
+/* global instructions */
+VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size, IntegralType Type)
+{
+    VarMemory Global = {
+        .IsGlobal = true,
+        .Type = Type,
+        .Location = 
+            ChunkWriteGlobalData(PVMCurrentChunk(Emitter), NULL, Size),
+    };
+    return Global;
+}
+
+
+
+
 
 
 /* subroutine */
@@ -705,9 +771,13 @@ void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 {
     U16 SaveReglist = Emitter->Reglist & ~((U16)1 << ReturnRegID);
     if (SaveReglist & 0xFF)
+    {
         WriteOp16(Emitter, PVM_REGLIST(PSHH, SaveReglist & 0xFF));
+    }
     if (SaveReglist >> 8)
+    {
         WriteOp16(Emitter, PVM_REGLIST(PSHH, SaveReglist >> 8));
+    }
 
     if (Emitter->NumSavelist > PVM_MAX_CALL_IN_EXPR)
     {
@@ -730,9 +800,13 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter)
 {
     U16 Restorelist = Emitter->SavedRegisters[--Emitter->NumSavelist];
     if (Restorelist >> 8)
+    {
         WriteOp16(Emitter, PVM_REGLIST(POPH, Restorelist >> 8));
+    }
     if (Restorelist & 0xFF)
+    {
         WriteOp16(Emitter, PVM_REGLIST(POPL, Restorelist & 0xFF));
+    }
 }
 
 

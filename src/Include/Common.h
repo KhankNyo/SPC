@@ -151,10 +151,10 @@ static inline I64 BitSex64(U64 Value, UInt SignIndex)
 #define IN_I32(x) (((I64)INT32_MIN <= (I64)(x)) && ((I64)(x) <= (I64)INT32_MAX))
 #define IN_I48(x) (((I64)INT48_MIN <= (I64)(x)) && ((I64)(x) <= (I64)INT48_MAX))
 
-#define IN_U8(x) ((U64)(x) < 0xFF)
-#define IN_U16(x) ((U64)(x) < 0xFFFF)
-#define IN_U32(x) ((U64)(x) < 0xFFFFFFFF)
-#define IN_U48(x) ((U64)(x) < (U64)0xFFFFFFFFFFFF)
+#define IN_U8(x) ((U64)(x) <= 0xFF)
+#define IN_U16(x) ((U64)(x) <= 0xFFFF)
+#define IN_U32(x) ((U64)(x) <= 0xFFFFFFFF)
+#define IN_U48(x) ((U64)(x) <= (U64)0xFFFFFFFFFFFF)
 
 #define CHR_TO_UPPER(chr) ((U8)(chr) & ~(1u << 5))
 

@@ -8,7 +8,7 @@
 #include "Pascal.h"
 #include "Memory.h"
 
-#include "PVM/PVM.h"
+#include "PVM/_PVM.h"
 #include "PVMCompiler.h"
 
 
@@ -23,7 +23,7 @@ int PascalRepl(void)
     PascalArena Scratch = ArenaInit(1024, 4);
 
     PascalVM PVM = PVMInit(1024, 128);
-    CodeChunk Chunk = ChunkInit(1024);
+    PVMChunk Chunk = ChunkInit(1024);
     PascalVartab Identifiers = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);
     
 

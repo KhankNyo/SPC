@@ -4,13 +4,14 @@
 
 #include "Common.h"
 
-#include "PVM/PVM.h"
+#include "PVM/_PVM.h"
+#include "PVM/_Disassembler.h"
 #include "PVM/Debugger.h"
-#include "PVM/Disassembler.h"
 
 
-void PVMDebugPause(const PascalVM *PVM, const CodeChunk *Chunk, 
-        const PVMWord *IP, const PVMPtr *SP, const PVMPtr *FP)
+void PVMDebugPause(const PascalVM *PVM, const PVMChunk *Chunk, 
+        const U16 *IP, const PVMPTR SP, const PVMPTR FP
+)
 {
     fprintf(stderr, "\n ==================== Debugger ==================== \n");
 
@@ -18,13 +19,13 @@ void PVMDebugPause(const PascalVM *PVM, const CodeChunk *Chunk,
             "IP: [%p]: ",
             (const void*)IP
     );
-    PVMDisasmInstruction(stderr, IP - Chunk->Code, *IP);
+    PVMDisasmSingleInstruction(stderr, Chunk, IP - Chunk->Code);
 
     fprintf(stderr, 
             "SP: [%p]: %08"PRIx64"\n"
             "FP: [%p]\n",
-            (const void*)SP, *SP,
-            (const void*)FP
+            SP.Raw, SP.UInt,
+            FP.Raw
     );
 
     PVMDumpState(stderr, PVM, 6);
