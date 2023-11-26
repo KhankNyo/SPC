@@ -3,6 +3,7 @@
 #include <stdarg.h>
 
 #include "Memory.h"
+#include "Common.h"
 #include "PVM/_PVM.h"
 #include "PVM/_Disassembler.h"
 #include "PVM/Debugger.h"
@@ -53,7 +54,7 @@ bool PVMRun(PascalVM *PVM, PVMChunk *Chunk)
     double Start = clock();
     PVMReturnValue Ret = PVMInterpret(PVM, Chunk);
     double End = clock();
-    PVMDumpState(stdout, PVM, 8);
+    PVMDumpState(stdout, PVM, 4);
 
 
     switch (Ret)
@@ -176,11 +177,11 @@ do {\
     UInt Count = 0;\
     UInt SexIndex = 0; /* Sign EXtend */\
     switch (ImmType) {\
-    case IMMTYPE_I16: SexIndex = 15;\
+    case IMMTYPE_I16: SexIndex = 15; FALLTHROUGH;\
     case IMMTYPE_U16: Count = 1; break;\
-    case IMMTYPE_I32: SexIndex = 31;\
+    case IMMTYPE_I32: SexIndex = 31; FALLTHROUGH;\
     case IMMTYPE_U32: Count = 2; break;\
-    case IMMTYPE_I48: SexIndex = 47;\
+    case IMMTYPE_I48: SexIndex = 47; FALLTHROUGH;\
     case IMMTYPE_U48: Count = 3; break;\
     case IMMTYPE_U64: Count = 4; break;\
     }\
@@ -203,6 +204,7 @@ do {\
     FP().Ptr = SP().Ptr;
     PVM->R[PVM_REG_GP].Ptr.Raw = Chunk->Global.Data.As.Raw;
     PVMReturnValue ReturnValue = PVM_NO_ERROR;
+    U32 StreamOffset = 0;
 
     while (1)
     {
@@ -286,13 +288,6 @@ do {\
             PVM->R[PVM_GET_RD(Opcode)].Word.First += Imm;
         } break;
 
-        case OP_ADDPI:
-        {
-            uintptr_t Imm = 0;
-            GET_SEX_IMM(Imm, PVM_GET_RS(Opcode), IP);
-            PVM->R[PVM_GET_RD(Opcode)].Ptr.UInt += Imm;
-        } break;
-
 
         case OP_SEQ: INTEGER_SET_IF(==, Opcode, .Word.First); break;
         case OP_SNE: INTEGER_SET_IF(!=, Opcode, .Word.First); break;
@@ -316,12 +311,12 @@ do {\
             if (0 == PVM->RetStack.SizeLeft)
                 goto CallStackOverflow;
 
+            I32 Offset = GET_BR_IMM(Opcode, IP);
             PVM->RetStack.Val->IP = IP;
             PVM->RetStack.Val->FP = FP().Ptr;
             PVM->RetStack.Val++;
             PVM->RetStack.SizeLeft--;
 
-            I32 Offset = GET_BR_IMM(Opcode, IP);
             IP += Offset;
         } break;
         case OP_BNZ:
@@ -400,6 +395,7 @@ do {\
             PVM->R[PVM_GET_RD(Opcode)].SWord.First = Imm;
         } break;
         case OP_FMOV: FLOAT_BINARY_OP(ASSIGNMENT, Opcode, .Single); break;
+        case OP_FMOV64: FLOAT_BINARY_OP(ASSIGNMENT, Opcode, .Double); break;
 
 
         case OP_LD8:  LOAD_INTEGER(Opcode, IMMTYPE_U16, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
@@ -469,17 +465,6 @@ do {\
         case OP_SGE64: INTEGER_SET_IF(>=, Opcode, .DWord); break;
         case OP_ISLE64: INTEGER_SET_IF(<=, Opcode, .SDWord); break;
         case OP_ISGE64: INTEGER_SET_IF(>=, Opcode, .SDWord); break;
-
-        case OP_SEQP: INTEGER_SET_IF(==, Opcode, .Ptr.UInt); break;
-        case OP_SNEP: INTEGER_SET_IF(!=, Opcode, .Ptr.UInt); break;
-        case OP_SLTP: INTEGER_SET_IF(<, Opcode, .Ptr.UInt); break;
-        case OP_SGTP: INTEGER_SET_IF(>, Opcode, .Ptr.UInt); break;
-        case OP_ISLTP: INTEGER_SET_IF(<, Opcode, .Ptr.Int); break;
-        case OP_ISGTP: INTEGER_SET_IF(>, Opcode, .Ptr.Int); break;
-        case OP_SLEP: INTEGER_SET_IF(<=, Opcode, .Ptr.UInt); break;
-        case OP_SGEP: INTEGER_SET_IF(>=, Opcode, .Ptr.UInt); break;
-        case OP_ISLEP: INTEGER_SET_IF(<=, Opcode, .Ptr.Int); break;
-        case OP_ISGEP: INTEGER_SET_IF(>=, Opcode, .Ptr.Int); break;
         }
     }
 DivisionBy0:
@@ -490,7 +475,7 @@ CallStackOverflow:
     goto Exit;
 
 Exit:
-    U32 StreamOffset = IP - Chunk->Code;
+    StreamOffset = IP - Chunk->Code;
     LineDebugInfo *Info = ChunkGetDebugInfo(Chunk, StreamOffset);
     if (Info->Count > 0)
         PVM->Error.Line = Info->Line[Info->Count - 1];

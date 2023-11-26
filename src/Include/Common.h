@@ -52,6 +52,28 @@ typedef long double LargeType;
 #define _UNUSED_N(N, ...) GLUE(_UNUSED, N) (__VA_ARGS__)
 #define UNUSED(...) _UNUSED_N(_VANARGS(__VA_ARGS__), __VA_ARGS__) 
 
+
+#if (defined(__GNUC__))
+#  if __has_attribute(__fallthrough__)
+#    define FALLTHROUGH __attribute__((__fallthrough__))
+#  elif __has_attribute(fallthrough)
+#    define FALLTHROUGH __attribute__((fallthrough))
+#  else
+#    define FALLTHROUGH do {} while (0) /* fallthrough */
+#  endif /* __has_attribute */
+#elif defined(__clang__)
+#  if __has_attribute(__fallthrough__)
+#    define FALLTHROUGH __attribute__((__fallthrough__))
+#  elif __has_attribute(fallthrough)
+#    define FALLTHROUGH __attribute__((fallthrough))
+#  else
+#    define FALLTHROUGH do {} while (0) /* fallthrough */
+#  endif /* __has_attribute */
+#elif defined(_MSC_VER)
+#  define FALLTHROUGH __fallthrough
+#endif /* _MSC_VER */
+
+
 #if defined(__LITTLE_ENDIAN__)
 #  define PASCAL_LITTLE_ENDIAN 1
 #elif defined(__BIG_ENDIAN__)
@@ -78,6 +100,7 @@ typedef long double LargeType;
 #    define PASCAL_LITTLE_ENDIAN 1
 #  endif
 #endif
+
 
 #if PASCAL_LITTLE_ENDIAN
 #  define PASCAL_BIG_ENDIAN 0

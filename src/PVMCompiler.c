@@ -13,6 +13,9 @@
 #include "_PVMEmitter.h"
 
 
+#define EMITTER() (&Compiler->Emitter)
+
+
 
 typedef struct CompilerFrame 
 {
@@ -54,6 +57,10 @@ typedef struct PVMCompiler
 } PVMCompiler;
 
 
+
+
+static VarLocation CompileExpr(PVMCompiler *Compiler);
+static void CompileExprInto(PVMCompiler *Compiler, VarLocation *Location);
 
 
 static IntegralType sCoercionRules[TYPE_COUNT][TYPE_COUNT] = {
@@ -205,8 +212,8 @@ static void CompilerDeinit(PVMCompiler *Compiler)
      * or make the compiler take in an arena/gpa to allocate data for globals
      * currently it is a use after free if a variable is defined on one line and used in another line during repl 
      */
-    PVMPatchBranch(&Compiler->Emitter, 0, Compiler->EntryPoint, BRANCHTYPE_UNCONDITIONAL);
-    PVMEmitterDeinit(&Compiler->Emitter);
+    PVMPatchBranch(EMITTER(), 0, Compiler->EntryPoint, BRANCHTYPE_UNCONDITIONAL);
+    PVMEmitterDeinit(EMITTER());
     GPADeinit(&Compiler->Allocator);
     ArenaDeinit(&Compiler->Arena);
 }
@@ -405,6 +412,7 @@ static void CalmDownDog(PVMCompiler *Compiler)
 static void CalmDownAtBlock(PVMCompiler *Compiler)
 {
     Compiler->Panic = false;
+    ConsumeToken(Compiler);
     while (!IsAtEnd(Compiler))
     {
         switch (Compiler->Next.Type)
@@ -465,14 +473,17 @@ static void BeginScope(PVMCompiler *Compiler, VarSubroutine *Subroutine)
 
     /* mark allocation point */
     CompilerStackAllocateFrame(Compiler, Subroutine);
-    PVMEmitterBeginScope(&Compiler->Emitter);
+    PVMEmitterBeginScope(EMITTER());
 }
 
 static void EndScope(PVMCompiler *Compiler)
 {
     /* TODO: deallocate regs alloc'ed from Declare param list here? */
-    CompilerStackDeallocateFrame(Compiler);
-    PVMEmitterEndScope(&Compiler->Emitter);
+    if (Compiler->Scope > 1)
+    {
+        CompilerStackDeallocateFrame(Compiler);
+    }
+    PVMEmitterEndScope(EMITTER());
 }
 
 
@@ -536,30 +547,67 @@ static IntegralType CoerceTypes(PVMCompiler *Compiler, const Token *Op, Integral
     IntegralType Type = sCoercionRules[Left][Right];
     if (TYPE_INVALID == Type)
     {
-        ErrorAt(Compiler, Op, "Invalid combination of type %s and %s", 
-                IntegralTypeToStr(Left), IntegralTypeToStr(Right)
-        );
-        return TYPE_INVALID;
+        goto InvalidTypeCombo;
     }
+
+    if (NULL == Op)
+        return Type;
 
     switch (Op->Type)
     {
+    case TOKEN_PLUS:
+    case TOKEN_PLUS_EQUAL:
+    case TOKEN_MINUS:
+    case TOKEN_MINUS_EQUAL:
+    case TOKEN_SLASH:
+    case TOKEN_SLASH_EQUAL:
+    case TOKEN_STAR:
+    case TOKEN_STAR_EQUAL:
+    case TOKEN_DIV:
+    case TOKEN_MOD:
+    {
+        if (TYPE_BOOLEAN == Left || TYPE_BOOLEAN == Right)
+            goto InvalidTypeCombo;
+    } break;
+    case TOKEN_DOWNTO:
+    case TOKEN_TO:
     case TOKEN_LESS:
     case TOKEN_GREATER:
     case TOKEN_LESS_EQUAL:
     case TOKEN_GREATER_EQUAL:
     case TOKEN_LESS_GREATER:
     case TOKEN_EQUAL:
-    case TOKEN_DOWNTO:
-    case TOKEN_TO:
     {
-        if (TYPE_INVALID == Type)
-            return TYPE_INVALID;
-        else 
-            return TYPE_BOOLEAN;
+        if (TYPE_BOOLEAN == Left || TYPE_BOOLEAN == Right)
+            goto InvalidTypeCombo;
+        return TYPE_BOOLEAN;
     } break;
-    default: return Type;
+    case TOKEN_AND:
+    case TOKEN_OR:
+    case TOKEN_NOT:
+    {
+        if (TYPE_BOOLEAN != Left && TYPE_BOOLEAN != Right)
+            goto InvalidTypeCombo;
+    } break;
+    default: break;
     }
+
+    return Type;
+
+InvalidTypeCombo:
+    if (NULL == Op)
+    {
+        Error(Compiler, "Invalid combination of type %s and %s",
+                IntegralTypeToStr(Left), IntegralTypeToStr(Right)
+        );
+    }
+    else 
+    {
+        ErrorAt(Compiler, Op, "Invalid combination of type %s and %s", 
+                IntegralTypeToStr(Left), IntegralTypeToStr(Right)
+        );
+    }
+    return TYPE_INVALID;
 }
 
 
@@ -575,13 +623,20 @@ static IntegralType CoerceTypes(PVMCompiler *Compiler, const Token *Op, Integral
 
 static void CompilerInitDebugInfo(PVMCompiler *Compiler, const Token *From)
 {
-    PVMEmitDebugInfo(&Compiler->Emitter, From->Str, From->Len, From->Line);
+    PVMEmitDebugInfo(EMITTER(), From->Str, From->Len, From->Line);
 }
 
 static void CompilerEmitDebugInfo(PVMCompiler *Compiler, const Token *From)
 {
     U32 LineLen = Compiler->Curr.Str - From->Str + Compiler->Curr.Len;
-    PVMUpdateDebugInfo(&Compiler->Emitter, LineLen);
+    if (From->Type == TOKEN_FUNCTION || From->Type == TOKEN_PROCEDURE)
+    {
+        PVMUpdateDebugInfo(EMITTER(), LineLen, true);
+    }
+    else
+    {
+        PVMUpdateDebugInfo(EMITTER(), LineLen, false);
+    }
 }
 
 
@@ -649,14 +704,14 @@ static bool CompileAndDeclareParameter(PVMCompiler *Compiler, U32 VarCount, U32 
             *Location = Compiler->Emitter.ArgReg[Function->ArgCount];
             Location->As.Register.Type = VarType;
             /* TODO: who's freeing these */
-            PVMMarkRegisterAsAllocated(&Compiler->Emitter, Location->As.Register.ID);
+            PVMMarkRegisterAsAllocated(EMITTER(), Location->As.Register.ID);
         }
         else /* stack args */
         {
             HasStackParams = true;
             PASCAL_UNREACHABLE("TODO: param list for function");
             Location->LocationType = VAR_MEM;
-            Location->As.Memory = PVMQueueStackAllocation(&Compiler->Emitter, VarSize, VarType);
+            Location->As.Memory = PVMQueueStackAllocation(EMITTER(), VarSize, VarType);
         }
         FunctionDataPushParameter(&Compiler->Allocator, Function, Var);
     }
@@ -677,7 +732,7 @@ static bool CompileAndDeclareLocal(PVMCompiler *Compiler, U32 VarCount, U32 VarS
         );
 
         Location->LocationType = VAR_MEM;
-        Location->As.Memory = PVMQueueStackAllocation(&Compiler->Emitter, VarSize, VarType);
+        Location->As.Memory = PVMQueueStackAllocation(EMITTER(), VarSize, VarType);
     }
     return true;
 }
@@ -695,7 +750,7 @@ static bool CompileAndDeclareGlobal(PVMCompiler *Compiler, U32 VarCount, U32 Var
         );
 
         Location->LocationType = VAR_MEM;
-        Location->As.Memory = PVMEmitGlobalSpace(&Compiler->Emitter, VarSize, VarType);
+        Location->As.Memory = PVMEmitGlobalSpace(EMITTER(), VarSize, VarType);
     }
     return false;
 }
@@ -769,7 +824,6 @@ static void CompileParameterList(PVMCompiler *Compiler, VarSubroutine *CurrentFu
 }
 
 
-static void CompileExpr(PVMCompiler *Compiler, VarLocation *Location);
 static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName, VarSubroutine *Subroutine)
 {
     UInt ExpectedArgCount = Subroutine->ArgCount;
@@ -787,8 +841,9 @@ static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName
         if (ArgCount >= ExpectedArgCount)
             break;
 
-        Compiler->Emitter.ArgReg[ArgCount].As.Register.Type = TypeOfLocation(Subroutine->Args[ArgCount]->Location);
-        CompileExpr(Compiler, &Compiler->Emitter.ArgReg[ArgCount]);
+        Compiler->Emitter.ArgReg[ArgCount].As.Register.Type = 
+            TypeOfLocation(Subroutine->Args[ArgCount]->Location);
+        CompileExprInto(Compiler, &EMITTER()->ArgReg[ArgCount]);
         ArgCount++;
     } while (ArgCount < PVM_ARGREG_COUNT && ConsumeIfNextIs(Compiler, TOKEN_COMMA));
 
@@ -838,36 +893,46 @@ typedef enum Precedence
     PREC_FACTOR,
     PREC_HIGHEST,
 } Precedence;
-typedef void (*ParseRoutine)(PVMCompiler *, VarLocation *);
+typedef VarLocation (*InfixParseRoutine)(PVMCompiler *, VarLocation *);
+typedef VarLocation (*PrefixParseRoutine)(PVMCompiler *);
 
 typedef struct PrecedenceRule
 {
-    ParseRoutine PrefixRoutine;
-    ParseRoutine InfixRoutine;
+    PrefixParseRoutine PrefixRoutine;
+    InfixParseRoutine InfixRoutine;
     Precedence Prec;
 } PrecedenceRule;
 
 static const PrecedenceRule *GetPrecedenceRule(TokenType CurrentTokenType);
-static void ParsePrecedence(PVMCompiler *Compiler, Precedence Prec, VarLocation *Into);
+static VarLocation ParsePrecedence(PVMCompiler *Compiler, Precedence Prec);
 
 
-
-static void FactorIntLit(PVMCompiler *Compiler, VarLocation *Into)
+static void FreeExpr(PVMCompiler *Compiler, VarLocation Expr)
 {
-    /* literal consumed */
-    PVMEmitLoad(&Compiler->Emitter, Into, 
-            Compiler->Curr.Literal.Int, 
-            TypeOfIntLit(Compiler->Curr.Literal.Int)
-    );
+    PASCAL_ASSERT(Expr.LocationType == VAR_REG, "Cannot free expression.");
+    PVMFreeRegister(EMITTER(), Expr.As.Register);
 }
 
-static void FactorVariable(PVMCompiler *Compiler, VarLocation *Into)
+
+
+static VarLocation FactorIntLit(PVMCompiler *Compiler)
+{
+    U64 Literal = Compiler->Curr.Literal.Int;
+    IntegralType LiteralType = TypeOfIntLit(Literal);
+    VarLocation Location = PVMAllocateRegister(EMITTER(), LiteralType);
+
+    PVMEmitLoadImm(EMITTER(), Location.As.Register, Literal);
+    return Location;
+}
+
+static VarLocation FactorVariable(PVMCompiler *Compiler)
 {
     /* identifier consumed */
     Token Identifier = Compiler->Curr;
     PascalVar *Variable = GetIdenInfo(Compiler, &Identifier, "Undefined variable.");
     if (NULL == Variable)
-        return;
+        goto Error;
+
 
     if (TYPE_FUNCTION == Variable->Type)
     {
@@ -877,90 +942,99 @@ static void FactorVariable(PVMCompiler *Compiler, VarLocation *Into)
         if (!Callee->HasReturnType)
         {
             ErrorAt(Compiler, &Identifier, "Procedure does not have a return value.");
+            goto Error;
         }
-        else
-        {
-            UInt ReturnReg = NO_RETURN_REG;
-            if (Into->LocationType == VAR_REG)
-                ReturnReg = Into->As.Register.ID;
 
-            PVMEmitSaveCallerRegs(&Compiler->Emitter, ReturnReg);
-            CompileArgumentList(Compiler, &Identifier, Callee);
-            PVMEmitCall(&Compiler->Emitter, Callee);
+        /* setup return reg */
+        VarLocation ReturnValue = PVMAllocateRegister(EMITTER(), Callee->ReturnType);
+        UInt ReturnReg = ReturnValue.As.Register.ID;
 
-            Compiler->Emitter.ReturnValue.As.Register.Type = Callee->ReturnType;
-            PVMEmitMov(&Compiler->Emitter, Into, &Compiler->Emitter.ReturnValue);
-            PVMEmitUnsaveCallerRegs(&Compiler->Emitter);
-        }
+        /* call the function */
+        PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
+        CompileArgumentList(Compiler, &Identifier, Callee);
+        PVMEmitCall(EMITTER(), Callee);
+
+        /* carefully move return reg into the return location */
+        Compiler->Emitter.ReturnValue.As.Register.Type = Callee->ReturnType;
+        PVMEmitMov(EMITTER(), &ReturnValue, &EMITTER()->ReturnValue);
+        PVMEmitUnsaveCallerRegs(EMITTER());
+        return ReturnValue;
     }
     else
     {
-        PVMEmitMov(&Compiler->Emitter, Into, Variable->Location);
+        VarLocation Register = PVMAllocateRegister(EMITTER(), Variable->Type);
+        PVMEmitMov(EMITTER(), &Register, Variable->Location);
+        return Register;
     }
+
+Error:
+    return (VarLocation) {
+        .LocationType = VAR_INVALID,
+    };
 }
 
-static void FactorGrouping(PVMCompiler *Compiler, VarLocation *Into)
+static VarLocation FactorGrouping(PVMCompiler *Compiler)
 {
     /* '(' consumed */
-    CompileExpr(Compiler, Into);
+    VarLocation Group = CompileExpr(Compiler);
     ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
+    return Group;
 }
 
 
-static void ExprUnary(PVMCompiler *Compiler, VarLocation *Into)
+static VarLocation ExprUnary(PVMCompiler *Compiler)
 {
     TokenType Operator = Compiler->Curr.Type;
-    ParsePrecedence(Compiler, PREC_SIMPLE, Into);
+    VarLocation Value = ParsePrecedence(Compiler, PREC_SIMPLE);
 
     switch (Operator)
     {
     case TOKEN_PLUS: break;
     case TOKEN_MINUS:
     {
-        PASCAL_UNREACHABLE("TODO: Neg instruction");
-        //PVMEmitNeg(&Compiler->Emitter, Into, Into);
+        PVMEmitNeg(EMITTER(), &Value, &Value);
     } break;
     default: PASCAL_UNREACHABLE("Invalid operator for unary"); break;
     }
+    return Value;
 }
 
-static void ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
+static VarLocation ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
 {
-    TokenType Operator = Compiler->Curr.Type;
+    Token OpToken = Compiler->Curr;
+    TokenType Operator = OpToken.Type;
     const PrecedenceRule *OperatorRule = GetPrecedenceRule(Compiler->Curr.Type);
-
-    /* TODO: typecheck */
-    VarLocation Right = PVMAllocateRegister(&Compiler->Emitter, TypeOfLocation(Left));
 
     /* +1 to parse binary oper as left associative,
      * ex:  parses  1 + 2 + 3 
      *      as      ((1 + 2) + 3)
      *      not     (1 + (2 + 3)) 
      */
-    ParsePrecedence(Compiler, OperatorRule->Prec + 1, &Right);
+    VarLocation Right = ParsePrecedence(Compiler, OperatorRule->Prec + 1);
+    IntegralType Type = CoerceTypes(Compiler, &OpToken, TypeOfLocation(Left), TypeOfLocation(&Right));
 
     switch (Operator)
     {
     case TOKEN_STAR:
     {
-        PVMEmitMul(&Compiler->Emitter, Left, &Right);
+        PVMEmitMul(EMITTER(), Left, &Right);
     } break;
     case TOKEN_DIV:
     {
-        PVMEmitDiv(&Compiler->Emitter, Left, &Right);
+        PVMEmitDiv(EMITTER(), Left, &Right);
     } break;
     case TOKEN_MOD:
     {
-        PVMEmitDiv(&Compiler->Emitter, Left, &Right);
+        PVMEmitDiv(EMITTER(), Left, &Right);
     } break;
 
     case TOKEN_PLUS:
     {
-        PVMEmitAdd(&Compiler->Emitter, Left, &Right);
+        PVMEmitAdd(EMITTER(), Left, &Right);
     } break;
     case TOKEN_MINUS:
     {
-        PVMEmitSub(&Compiler->Emitter, Left, &Right);
+        PVMEmitSub(EMITTER(), Left, &Right);
     } break;
 
     case TOKEN_LESS:
@@ -970,7 +1044,7 @@ static void ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
     case TOKEN_EQUAL:
     case TOKEN_LESS_GREATER:
     {
-        PVMEmitSetCC(&Compiler->Emitter, Operator, Left, &Right);
+        PVMEmitSetCC(EMITTER(), Operator, Left, &Right);
     } break;
 
     case TOKEN_AND:
@@ -979,28 +1053,10 @@ static void ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
     default: PASCAL_UNREACHABLE("Operator %s is unreachable in ExprBinary", TokenTypeToStr(Operator)); break;
     }
 
-    PVMFreeRegister(&Compiler->Emitter, Right.As.Register);
+    PVMFreeRegister(EMITTER(), Right.As.Register);
+    Left->As.Register.Type = Type;
+    return *Left;
 }
-
-static void TrapTokens(PVMCompiler *Compiler, VarLocation *Dummy)
-{
-    (void)Dummy;
-    switch (Compiler->Curr.Type)
-    {
-    case TOKEN_EQUAL_EQUAL: 
-        ErrorAt(Compiler, &Compiler->Curr, "This is Pascal, use '=' to check for equality.");
-        break;
-    case TOKEN_BANG:
-        ErrorAt(Compiler, &Compiler->Curr, "This is Pascal, use 'not' to negate booleans.");
-        break;
-    case TOKEN_BANG_EQUAL:
-        ErrorAt(Compiler, &Compiler->Curr, "This is Pascal, use '<>' to check for inequality.");
-        break;
-    default: PASCAL_UNREACHABLE("Unhandled token: %s", TokenTypeToStr(Compiler->Curr.Type));
-    }
-}
-
-
 
 
 
@@ -1025,10 +1081,6 @@ static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] =
     [TOKEN_GREATER_EQUAL]   = { NULL,               ExprBinary,     PREC_EXPR },
     [TOKEN_EQUAL]           = { NULL,               ExprBinary,     PREC_EXPR },
     [TOKEN_LESS_GREATER]    = { NULL,               ExprBinary,     PREC_EXPR },
-
-    [TOKEN_EQUAL_EQUAL]     = { NULL,               TrapTokens,     PREC_HIGHEST },
-    [TOKEN_BANG]            = { TrapTokens,         NULL,           PREC_HIGHEST },
-    [TOKEN_BANG_EQUAL]      = { NULL,               TrapTokens,     PREC_HIGHEST },
 };
 
 
@@ -1038,55 +1090,50 @@ static const PrecedenceRule *GetPrecedenceRule(TokenType CurrentTokenType)
 }
 
 
-static void ParsePrecedence(PVMCompiler *Compiler, Precedence Prec, VarLocation *Into)
+static VarLocation ParsePrecedence(PVMCompiler *Compiler, Precedence Prec)
 {
     ConsumeToken(Compiler);
-    const ParseRoutine PrefixRoutine = GetPrecedenceRule(Compiler->Curr.Type)->PrefixRoutine;
+    const PrefixParseRoutine PrefixRoutine = GetPrecedenceRule(Compiler->Curr.Type)->PrefixRoutine;
     if (NULL == PrefixRoutine)
     {
         ErrorAt(Compiler, &Compiler->Curr, "Expected expression.");
-        return;
+        return (VarLocation) {
+            .LocationType = VAR_INVALID,
+        };
     }
 
-    PrefixRoutine(Compiler, Into);
+    VarLocation Left = PrefixRoutine(Compiler);
 
 
     /* only parse next op if they have the same or lower precedence */
     while (Prec <= GetPrecedenceRule(Compiler->Next.Type)->Prec)
     {
         ConsumeToken(Compiler); /* the operator */
-        const ParseRoutine InfixRoutine = 
+        const InfixParseRoutine InfixRoutine = 
             GetPrecedenceRule(Compiler->Curr.Type)->InfixRoutine;
 
         PASCAL_ASSERT(NULL != InfixRoutine, "NULL infix routine in ParsePrecedence()");
-
-        InfixRoutine(Compiler, Into);
+        Left = InfixRoutine(Compiler, &Left);
     }
+    return Left;
 }
 
 
-static void CompileExpr(PVMCompiler *Compiler, VarLocation *Into)
+static VarLocation CompileExpr(PVMCompiler *Compiler)
 {
-#if 0
-    U32 OptBegin = PVMGetCurrentLocation(&Compiler->Emitter);
-    ParsePrecedence(Compiler, PREC_EXPR, Into);
-    U32 OptEnd = PVMGetCurrentLocation(&Compiler->Emitter);
-    /* TODO: expr optimizer */
-    PVMEmitterOptimize(&Compiler->Emitter, OptBegin, OptEnd);
-#else
-    if (VAR_REG != Into->LocationType)
-    {
-        VarLocation Tmp = PVMAllocateRegister(&Compiler->Emitter, TypeOfLocation(Into));
-        ParsePrecedence(Compiler, PREC_EXPR, &Tmp);
-        PVMEmitMov(&Compiler->Emitter, Into, &Tmp);
-        PVMFreeRegister(&Compiler->Emitter, Tmp.As.Register);
-    }
-    else
-    {
-        ParsePrecedence(Compiler, PREC_EXPR, Into);
-    }
-#endif 
+    return ParsePrecedence(Compiler, PREC_EXPR);
 }
+
+static void CompileExprInto(PVMCompiler *Compiler, VarLocation *Location)
+{
+    VarLocation Expr = ParsePrecedence(Compiler, PREC_EXPR);
+    CoerceTypes(Compiler, NULL, TypeOfLocation(Location), TypeOfLocation(&Expr));
+    PVMEmitMov(EMITTER(), Location, &Expr);
+    FreeExpr(Compiler, Expr);
+}
+
+
+
 
 
 
@@ -1112,34 +1159,29 @@ static void CompileExitStmt(PVMCompiler *Compiler)
     CompilerInitDebugInfo(Compiler, &Keyword);
 
 
-    if (IsAtGlobalScope(Compiler))
+    /* Exit */
+    if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
     {
-        if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+        if (IsAtGlobalScope(Compiler))
         {
-            /* TODO: use function's return type */
-            Compiler->Emitter.ReturnValue.As.Register.Type = TYPE_U32;
-            CompileExpr(Compiler, &Compiler->Emitter.ReturnValue);
-            ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
+            /* Exit() */
+            if (ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
+                goto Done;
+
+            EMITTER()->ReturnValue.As.Register.Type = TYPE_I32;
+            CompileExprInto(Compiler, &EMITTER()->ReturnValue);
         }
-        PVMEmitExit(&Compiler->Emitter);
-    }
-    else
-    {
-        if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+        else if (Compiler->Frame[Compiler->Scope - 1].Current->HasReturnType)
         {
-            if (Compiler->Frame[Compiler->Scope - 1].Current->HasReturnType)
-            {
-                Compiler->Emitter.ReturnValue.As.Register.Type = Compiler->Frame[Compiler->Scope - 1].Current->ReturnType;
-                CompileExpr(Compiler, &Compiler->Emitter.ReturnValue);
-            }
-            else 
-            {
-                ErrorAt(Compiler, &Keyword, "Procedure cannot return a value.");
-            }
-            ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
+            /* Exit(expr), must have return type */
+            EMITTER()->ReturnValue.As.Register.Type = Compiler->Frame[Compiler->Scope - 1].Current->ReturnType;
+            CompileExprInto(Compiler, &EMITTER()->ReturnValue);
         }
-        PVMEmitExit(&Compiler->Emitter);
+        /* else Exit(), no return type */
+        ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
     }
+Done:
+    PVMEmitExit(EMITTER());
     CompilerEmitDebugInfo(Compiler, &Keyword);
 }
 
@@ -1165,7 +1207,7 @@ static void CompileBeginStmt(PVMCompiler *Compiler)
 static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
 {
     /* 'repeat' consumed */
-    U32 LoopHead = PVMMarkBranchTarget(&Compiler->Emitter);
+    U32 LoopHead = PVMMarkBranchTarget(EMITTER());
     while (!IsAtEnd(Compiler) && TOKEN_UNTIL != Compiler->Next.Type)
     {
         CompileStmt(Compiler);
@@ -1175,20 +1217,20 @@ static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
     }
 
 
+    /* nothing to compile, exit and reports error */
     if (!ConsumeOrError(Compiler, TOKEN_UNTIL, "Expected 'until'."))
         return;
 
     Token UntilKeyword = Compiler->Curr;
     CompilerInitDebugInfo(Compiler, &UntilKeyword);
 
-    VarLocation Tmp = PVMAllocateRegister(&Compiler->Emitter, TYPE_U32);
-    CompileExpr(Compiler, &Tmp);
-    PVMPatchBranch(&Compiler->Emitter, 
-            PVMEmitBranchIfFalse(&Compiler->Emitter, &Tmp), 
+    VarLocation Tmp = CompileExpr(Compiler);
+    PVMPatchBranch(EMITTER(), 
+            PVMEmitBranchIfFalse(EMITTER(), &Tmp), 
             LoopHead,
             BRANCHTYPE_CONDITIONAL
     );
-    PVMFreeRegister(&Compiler->Emitter, Tmp.As.Register);
+    FreeExpr(Compiler, Tmp);
 
     CompilerEmitDebugInfo(Compiler, &UntilKeyword);
 }
@@ -1213,17 +1255,13 @@ static void CompileForStmt(PVMCompiler *Compiler)
      *  this won't work if the loop body take the addr of the counter variable
      * */
     VarLocation Save = *Counter->Location;
-    *Counter->Location = PVMAllocateRegister(&Compiler->Emitter, Counter->Type);
-
-    
     /* init expression */
     ConsumeOrError(Compiler, TOKEN_COLON_EQUAL, "Expected ':=' after variable name.");
-    CompileExpr(Compiler, Counter->Location);
+    *Counter->Location = CompileExpr(Compiler);
 
 
     /* for loop inc/dec */
-    U32 LoopHead = PVMMarkBranchTarget(&Compiler->Emitter);
-    VarLocation StopCondition = PVMAllocateRegister(&Compiler->Emitter, TypeOfLocation(Counter->Location));
+    U32 LoopHead = PVMMarkBranchTarget(EMITTER());
     TokenType Op = TOKEN_GREATER;
     I16 Inc = 1;
     if (!ConsumeIfNextIs(Compiler, TOKEN_TO))
@@ -1232,11 +1270,11 @@ static void CompileForStmt(PVMCompiler *Compiler)
         Op = TOKEN_LESS;
         Inc = -1;
     }
-    CompileExpr(Compiler, &StopCondition);
-    PVMEmitSetCC(&Compiler->Emitter, Op, &StopCondition, Counter->Location);
-    U32 LoopExit = PVMEmitBranchIfFalse(&Compiler->Emitter, &StopCondition);
-    PVMFreeRegister(&Compiler->Emitter, StopCondition.As.Register);
-
+    /* stop condition expr */
+    VarLocation StopCondition = CompileExpr(Compiler);
+    PVMEmitSetCC(EMITTER(), Op, &StopCondition, Counter->Location);
+    U32 LoopExit = PVMEmitBranchIfFalse(EMITTER(), &StopCondition);
+    FreeExpr(Compiler, StopCondition);
     /* do */
     ConsumeOrError(Compiler, TOKEN_DO, "Expected 'do' after expression.");
     CompilerEmitDebugInfo(Compiler, &Keyword);
@@ -1247,12 +1285,13 @@ static void CompileForStmt(PVMCompiler *Compiler)
 
 
     /* loop increment */
-    PVMEmitAddImm(&Compiler->Emitter, Counter->Location, Inc);
-    PVMEmitBranch(&Compiler->Emitter, LoopHead);
-    PVMPatchBranchToCurrent(&Compiler->Emitter, LoopExit, BRANCHTYPE_CONDITIONAL);
+    PVMEmitAddImm(EMITTER(), Counter->Location, Inc);
+    PVMEmitBranch(EMITTER(), LoopHead);
+    PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_CONDITIONAL);
+
 
     /* TODO: unhack this */
-    PVMFreeRegister(&Compiler->Emitter, Counter->Location->As.Register);
+    FreeExpr(Compiler, *Counter->Location);
     *Counter->Location = Save;
 }
 
@@ -1264,26 +1303,23 @@ static void CompileWhileStmt(PVMCompiler *Compiler)
     CompilerInitDebugInfo(Compiler, &Keyword);
 
     /* condition expression */
-    /* TODO: should be TYPE_BOOLEAN */
-    VarLocation Tmp = PVMAllocateRegister(&Compiler->Emitter, TYPE_U32);
-    U32 LoopHead = PVMMarkBranchTarget(&Compiler->Emitter);
-        CompileExpr(Compiler, &Tmp);
-    U32 LoopExit = PVMEmitBranchIfFalse(&Compiler->Emitter, &Tmp);
-    PVMFreeRegister(&Compiler->Emitter, Tmp.As.Register);
-
+    U32 LoopHead = PVMMarkBranchTarget(EMITTER());
+    VarLocation Tmp = CompileExpr(Compiler);
+    U32 LoopExit = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
+    FreeExpr(Compiler, Tmp);
+    /* do */
     ConsumeOrError(Compiler, TOKEN_DO, "Expected 'do' after expression.");
     CompilerEmitDebugInfo(Compiler, &Keyword);
 
 
     /* loop body */
-        CompileStmt(Compiler);
+    CompileStmt(Compiler);
+
 
     /* back to loophead */
-    PVMEmitBranch(&Compiler->Emitter, LoopHead);
-
-
+    PVMEmitBranch(EMITTER(), LoopHead);
     /* patch the exit branch */
-    PVMPatchBranchToCurrent(&Compiler->Emitter, LoopExit, BRANCHTYPE_CONDITIONAL);
+    PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_CONDITIONAL);
 }
 
 
@@ -1295,9 +1331,7 @@ static void CompileIfStmt(PVMCompiler *Compiler)
     
 
     /* condition expression */
-    /* TODO: should be TYPE_BOOLEAN */
-    VarLocation Tmp = PVMAllocateRegister(&Compiler->Emitter, TYPE_U32);
-    CompileExpr(Compiler, &Tmp);
+    VarLocation Tmp = CompileExpr(Compiler);
     ConsumeOrError(Compiler, TOKEN_THEN, "Expected 'then' after expression.");
     CompilerEmitDebugInfo(Compiler, &Keyword);
 
@@ -1310,21 +1344,25 @@ static void CompileIfStmt(PVMCompiler *Compiler)
      *      Stmt...
      * DONE:
      * */
-
-    U32 FromIf = PVMEmitBranchIfFalse(&Compiler->Emitter, &Tmp);
-    PVMFreeRegister(&Compiler->Emitter, Tmp.As.Register);
-        CompileStmt(Compiler);
+    U32 FromIf = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
+    FreeExpr(Compiler, Tmp);
+    /* if body */
+    CompileStmt(Compiler);
     if (TOKEN_ELSE == Compiler->Next.Type)
     {
-        CompilerInitDebugInfo(Compiler, &Compiler->Next);
         ConsumeToken(Compiler);
+        CompilerInitDebugInfo(Compiler, &Compiler->Curr);
         CompilerEmitDebugInfo(Compiler, &Compiler->Curr);
 
-        U32 FromEndIf = PVMEmitBranch(&Compiler->Emitter, 0);
-        CompileStmt(Compiler);
-        PVMPatchBranchToCurrent(&Compiler->Emitter, FromEndIf, BRANCHTYPE_UNCONDITIONAL);
+        U32 FromEndIf = PVMEmitBranch(EMITTER(), 0);
+            PVMPatchBranchToCurrent(EMITTER(), FromIf, BRANCHTYPE_CONDITIONAL);
+            CompileStmt(Compiler);
+        PVMPatchBranchToCurrent(EMITTER(), FromEndIf, BRANCHTYPE_UNCONDITIONAL);
     }
-    PVMPatchBranchToCurrent(&Compiler->Emitter, FromIf, BRANCHTYPE_CONDITIONAL);
+    else
+    {
+        PVMPatchBranchToCurrent(EMITTER(), FromIf, BRANCHTYPE_CONDITIONAL);
+    }
 }
 
 
@@ -1340,10 +1378,10 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token *Callee, PascalVa
     CompilerInitDebugInfo(Compiler, Callee);
 
     VarSubroutine *Subroutine = &IdenInfo->Location->As.Subroutine;
-    PVMEmitSaveCallerRegs(&Compiler->Emitter, NO_RETURN_REG);
+    PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
     CompileArgumentList(Compiler, Callee, Subroutine);
-    PVMEmitCall(&Compiler->Emitter, Subroutine);
-    PVMEmitUnsaveCallerRegs(&Compiler->Emitter);
+    PVMEmitCall(EMITTER(), Subroutine);
+    PVMEmitUnsaveCallerRegs(EMITTER());
 
     CompilerEmitDebugInfo(Compiler, Callee);
 }
@@ -1358,21 +1396,17 @@ static void CompileAssignStmt(PVMCompiler *Compiler, PascalVar *IdenInfo)
 
     /* TODO: field access and array indexing */
     ConsumeOrError(Compiler, TOKEN_COLON_EQUAL, "TODO: other assignment operator.");
-    Token Op = Compiler->Curr;
 
 
     if (NULL != IdenInfo)
     {
-        IntegralType Type = IdenInfo->Type;
         PASCAL_ASSERT(NULL != IdenInfo->Location, "Location must be valid");
         PASCAL_ASSERT(IdenInfo->Type != TYPE_INVALID, "DeclVarblock should've handled this");
         PASCAL_ASSERT(VAR_INVALID != IdenInfo->Location->LocationType, "??");
 
-        CompileExpr(Compiler, IdenInfo->Location);
-
-        /* typecheck in here */
-        CoerceTypes(Compiler, &Op, Type, IdenInfo->Type);
+        CompileExprInto(Compiler, IdenInfo->Location);
     }
+
 
     CompilerEmitDebugInfo(Compiler, &Identifier);
 }
@@ -1481,7 +1515,7 @@ static bool CompileBlock(PVMCompiler *Compiler);
 
 static void CompileBeginBlock(PVMCompiler *Compiler)
 {
-    Compiler->EntryPoint = PVMGetCurrentLocation(&Compiler->Emitter);
+    Compiler->EntryPoint = PVMGetCurrentLocation(EMITTER());
     CompileBeginStmt(Compiler);
 }
 
@@ -1493,9 +1527,14 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     Var->LocationType = VAR_SUBROUTINE;
     Var->As.Subroutine = (VarSubroutine) {
         .HasReturnType = TOKEN_FUNCTION == Compiler->Curr.Type,
-        .Location = PVMGetCurrentLocation(&Compiler->Emitter),
+        .Location = PVMGetCurrentLocation(EMITTER()),
     };
     VarSubroutine *Subroutine = &Var->As.Subroutine;
+
+
+    /* begin function decl */
+    Token Keyword = Compiler->Curr;
+    CompilerInitDebugInfo(Compiler, &Keyword);
 
 
     /* function/proc name */
@@ -1533,15 +1572,20 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     }
 
 
+    /* end function decl */
+    CompilerEmitDebugInfo(Compiler, &Keyword);
+
+
     /* body */
     CompileBlock(Compiler);
     EndScope(Compiler);
 
+
+    /* 'end' at the end of function */
     Token End = Compiler->Curr;
     CompilerInitDebugInfo(Compiler, &End);
-    PVMEmitExit(&Compiler->Emitter);
+    PVMEmitExit(EMITTER());
     CompilerEmitDebugInfo(Compiler, &End);
-
     ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s body.", SubroutineType);
 }
 
@@ -1574,7 +1618,7 @@ static void CompileVarBlock(PVMCompiler *Compiler)
     {
         CompilerInitDebugInfo(Compiler, &Keyword);
         CompilerEmitDebugInfo(Compiler, &Keyword);
-        PVMCommitStackAllocation(&Compiler->Emitter);
+        PVMCommitStackAllocation(EMITTER());
     }
 }
 

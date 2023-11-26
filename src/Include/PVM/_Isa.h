@@ -18,7 +18,6 @@ typedef enum PVMOp
     OP_NEG,
 
     OP_ADDI,
-    OP_ADDPI,
     OP_ADDQI,
 
     OP_SHL,
@@ -71,6 +70,7 @@ typedef enum PVMOp
     OP_MOVI,
     OP_MOVQI,
     OP_FMOV,
+    OP_FMOV64,
 
     OP_MOVSEX64_32,
     OP_MOVSEX64_16,
@@ -137,17 +137,6 @@ typedef enum PVMOp
     OP_ISGT64,
     OP_ISLE64,
     OP_ISGE64,
-
-    OP_SEQP,
-    OP_SNEP,
-    OP_SLTP,
-    OP_SGTP,
-    OP_SLEP,
-    OP_SGEP,
-    OP_ISLTP,
-    OP_ISGTP,
-    OP_ISLEP,
-    OP_ISGEP,
 } PVMOp;
 
 typedef enum PVMSysOp
@@ -211,7 +200,7 @@ typedef enum PVMImmType
 
 
 
-#if PVM_LITTLE_ENDIAN
+#if PASCAL_LITTLE_ENDIAN == 1
 #  define PVM_LEAST_SIGNIF_BYTE 0
 #else /* PVM_BIG_ENDIAN */
 #  define PVM_LEAST_SIGNIF_BYTE (sizeof(U64) - 1)
@@ -220,6 +209,7 @@ typedef enum PVMImmType
 
 #define PVM_BR_OFFSET_SIZE 24
 #define PVM_BCC_OFFSET_SIZE 20
+#define PVM_BRANCH_INS_SIZE 2
 
 #define PVM_REG_COUNT 16
 #define PVM_FREG_COUNT 16

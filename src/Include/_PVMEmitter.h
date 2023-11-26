@@ -18,7 +18,6 @@ typedef struct PVMEmitter
     U16 SavedRegisters[PVM_MAX_CALL_IN_EXPR];
 
     U32 SpilledRegCount;
-    UInt CurrentScopeDepth;
     U32 StackSpace;
     struct {
         VarLocation SP, FP, GP;
@@ -37,14 +36,12 @@ typedef enum PVMBranchType
 
 PVMEmitter PVMEmitterInit(PVMChunk *Chunk);
 void PVMEmitterDeinit(PVMEmitter *Emitter);
-
 void PVMEmitterBeginScope(PVMEmitter *Emitter);
 void PVMEmitterEndScope(PVMEmitter *Emitter);
-
 void PVMEmitDebugInfo(PVMEmitter *Emitter, 
         const U8 *Src, U32 Len, U32 LineNum
 );
-void PVMUpdateDebugInfo(PVMEmitter *Emitter, U32 LineLen);
+void PVMUpdateDebugInfo(PVMEmitter *Emitter, U32 LineLen, bool IsSubroutine);
 
 
 U32 PVMGetCurrentLocation(PVMEmitter *Emitter);
@@ -67,12 +64,14 @@ void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMBranchType Type);
 
 /* move and load */
 void PVMEmitMov(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitLoad(PVMEmitter *Emitter, const VarLocation *Dest, U64 Integer, IntegralType IntType);
+void PVMEmitLoadImm(PVMEmitter *Emitter, VarRegister Register, U64 Integer);
+
 
 /* arith instructions */
 void PVMEmitAddImm(PVMEmitter *Emitter, const VarLocation *Dst, I16 Imm);
 void PVMEmitAdd(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitSub(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitNeg(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitIMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
@@ -80,7 +79,6 @@ void PVMEmitIDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation 
 void PVMEmitMod(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 /* returns true if there are no warning */
 bool PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dst, const VarLocation *Right);
-
 
 
 /* stack instructions */
@@ -93,11 +91,12 @@ VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size, IntegralType Type);
 
 
 /* call instructions */
-#define NO_RETURN_REG 69 /* any number > PVM_REG_COUNT is fine */
+#define NO_RETURN_REG PVM_REG_COUNT
 void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
 /* returns the location of the call instruction in case it needs a patch later on */
 U32 PVMEmitCall(PVMEmitter *Emitter, VarSubroutine *Callee);
 void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter);
+
 
 /* exit/return */
 void PVMEmitExit(PVMEmitter *Emitter);

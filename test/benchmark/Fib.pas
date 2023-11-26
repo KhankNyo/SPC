@@ -14,12 +14,8 @@ begin die end;
 
 
 procedure main;
-var
-    a: uint32;
 begin
-    if fib(35) = 9227465 then
-        Exit
-    else die;
+    if 9227465 <> fib(35) then die;
 end;
 
 

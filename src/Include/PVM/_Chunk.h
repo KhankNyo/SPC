@@ -14,6 +14,7 @@ typedef struct LineDebugInfo
     const U8 *Src[8];
     U32 SrcLen[8];
     U32 Line[8];
+    bool IsSubroutine;
 
     U32 Count;
     U32 StreamOffset;

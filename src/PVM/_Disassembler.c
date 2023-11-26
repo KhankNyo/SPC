@@ -1,10 +1,14 @@
 
+#include <stdarg.h>
 #include "PVM/_Isa.h"
 #include "PVM/_Disassembler.h"
 
 static const char *sIntReg[PVM_REG_COUNT] = {
     "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", 
-    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+    "r8", "r9", "r10", "r11", "r12", 
+    [PVM_REG_GP] = "rgp", 
+    [PVM_REG_FP] = "rfp",
+    [PVM_REG_SP] = "rsp", 
 };
 
 static const char *sFltReg[PVM_FREG_COUNT] = {
@@ -14,8 +18,8 @@ static const char *sFltReg[PVM_FREG_COUNT] = {
 
 static const UInt sBytesPerLine = 4;
 static const UInt sAddrPad = 8;
-static const UInt sMnemonicPad = 14;
-static const UInt sCommentPad = 10;
+static const UInt sMnemonicPad = 13;
+static const UInt sCommentPad = 20;
 
 typedef struct ImmediateInfo{
     U32 Addr;
@@ -36,8 +40,13 @@ void PVMDisasm(FILE *f, const PVMChunk *Chunk, const char *Name)
         const LineDebugInfo *Info = ChunkGetConstDebugInfo(Chunk, i);
         if (Last != Info)
         {
-            Last = Info;
             fputc('\n', f);
+            Last = Info;
+            if (Info->IsSubroutine)
+            {
+                fprintf(f, "%s Subroutine %s\n", Fmt, Fmt);
+            }
+
             for (UInt k = 0; k < Info->Count; k++)
             {
                 fprintf(f, "[line %d]: \"%.*s\"\n", 
@@ -54,6 +63,15 @@ void PVMDisasm(FILE *f, const PVMChunk *Chunk, const char *Name)
 static void PrintPaddedMnemonic(FILE *f, int Pad, const char *Mnemonic)
 {
     fprintf(f, "%*s   %-*s", 3*sBytesPerLine - Pad, "", sMnemonicPad, Mnemonic);
+}
+
+static void PrintComment(FILE *f, int Pad, const char *Fmt, ...)
+{
+    va_list Args;
+    va_start(Args, Fmt);
+    fprintf(f, "%*s ", sCommentPad - Pad, "#");
+    vfprintf(f, Fmt, Args);
+    va_end(Args);
 }
 
 
@@ -107,9 +125,24 @@ static U32 DisasmBr(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *C
     int Pad = fprintf(f, "%02x %02x %02x %02x", 
             Opcode >> 8, Opcode & 0xFF, Chunk->Code[Addr + 1] >> 8, Chunk->Code[Addr + 1] & 0xFF
     );
+
     Addr += 2;
+    U32 SubroutineLocation = Addr + BrOffset;
+    const LineDebugInfo *SubroutineInfo = ChunkGetConstDebugInfo(Chunk, SubroutineLocation);
+
     PrintPaddedMnemonic(f, Pad, Mnemonic);
-    fprintf(f, "[%u]\n", Addr + BrOffset);
+    Pad = fprintf(f, "[%u]", Addr + BrOffset);
+    if (SubroutineInfo->IsSubroutine)
+    {
+        PASCAL_ASSERT(SubroutineInfo->Count >= 1, "subroutine info must exist");
+        PrintComment(f, Pad, "line %d: '%.*s'\n", 
+                SubroutineInfo->Line[0], SubroutineInfo->SrcLen[0], SubroutineInfo->Src[0]
+        );
+    }
+    else 
+    {
+        fputc('\n', f);
+    }
     return Addr;
 }
 
@@ -196,11 +229,11 @@ static ImmediateInfo GetImmFromImmType(const PVMChunk *Chunk, U32 Addr, PVMImmTy
     switch (ImmType)
     {
     default:
-    case IMMTYPE_I16: Info.SexIndex = 15;
+    case IMMTYPE_I16: Info.SexIndex = 15; FALLTHROUGH;
     case IMMTYPE_U16: break;
-    case IMMTYPE_I32: Info.SexIndex = 31;
+    case IMMTYPE_I32: Info.SexIndex = 31; FALLTHROUGH;
     case IMMTYPE_U32: Info.Count = 2; break;
-    case IMMTYPE_I48: Info.SexIndex = 47; 
+    case IMMTYPE_I48: Info.SexIndex = 47; FALLTHROUGH;
     case IMMTYPE_U48: Info.Count = 3; break;
     case IMMTYPE_U64: Info.Count = 4; break;
     }
@@ -247,10 +280,8 @@ static U32 DisasmRdImm(FILE *f, const char *Mnemonic, const PVMChunk *Chunk, U32
     int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
 
     PrintPaddedMnemonic(f, Pad, LongMnemonic);
-    fprintf(f, "%s, 0x%llx %*s %lld", Rd, Info.Imm,
-            sCommentPad, "# Decimal", Info.Imm
-    );
-
+    Pad = fprintf(f, "%s, 0x%llx", Rd, Info.Imm);
+    PrintComment(f, Pad, "decimal %lld", Info.Imm);
     DisplayImmBytes(f, Info);
     return Info.Addr;
 }
@@ -310,7 +341,6 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_VASR: DisasmRdRs(f, "vasr", sIntReg, Opcode); break;
 
     case OP_ADDI: return DisasmRdImm(f, "addi", Chunk, Addr, Opcode);
-    case OP_ADDPI: return DisasmRdImm(f, "addpi", Chunk, Addr, Opcode);
     case OP_ADDQI: DisasmRdSmallImm(f, "addqi", Opcode); break;
 
 
@@ -376,7 +406,7 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
 
 
     case OP_MOV64: DisasmRdRs(f, "mov64", sIntReg, Opcode); break;
-    case OP_MOV32: DisasmRdRs(f, "mo32", sIntReg, Opcode); break;
+    case OP_MOV32: DisasmRdRs(f, "mov32", sIntReg, Opcode); break;
     case OP_MOV16: DisasmRdRs(f, "mov16", sIntReg, Opcode); break;
     case OP_MOV8: DisasmRdRs(f, "mov8", sIntReg, Opcode); break;
 
@@ -399,6 +429,7 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_MOVZEXP_8:   DisasmRdRs(f, "movzexP_8", sIntReg, Opcode); break;
 
     case OP_FMOV: DisasmRdRs(f, "fmov", sIntReg, Opcode); break;
+    case OP_FMOV64: DisasmRdRs(f, "fmov64", sIntReg, Opcode); break;
     case OP_MOVI: return DisasmRdImm(f, "movi", Chunk, Addr, Opcode);
     case OP_MOVQI: DisasmRdSmallImm(f, "movqi", Opcode); break;
 
@@ -429,17 +460,6 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_SGE64: DisasmRdRs(f, "sge64", sIntReg, Opcode); break;
     case OP_ISLE64: DisasmRdRs(f, "isle64", sIntReg, Opcode); break;
     case OP_ISGE64: DisasmRdRs(f, "isge64", sIntReg, Opcode); break;
-
-    case OP_SEQP: DisasmRdRs(f, "seqP", sIntReg, Opcode); break;
-    case OP_SNEP: DisasmRdRs(f, "sneP", sIntReg, Opcode); break;
-    case OP_SLTP: DisasmRdRs(f, "sltP", sIntReg, Opcode); break;
-    case OP_SGTP: DisasmRdRs(f, "sgtP", sIntReg, Opcode); break;
-    case OP_ISLTP: DisasmRdRs(f, "isltP", sIntReg, Opcode); break;
-    case OP_ISGTP: DisasmRdRs(f, "isgtP", sIntReg, Opcode); break;
-    case OP_SLEP: DisasmRdRs(f, "sltP", sIntReg, Opcode); break;
-    case OP_SGEP: DisasmRdRs(f, "sgtP", sIntReg, Opcode); break;
-    case OP_ISLEP: DisasmRdRs(f, "isltP", sIntReg, Opcode); break;
-    case OP_ISGEP: DisasmRdRs(f, "isgtP", sIntReg, Opcode); break;
     }
     return Addr + 1;
 }

@@ -16,7 +16,7 @@ void PVMDebugPause(const PascalVM *PVM, const PVMChunk *Chunk,
     fprintf(stderr, "\n ==================== Debugger ==================== \n");
 
     fprintf(stderr, 
-            "IP: [%p]: ",
+            "IP: [%p]: \n",
             (const void*)IP
     );
     PVMDisasmSingleInstruction(stderr, Chunk, IP - Chunk->Code);
