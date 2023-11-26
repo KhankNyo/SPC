@@ -199,7 +199,7 @@ do {\
 
 
 
-    U16 *IP = Chunk->Code;
+    U16 *IP = Chunk->Code + Chunk->EntryPoint;
     SP().Ptr = PVM->Stack.Start;
     FP().Ptr = SP().Ptr;
     PVM->R[PVM_REG_GP].Ptr.Raw = Chunk->Global.Data.As.Raw;
@@ -477,10 +477,19 @@ CallStackOverflow:
 Exit:
     StreamOffset = IP - Chunk->Code;
     LineDebugInfo *Info = ChunkGetDebugInfo(Chunk, StreamOffset);
+    if (NULL == Info)
+    {
+        return ReturnValue;
+    }
+
     if (Info->Count > 0)
+    {
         PVM->Error.Line = Info->Line[Info->Count - 1];
+    }
     else 
+    {
         PVM->Error.Line = Info->Line[0];
+    }
     PVM->Error.PC = StreamOffset;
     return ReturnValue;
 

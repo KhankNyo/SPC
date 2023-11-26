@@ -17,11 +17,12 @@ static const char *sFltReg[PVM_FREG_COUNT] = {
 };
 
 static const UInt sBytesPerLine = 4;
-static const UInt sAddrPad = 8;
+static const UInt sAddrPad = 9;
 static const UInt sMnemonicPad = 13;
 static const UInt sCommentPad = 20;
 
-typedef struct ImmediateInfo{
+typedef struct ImmediateInfo
+{
     U32 Addr;
     UInt SexIndex, Count;
     U64 Imm;
@@ -30,21 +31,26 @@ typedef struct ImmediateInfo{
 
 void PVMDisasm(FILE *f, const PVMChunk *Chunk, const char *Name)
 {
-    const char *Fmt = "===============";
+    const char *Fmt = "=====================";
     fprintf(f, "%s %s %s\n", Fmt, Name, Fmt);
 
     U32 i = 0;
     const LineDebugInfo *Last = NULL;
     while (i < Chunk->Count)
     {
+        if (i == Chunk->EntryPoint)
+        {
+            fprintf(f, "\n %s Entry Point %s\n", Fmt, Fmt);
+        }
+
         const LineDebugInfo *Info = ChunkGetConstDebugInfo(Chunk, i);
-        if (Last != Info)
+        if (NULL != Info && Last != Info)
         {
             fputc('\n', f);
             Last = Info;
             if (Info->IsSubroutine)
             {
-                fprintf(f, "%s Subroutine %s\n", Fmt, Fmt);
+                fprintf(f, "\n %s Subroutine %s\n", Fmt, Fmt);
             }
 
             for (UInt k = 0; k < Info->Count; k++)
@@ -54,6 +60,7 @@ void PVMDisasm(FILE *f, const PVMChunk *Chunk, const char *Name)
                 );
             }
         }
+
         i = PVMDisasmSingleInstruction(f, Chunk, i);
     }
 }
@@ -132,9 +139,8 @@ static U32 DisasmBr(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *C
 
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     Pad = fprintf(f, "[%u]", Addr + BrOffset);
-    if (SubroutineInfo->IsSubroutine)
+    if (NULL != SubroutineInfo && SubroutineInfo->IsSubroutine)
     {
-        PASCAL_ASSERT(SubroutineInfo->Count >= 1, "subroutine info must exist");
         PrintComment(f, Pad, "line %d: '%.*s'\n", 
                 SubroutineInfo->Line[0], SubroutineInfo->SrcLen[0], SubroutineInfo->Src[0]
         );

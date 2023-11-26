@@ -6,6 +6,7 @@
 #include "Common.h"
 #include "Vartab.h"
 #include "PVMCompiler.h"
+#include "Variable.h"
 
 
 
@@ -78,6 +79,32 @@ void VartabReset(PascalVartab *Vartab)
 }
 
 
+PascalVartab VartabShallowConsolidate(const PascalVartab *Src, PascalGPA *PermanentAlloc)
+{
+    U32 Cap = RoundUpToPow2(Src->Count);
+    PascalVartab NewVartab = {
+        .Cap = Cap,
+        .Count = 0,
+        .Allocator = NULL,
+        .Table = GPAAllocateZero(PermanentAlloc, Cap * sizeof(NewVartab.Table[0])),
+    };
+
+    for (ISize i = 0; i < Src->Cap && NewVartab.Count < Cap; i++)
+    {
+        /* skip invalid entries */
+        if (IS_EMPTY(&Src->Table[i]) || IS_TOMBSTONED(&Src->Table[i]))
+            continue;
+
+        PascalVar *Slot = VartabFindValidSlot(NewVartab.Table, Cap, 
+                Src->Table[i].Str, Src->Table[i].Len, Src->Table[i].Hash
+        );
+        *Slot = Src->Table[i];
+        NewVartab.Count++;
+    }
+    return NewVartab;
+}
+
+
 
 
 
@@ -95,6 +122,8 @@ PascalVar *VartabFindWithHash(PascalVartab *Vartab, const U8 *Key, UInt Len, U32
 
 PascalVar *VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, IntegralType Type, VarLocation *Location)
 {
+    PASCAL_ASSERT(NULL != Vartab->Allocator, "Attempting to call VartabSet on a const Vartab");
+
     bool ExceededMaxLoad = Vartab->Count + 1 > Vartab->Cap * VARTAB_MAX_LOAD;
     if (ExceededMaxLoad)
     {
@@ -125,6 +154,8 @@ PascalVar *VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, IntegralType
 
 PascalVar *VartabDelete(PascalVartab *Vartab, const U8 *Key, UInt Len)
 {
+    PASCAL_ASSERT(NULL != Vartab->Allocator, "Attempting to call VartabDelete on a const Vartab");
+
     PascalVar *Slot = VartabFindValidSlot(Vartab->Table, Vartab->Cap, 
             Key, Len, VartabHashStr(Key, Len)
     );

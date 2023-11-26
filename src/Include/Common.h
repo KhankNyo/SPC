@@ -212,6 +212,19 @@ static inline U32 IsolateTopBitU32(U32 Value)
     return (U32)1 << Count;
 }
 
+static inline U64 RoundUpToPow2(U64 n)
+{
+    U64 Ret = n;
+    U64 i = n;
+    while (i)
+    {
+        Ret = i;
+        i &= i - 1;
+    }
+    return n % 2 == 0 
+        ? Ret : 2 * Ret;
+}
+
 
 PASCAL_STATIC_ASSERT(sizeof(F64) == sizeof(U64), "Unsupported double size");
 

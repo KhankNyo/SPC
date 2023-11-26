@@ -37,7 +37,7 @@ static void SkipWhitespace(PascalTokenizer *Lexer);
 static Token MakeToken(PascalTokenizer *Lexer, TokenType Type);
 
 /* creates an error token with the given info */
-static Token ErrorToken(PascalTokenizer *Lexer, TokenErrorInfo Info);
+static Token ErrorToken(PascalTokenizer *Lexer, const char *Msg);
 
 /* consumes a numeric literal and return its token */
 static Token ConsumeNumber(PascalTokenizer *Lexer);
@@ -102,13 +102,13 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
     case '=': 
     {
         if (AdvanceIfEqual(Lexer, '='))
-            return MakeToken(Lexer, TOKEN_EQUAL_EQUAL);
+            return ErrorToken(Lexer, "This is Pascal, use '=' to check for equality.");
         else return MakeToken(Lexer, TOKEN_EQUAL);
     } break;
     case '!': 
     {
         if (AdvanceIfEqual(Lexer, '='))
-            return MakeToken(Lexer, TOKEN_BANG_EQUAL);
+            return ErrorToken(Lexer, "This is Pascal, use '<>' to check for inequality.");
         return MakeToken(Lexer, TOKEN_BANG);
     } break;
     case '\'': return ConsumeString(Lexer);
@@ -176,7 +176,7 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
     default: break;
     }
 
-    return ErrorToken(Lexer, TOKERR_UNKNOWN_TOKEN);
+    return ErrorToken(Lexer, "Unknown token.");
 }
 
 
@@ -213,7 +213,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_PLUS", "TOKEN_MINUS", "TOKEN_STAR", "TOKEN_SLASH",
         "TOKEN_PLUS_EQUAL", "TOKEN_MINUS_EQUAL", "TOKEN_STAR_EQUAL", "TOKEN_SLASH_EQUAL",
         "TOKEN_STAR_STAR",
-        "TOKEN_EQUAL_EQUAL", "TOKEN_BANG", "TOKEN_BANG_EQUAL",
+        "TOKEN_BANG",
         "TOKEN_EQUAL", "TOKEN_LESS", "TOKEN_GREATER", "TOKEN_LESS_GREATER",
         "TOKEN_LESS_EQUAL", "TOKEN_GREATER_EQUAL",
         "TOKEN_LESS_LESS", "TOKEN_GREATER_GREATER",
@@ -400,10 +400,10 @@ static Token MakeToken(PascalTokenizer *Lexer, TokenType Type)
     return Tok;
 }
 
-static Token ErrorToken(PascalTokenizer *Lexer, TokenErrorInfo Info)
+static Token ErrorToken(PascalTokenizer *Lexer, const char *ErrMsg)
 {
     Token Err = MakeToken(Lexer, TOKEN_ERROR);
-    Err.Literal.Err = Info;
+    Err.Literal.Err = ErrMsg;
     return Err;
 }
 
@@ -561,7 +561,7 @@ static Token ConsumeString(PascalTokenizer *Lexer)
 
 
     if (IsAtEnd(Lexer))
-        return ErrorToken(Lexer, TOKERR_STRLIT_UNTERMINATED);
+        return ErrorToken(Lexer, "Unterminated string literal.");
 
     Token StringToken = MakeToken(Lexer, TOKEN_STRING_LITERAL);
 

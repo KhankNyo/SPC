@@ -20,7 +20,7 @@ int PascalRepl(void)
 {
     MemInit(1024*1024);
     PascalArena Program = ArenaInit(1024*1024, 4);
-    PascalArena Scratch = ArenaInit(1024, 4);
+    PascalGPA Permanent = GPAInit(4 * 1024 * 1024);
 
     PascalVM PVM = PVMInit(1024, 128);
     PVMChunk Chunk = ChunkInit(1024);
@@ -37,16 +37,15 @@ int PascalRepl(void)
         CurrentSource[SourceLen] = '\0';
 
 
-        if (PVMCompile(CurrentSource, &Identifiers, &Chunk, stderr))
+        if (PVMCompile(CurrentSource, &Identifiers, &Chunk, &Permanent, stderr))
         {
             PVMRun(&PVM, &Chunk);
         }
-        ArenaReset(&Scratch);
-        ChunkReset(&Chunk);
+        ChunkReset(&Chunk, true);
     }
 
 
-    ArenaDeinit(&Scratch);
+    GPADeinit(&Permanent);
     ArenaDeinit(&Program);
     MemDeinit();
     return RetVal;

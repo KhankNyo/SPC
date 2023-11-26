@@ -4,6 +4,8 @@
 
 #include "Common.h"
 #include "IntegralTypes.h"
+#include "Vartab.h"
+
 
 
 typedef struct VarLocation VarLocation;
@@ -41,6 +43,7 @@ typedef struct VarSubroutine
 
     bool HasReturnType;
     IntegralType ReturnType;
+    PascalVartab Scope;
 } VarSubroutine;
 
 typedef enum VarLocationType

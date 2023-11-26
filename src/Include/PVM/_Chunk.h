@@ -23,6 +23,7 @@ typedef struct PVMChunk
 {
     U16 *Code;
     U32 Count, Cap;
+    U32 EntryPoint;
 
     struct {
         GenericPtr Data;
@@ -43,7 +44,7 @@ U32 ChunkWriteMovImm(PVMChunk *Chunk, UInt Reg, U64 Imm, IntegralType DstType);
 U32 ChunkWriteDouble(PVMChunk *Chunk, UInt Reg, F64 Double);
 U32 ChunkWriteFloat(PVMChunk *Chunk, UInt Reg, F32 Float);
 U32 ChunkWriteGlobalData(PVMChunk *Chunk, const void *Data, U32 Size);
-void ChunkReset(PVMChunk *Chunk);
+void ChunkReset(PVMChunk *Chunk, bool PreserveFunctions);
 
 void ChunkWriteDebugInfo(PVMChunk *Chunk, const U8 *Src, U32 SrcLen, U32 Line);
 LineDebugInfo *ChunkGetDebugInfo(PVMChunk *Chunk, U32 StreamOffset);

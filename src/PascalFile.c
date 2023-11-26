@@ -15,7 +15,7 @@
 
 static U8 *LoadFile(const U8 *FileName, U32 MemorySize);
 static void UnloadFile(U8 *FileContents);
-static bool PascalRun(const U8 *Source, PascalArena *Arena);
+static bool PascalRun(const U8 *Source);
 
 
 
@@ -25,9 +25,7 @@ int PascalRunFile(const U8 *InFileName, const U8 *OutFileName)
     if (NULL == Source)
         return PASCAL_EXIT_FAILURE;
 
-    PascalArena Arena = ArenaInit(1024*1024, 4);
-    PascalRun(Source, &Arena);
-    ArenaDeinit(&Arena);
+    PascalRun(Source);
 
     UnloadFile(Source);
     return PASCAL_EXIT_SUCCESS;
@@ -71,12 +69,12 @@ static void UnloadFile(U8 *FileContent)
 }
 
 
-static bool PascalRun(const U8 *Source, PascalArena *Arena)
+static bool PascalRun(const U8 *Source)
 {
     PascalVartab Identifiers = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);    
 
     PVMChunk Code = ChunkInit(1024);
-    if (!PVMCompile(Source, &Identifiers, &Code, stderr))
+    if (!PVMCompile(Source, &Identifiers, &Code, MemGetAllocator(), stderr))
         goto CompileError;
 
     PascalVM VM = PVMInit(1024, 128);

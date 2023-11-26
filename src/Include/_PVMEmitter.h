@@ -36,6 +36,8 @@ typedef enum PVMBranchType
 
 PVMEmitter PVMEmitterInit(PVMChunk *Chunk);
 void PVMEmitterDeinit(PVMEmitter *Emitter);
+
+void PVMSetEntryPoint(PVMEmitter *Emitter, U32 EntryPoint);
 void PVMEmitterBeginScope(PVMEmitter *Emitter);
 void PVMEmitterEndScope(PVMEmitter *Emitter);
 void PVMEmitDebugInfo(PVMEmitter *Emitter, 

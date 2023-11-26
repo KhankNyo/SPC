@@ -73,7 +73,6 @@ void PVMEmitterDeinit(PVMEmitter *Emitter)
 
 
 
-
 static PVMChunk *PVMCurrentChunk(PVMEmitter *Emitter)
 {
     return Emitter->Chunk;
@@ -370,6 +369,12 @@ Unreachable:
     }
 }
 
+
+
+void PVMSetEntryPoint(PVMEmitter *Emitter, U32 EntryPoint)
+{
+    PVMCurrentChunk(Emitter)->EntryPoint = EntryPoint;
+}
 
 
 

@@ -22,6 +22,7 @@ PVMChunk ChunkInit(U32 InitialCap)
             .Count = 0,
             .Info = MemAllocateArray(*Chunk.Debug.Info, 64),
         },
+        .EntryPoint = 0,
     };
     return Chunk;
 }
@@ -33,11 +34,29 @@ void ChunkDeinit(PVMChunk *Chunk)
     *Chunk = (PVMChunk){ 0 };
 }
 
-void ChunkReset(PVMChunk *Chunk)
+void ChunkReset(PVMChunk *Chunk, bool PreserveFunctions)
 {
-    Chunk->Count = 0;
-    Chunk->Global.Count = 0;
-    Chunk->Debug.Count = 0;
+    if (PreserveFunctions)
+    {
+        Chunk->Count = Chunk->EntryPoint;
+        /* TODO: debug info */
+        U32 DebugInfoCount = Chunk->Debug.Count;
+        for (U32 i = 0; i < Chunk->Debug.Count; i++)
+        {
+            if (Chunk->Debug.Info[i].StreamOffset >= Chunk->EntryPoint)
+            {
+                DebugInfoCount--;
+                Chunk->Debug.Info[i].Count = 0;
+            }
+        }
+        Chunk->Debug.Count = DebugInfoCount;
+    }
+    else
+    {
+        Chunk->Count = 0;
+        Chunk->Global.Count = 0;
+        Chunk->Debug.Count = 0;
+    }
 }
 
 
@@ -200,6 +219,10 @@ void ChunkWriteDebugInfo(PVMChunk *Chunk, const U8 *Src, U32 SrcLen, U32 Line)
 LineDebugInfo *ChunkGetDebugInfo(PVMChunk *Chunk, U32 StreamOffset)
 {
     U32 InfoCount = Chunk->Debug.Count;
+    if (InfoCount == 0)
+    {
+        return NULL;
+    }
 
     /* chk upper bound */
     if (InfoCount > 0 

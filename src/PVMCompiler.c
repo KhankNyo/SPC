@@ -26,20 +26,19 @@ typedef struct CompilerFrame
 
 typedef struct PVMCompiler 
 {
+    PVMEmitter Emitter;
     PascalTokenizer Lexer;
     Token Curr, Next;
 
-    U32 Scope;
-    U32 EntryPoint;
+    PascalGPA InternalAlloc;
+    PascalGPA *GlobalAlloc;
 
-    PascalVartab *Global;
     PascalVartab Locals[PVM_MAX_SCOPE_COUNT];
-    PascalGPA Allocator;
-    PascalArena Arena;
+    PascalVartab *Global;
 
     struct {
         /* TODO: dynamic */
-        Token Array[8];
+        Token Array[256];
         U32 Count, Cap;
     } Iden;
 
@@ -47,11 +46,13 @@ typedef struct PVMCompiler
         VarLocation **Location;
         U32 Count, Cap;
     } Var;
-        /* TODO: dynamic */
+
+    /* TODO: dynamic */
     CompilerFrame Frame[PVM_MAX_SCOPE_COUNT];
 
-    PVMEmitter Emitter;
 
+    U32 Scope;
+    U32 EntryPoint;
     FILE *LogFile;
     bool Error, Panic;
 } PVMCompiler;
@@ -84,6 +85,114 @@ static IntegralType sCoercionRules[TYPE_COUNT][TYPE_COUNT] = {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+/*===============================================================================*/
+/*
+ *                                   ERROR
+ */
+/*===============================================================================*/
+
+
+static void ConsumeToken(PVMCompiler *Compiler);
+
+static bool ConsumeIfNextIs(PVMCompiler *Compiler, TokenType Type)
+{
+    if (Type == Compiler->Next.Type)
+    {
+        ConsumeToken(Compiler);
+        return true;
+    }
+    return false;
+}
+
+
+
+static U32 LineLen(const U8 *s)
+{
+    U32 i = 0;
+    for (; s[i] && s[i] != '\n' && s[i] != '\r'; i++)
+    {}
+    return i;
+}
+
+
+
+static void PrintAndHighlightSource(FILE *LogFile, const Token *Tok)
+{
+    const U8 *LineStart = Tok->Str - Tok->LineOffset + 1;
+    char Highlighter = '^';
+    U32 Len = LineLen(LineStart);
+
+    fprintf(LogFile, "\n    \"%.*s\"", Len, LineStart);
+    fprintf(LogFile, "\n    %*s", Tok->LineOffset, "");
+    for (U32 i = 0; i < Tok->Len; i++)
+        fputc(Highlighter, LogFile);
+}
+
+
+static void VaListError(PVMCompiler *Compiler, const Token *Tok, const char *Fmt, va_list Args)
+{
+    Compiler->Error = true;
+    if (!Compiler->Panic)
+    {
+        /* TODO: file name */
+        /* sample:
+         * [line 5, offset 10]
+         *     "function bad(): integer;"
+         *               ^^^
+         * Error: ...
+         */
+
+        Compiler->Panic = true;
+        fprintf(Compiler->LogFile, "\n[line %d, offset %d]", 
+                Tok->Line, Tok->LineOffset
+        );
+        PrintAndHighlightSource(Compiler->LogFile, Tok);
+
+        fprintf(Compiler->LogFile, "\n    Error: ");
+        vfprintf(Compiler->LogFile, Fmt, Args);
+        fputc('\n', Compiler->LogFile);
+    }
+}
+
+static void ErrorAt(PVMCompiler *Compiler, const Token *Tok, const char *ErrFmt, ...)
+{
+    va_list Args;
+    va_start(Args, ErrFmt);
+    VaListError(Compiler, Tok, ErrFmt, Args);
+    va_end(Args);
+}
+
+static void Error(PVMCompiler *Compiler, const char *ErrFmt, ...)
+{
+    va_list Args;
+    va_start(Args, ErrFmt);
+    VaListError(Compiler, &Compiler->Next, ErrFmt, Args);
+    va_end(Args);
+}
+
+static bool ConsumeOrError(PVMCompiler *Compiler, TokenType Expected, const char *ErrFmt, ...)
+{
+    if (!ConsumeIfNextIs(Compiler, Expected))
+    {
+        va_list Args;
+        va_start(Args, ErrFmt);
+        VaListError(Compiler, &Compiler->Next, ErrFmt, Args);
+        va_end(Args);
+        return false;
+    }
+    return true;
+}
 
 
 
@@ -154,18 +263,11 @@ static UInt TypeOfIntLit(U64 Integer)
 }
 
 
-static U32 LineLen(const U8 *s)
-{
-    U32 i = 0;
-    for (; s[i] && s[i] != '\n' && s[i] != '\r'; i++)
-    {}
-    return i;
-}
 
 
 
 static PVMCompiler CompilerInit(const U8 *Source, 
-        PascalVartab *PredefinedIdentifiers, PVMChunk *Chunk, FILE *LogFile)
+        PascalVartab *PredefinedIdentifiers, PVMChunk *Chunk, PascalGPA *GlobalAlloc, FILE *LogFile)
 {
     PVMCompiler Compiler = {
         .Lexer = TokenizerInit(Source),
@@ -174,14 +276,8 @@ static PVMCompiler CompilerInit(const U8 *Source,
         .Panic = false,
         .Scope = 0,
 
-        .Allocator = GPAInit(
-                PVM_MAX_SCOPE_COUNT * PVM_MAX_VAR_PER_SCOPE * sizeof(PascalVar)
-                + 4096 * 4096
-        ),
-        .Arena = ArenaInit(
-                4096 * 4096,
-                2
-        ),
+        .GlobalAlloc = GlobalAlloc,
+        .InternalAlloc = GPAInit(4 * 1024 * 1024),
         .Var = {
             .Cap = 256,
             .Count = 0,
@@ -195,27 +291,20 @@ static PVMCompiler CompilerInit(const U8 *Source,
         .Emitter = PVMEmitterInit(Chunk),
     };
 
-    Compiler.Var.Location = GPAAllocate(&Compiler.Allocator, sizeof(VarLocation *) * Compiler.Var.Cap);
+    Compiler.Var.Location = GPAAllocate(&Compiler.InternalAlloc, sizeof(VarLocation *) * Compiler.Var.Cap);
     for (U32 i = 0; i < Compiler.Var.Cap; i++)
     {
-        Compiler.Var.Location[i] = ArenaAllocateZero(&Compiler.Arena, sizeof Compiler.Var.Location[0][0]);
+        Compiler.Var.Location[i] = 
+            GPAAllocateZero(Compiler.GlobalAlloc, sizeof Compiler.Var.Location[0][0]);
     }
-
-    PVMEmitBranch(&Compiler.Emitter, 0);
     return Compiler;
 }
 
 static void CompilerDeinit(PVMCompiler *Compiler)
 {
-
-    /* TODO: delete idens defined at global scope in repl
-     * or make the compiler take in an arena/gpa to allocate data for globals
-     * currently it is a use after free if a variable is defined on one line and used in another line during repl 
-     */
-    PVMPatchBranch(EMITTER(), 0, Compiler->EntryPoint, BRANCHTYPE_UNCONDITIONAL);
+    PVMSetEntryPoint(EMITTER(), Compiler->EntryPoint);
     PVMEmitterDeinit(EMITTER());
-    GPADeinit(&Compiler->Allocator);
-    ArenaDeinit(&Compiler->Arena);
+    GPADeinit(&Compiler->InternalAlloc);
 }
 
 
@@ -226,30 +315,41 @@ static bool IsAtGlobalScope(const PVMCompiler *Compiler)
 }
 
 
-static void CompilerStackAllocateFrame(PVMCompiler *Compiler, VarSubroutine *Subroutine)
+static void CompilerPushSubroutine(PVMCompiler *Compiler, VarSubroutine *Subroutine)
 {
     Compiler->Frame[Compiler->Scope].Current = Subroutine;
     Compiler->Frame[Compiler->Scope].Location = Compiler->Var.Count;
     Compiler->Scope++;
 }
 
-static void CompilerStackDeallocateFrame(PVMCompiler *Compiler)
+static VarSubroutine *CompilerPopSubroutine(PVMCompiler *Compiler)
 {
     Compiler->Scope--;
+    U32 Last = Compiler->Var.Count;
     Compiler->Var.Count = Compiler->Frame[Compiler->Scope].Location;
+
+    /* refill the variables that have been taken */
+    for (U32 i = Compiler->Var.Count; i < Last; i++)
+    {
+        Compiler->Var.Location[i] = 
+            GPAAllocateZero(Compiler->GlobalAlloc, sizeof(Compiler->Var.Location[0][0]));
+    }
+    return Compiler->Frame[Compiler->Scope].Current;
 }
 
 
-static VarLocation *CompilerStackAlloc(PVMCompiler *Compiler)
+static VarLocation *CompilerAllocateVarLocation(PVMCompiler *Compiler)
 {
     if (Compiler->Var.Count >= Compiler->Var.Cap)
     {
         U32 OldCap = Compiler->Var.Cap;
         Compiler->Var.Cap *= 2;
-        Compiler->Var.Location = GPAReallocate(&Compiler->Allocator, Compiler->Var.Location, Compiler->Var.Cap);
+        Compiler->Var.Location = 
+            GPAReallocate(&Compiler->InternalAlloc, Compiler->Var.Location, Compiler->Var.Cap);
         for (U32 i = OldCap; i < Compiler->Var.Cap; i++)
         {
-            Compiler->Var.Location[i] = ArenaAllocateZero(&Compiler->Arena, sizeof Compiler->Var.Location[0][0]);
+            Compiler->Var.Location[i] = 
+                GPAAllocateZero(Compiler->GlobalAlloc, sizeof Compiler->Var.Location[0][0]);
         }
     }
     return Compiler->Var.Location[Compiler->Var.Count++];
@@ -261,20 +361,15 @@ static VarLocation *CompilerStackAlloc(PVMCompiler *Compiler)
 
 
 
+
 static void ConsumeToken(PVMCompiler *Compiler)
 {
     Compiler->Curr = Compiler->Next;
     Compiler->Next = TokenizerGetToken(&Compiler->Lexer);
-}
-
-static bool ConsumeIfNextIs(PVMCompiler *Compiler, TokenType Type)
-{
-    if (Type == Compiler->Next.Type)
+    if (Compiler->Next.Type == TOKEN_ERROR)
     {
-        ConsumeToken(Compiler);
-        return true;
+        Error(Compiler, "%s", Compiler->Next.Literal.Err);
     }
-    return false;
 }
 
 static bool IsAtEnd(const PVMCompiler *Compiler)
@@ -289,83 +384,6 @@ static bool IsAtStmtEnd(const PVMCompiler *Compiler)
 
 
 
-
-
-
-/*===============================================================================*/
-/*
- *                                   ERROR
- */
-/*===============================================================================*/
-
-
-
-static void PrintAndHighlightSource(FILE *LogFile, const Token *Tok)
-{
-    const U8 *LineStart = Tok->Str - Tok->LineOffset + 1;
-    char Highlighter = '^';
-    U32 Len = LineLen(LineStart);
-
-    fprintf(LogFile, "\n    \"%.*s\"", Len, LineStart);
-    fprintf(LogFile, "\n    %*s", Tok->LineOffset, "");
-    for (U32 i = 0; i < Tok->Len; i++)
-        fputc(Highlighter, LogFile);
-}
-
-
-static void VaListError(PVMCompiler *Compiler, const Token *Tok, const char *Fmt, va_list Args)
-{
-    Compiler->Error = true;
-    if (!Compiler->Panic)
-    {
-        /* TODO: file name */
-        /* sample:
-         * [line 5, offset 10]
-         *     "function bad(): integer;"
-         *               ^^^
-         * Error: ...
-         */
-
-        Compiler->Panic = true;
-        fprintf(Compiler->LogFile, "\n[line %d, offset %d]", 
-                Tok->Line, Tok->LineOffset
-        );
-        PrintAndHighlightSource(Compiler->LogFile, Tok);
-
-        fprintf(Compiler->LogFile, "\n    Error: ");
-        vfprintf(Compiler->LogFile, Fmt, Args);
-        fputc('\n', Compiler->LogFile);
-    }
-}
-
-static void ErrorAt(PVMCompiler *Compiler, const Token *Tok, const char *ErrFmt, ...)
-{
-    va_list Args;
-    va_start(Args, ErrFmt);
-    VaListError(Compiler, Tok, ErrFmt, Args);
-    va_end(Args);
-}
-
-static void Error(PVMCompiler *Compiler, const char *ErrFmt, ...)
-{
-    va_list Args;
-    va_start(Args, ErrFmt);
-    VaListError(Compiler, &Compiler->Next, ErrFmt, Args);
-    va_end(Args);
-}
-
-static bool ConsumeOrError(PVMCompiler *Compiler, TokenType Expected, const char *ErrFmt, ...)
-{
-    if (!ConsumeIfNextIs(Compiler, Expected))
-    {
-        va_list Args;
-        va_start(Args, ErrFmt);
-        VaListError(Compiler, &Compiler->Next, ErrFmt, Args);
-        va_end(Args);
-        return false;
-    }
-    return true;
-}
 
 
 
@@ -455,38 +473,6 @@ static void CalmDownAtBlock(PVMCompiler *Compiler)
 /*===============================================================================*/
 
 
-
-static void BeginScope(PVMCompiler *Compiler, VarSubroutine *Subroutine)
-{
-    /* creates new variable table */
-    PascalVartab *NewScope = &Compiler->Locals[Compiler->Scope];
-    PASCAL_ASSERT(Compiler->Scope <= PVM_MAX_SCOPE_COUNT, "Too many scopes");
-
-    if (0 == NewScope->Cap)
-    {
-        *NewScope = VartabInit(&Compiler->Allocator, PVM_MAX_VAR_PER_SCOPE);
-    }
-    else
-    {
-        VartabReset(NewScope);
-    }
-
-    /* mark allocation point */
-    CompilerStackAllocateFrame(Compiler, Subroutine);
-    PVMEmitterBeginScope(EMITTER());
-}
-
-static void EndScope(PVMCompiler *Compiler)
-{
-    /* TODO: deallocate regs alloc'ed from Declare param list here? */
-    if (Compiler->Scope > 1)
-    {
-        CompilerStackDeallocateFrame(Compiler);
-    }
-    PVMEmitterEndScope(EMITTER());
-}
-
-
 static PascalVartab *CurrentScope(PVMCompiler *Compiler)
 {
     if (IsAtGlobalScope(Compiler))
@@ -501,12 +487,42 @@ static PascalVartab *CurrentScope(PVMCompiler *Compiler)
 
 
 
+static void BeginScope(PVMCompiler *Compiler, VarSubroutine *Subroutine)
+{
+    /* creates new variable table */
+    PascalVartab *NewScope = &Compiler->Locals[Compiler->Scope];
+    PASCAL_ASSERT(Compiler->Scope <= PVM_MAX_SCOPE_COUNT, "Too many scopes");
+
+    *NewScope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+
+    /* mark allocation point */
+    CompilerPushSubroutine(Compiler, Subroutine);
+    PVMEmitterBeginScope(EMITTER());
+}
+
+static void EndScope(PVMCompiler *Compiler)
+{
+    PascalVartab *SubroutineScope = CurrentScope(Compiler);
+    VarSubroutine *Subroutine = CompilerPopSubroutine(Compiler);
+    Subroutine->Scope = *SubroutineScope;
+    PVMEmitterEndScope(EMITTER());
+}
 
 
 
-static PascalVar *DefineIdentifier(PVMCompiler *Compiler, const Token *Identifier, IntegralType Type, VarLocation *Location)
+
+
+
+static PascalVar *DefineIdentifier(PVMCompiler *Compiler, 
+        const Token *Identifier, IntegralType Type, VarLocation *Location)
 {
     return VartabSet(CurrentScope(Compiler), Identifier->Str, Identifier->Len, Type, Location);
+}
+
+static PascalVar *DefineGlobal(PVMCompiler *Compiler,
+        const Token *Identifier, IntegralType Type, VarLocation *Location)
+{
+    return VartabSet(Compiler->Global, Identifier->Str, Identifier->Len, Type, Location);
 }
 
 
@@ -686,12 +702,13 @@ static Token *CompilerGetTmpIdentifier(PVMCompiler *Compiler, UInt Idx)
 
 static bool CompileAndDeclareParameter(PVMCompiler *Compiler, U32 VarCount, U32 VarSize, IntegralType VarType, VarSubroutine *Function)
 {
-    PASCAL_ASSERT(CompilerGetTmpIdentifierCount(Compiler) != 0, "cannot be called outside of CompileAndDeclareVarList()");
+    PASCAL_ASSERT(CompilerGetTmpIdentifierCount(Compiler) != 0, 
+            "cannot be called outside of CompileAndDeclareVarList()");
 
     bool HasStackParams = false;
     for (U32 i = 0; i < VarCount; i++)
     {
-        VarLocation *Location = CompilerStackAlloc(Compiler);
+        VarLocation *Location = CompilerAllocateVarLocation(Compiler);
         PascalVar *Var = DefineIdentifier(Compiler, 
                 CompilerGetTmpIdentifier(Compiler, i),
                 VarType,
@@ -703,17 +720,18 @@ static bool CompileAndDeclareParameter(PVMCompiler *Compiler, U32 VarCount, U32 
         {
             *Location = Compiler->Emitter.ArgReg[Function->ArgCount];
             Location->As.Register.Type = VarType;
-            /* TODO: who's freeing these */
+
+            /* will be freed at the end of the function's scope */
+            /* TODO: nested functions */
             PVMMarkRegisterAsAllocated(EMITTER(), Location->As.Register.ID);
         }
         else /* stack args */
         {
             HasStackParams = true;
-            PASCAL_UNREACHABLE("TODO: param list for function");
             Location->LocationType = VAR_MEM;
             Location->As.Memory = PVMQueueStackAllocation(EMITTER(), VarSize, VarType);
         }
-        FunctionDataPushParameter(&Compiler->Allocator, Function, Var);
+        FunctionDataPushParameter(Compiler->GlobalAlloc, Function, Var);
     }
     return HasStackParams;
 }
@@ -724,7 +742,7 @@ static bool CompileAndDeclareLocal(PVMCompiler *Compiler, U32 VarCount, U32 VarS
 
     for (U32 i = 0; i < VarCount; i++)
     {
-        VarLocation *Location = CompilerStackAlloc(Compiler);
+        VarLocation *Location = CompilerAllocateVarLocation(Compiler);
         DefineIdentifier(Compiler, 
                 CompilerGetTmpIdentifier(Compiler, i),
                 VarType,
@@ -742,10 +760,10 @@ static bool CompileAndDeclareGlobal(PVMCompiler *Compiler, U32 VarCount, U32 Var
 {
     for (U32 i = 0; i < VarCount; i++)
     {
-        VarLocation *Location = CompilerStackAlloc(Compiler);
-        DefineIdentifier(Compiler, 
+        VarLocation *Location = CompilerAllocateVarLocation(Compiler);
+        DefineGlobal(Compiler,
                 CompilerGetTmpIdentifier(Compiler, i),
-                VarType,
+                VarType, 
                 Location
         );
 
@@ -860,7 +878,9 @@ static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName
 CheckArgs:
     if (ArgCount != ExpectedArgCount)
     {
-        ErrorAt(Compiler, FunctionName, "Expected %d arguments but got %d instead.", Subroutine->ArgCount, ArgCount);
+        ErrorAt(Compiler, FunctionName, 
+                "Expected %d arguments but got %d instead.", Subroutine->ArgCount, ArgCount
+        );
     }
 }
 
@@ -1523,7 +1543,7 @@ static void CompileBeginBlock(PVMCompiler *Compiler)
 static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *SubroutineType)
 {
     /* 'function', 'procedure' consumed */
-    VarLocation *Var = CompilerStackAlloc(Compiler);
+    VarLocation *Var = CompilerAllocateVarLocation(Compiler);
     Var->LocationType = VAR_SUBROUTINE;
     Var->As.Subroutine = (VarSubroutine) {
         .HasReturnType = TOKEN_FUNCTION == Compiler->Curr.Type,
@@ -1626,15 +1646,14 @@ static void CompileVarBlock(PVMCompiler *Compiler)
 
 
 
-
-
-static bool CompileBlock(PVMCompiler *Compiler)
+/* returns true if Begin is encountered */
+static bool CompileHeadlessBlock(PVMCompiler *Compiler)
 {
     while (!IsAtEnd(Compiler) && Compiler->Next.Type != TOKEN_BEGIN)
     {
         switch (Compiler->Next.Type)
         {
-        case TOKEN_BEGIN: goto BeginEnd;
+        case TOKEN_BEGIN: return true;
         case TOKEN_FUNCTION:
         {
             ConsumeToken(Compiler);
@@ -1679,11 +1698,20 @@ static bool CompileBlock(PVMCompiler *Compiler)
             CalmDownAtBlock(Compiler);
         }
     }
+    return ConsumeIfNextIs(Compiler, TOKEN_BEGIN);
+}
 
-BeginEnd:
-    ConsumeOrError(Compiler, TOKEN_BEGIN, "Expected 'begin' instead.");
-    CompileBeginBlock(Compiler);
-    return !Compiler->Error;
+
+
+static bool CompileBlock(PVMCompiler *Compiler)
+{
+    if (CompileHeadlessBlock(Compiler))
+    {
+        CompileBeginBlock(Compiler);
+        return !Compiler->Error;
+    }
+    Error(Compiler, "Expected 'Begin'.");
+    return false;
 }
 
 static bool CompileProgram(PVMCompiler *Compiler)
@@ -1712,26 +1740,22 @@ static bool CompileProgram(PVMCompiler *Compiler)
 
 
 
-bool PVMCompile(const U8 *Source, PascalVartab *PredefinedIdentifiers, PVMChunk *Chunk, FILE *LogFile)
+bool PVMCompile(const U8 *Source, 
+        PascalVartab *PredefinedIdentifiers, PVMChunk *Chunk, PascalGPA *GlobalAlloc, FILE *LogFile)
 {
-    PVMCompiler Compiler = CompilerInit(Source, PredefinedIdentifiers, Chunk, LogFile);
+    PVMCompiler Compiler = CompilerInit(Source, PredefinedIdentifiers, Chunk, GlobalAlloc, LogFile);
     ConsumeToken(&Compiler);
 
     if (ConsumeIfNextIs(&Compiler, TOKEN_PROGRAM))
     {
-        if (!CompileProgram(&Compiler))
-            goto CompileError;
+        CompileProgram(&Compiler);
     }
-    else if (!CompileBlock(&Compiler))
+    else if (CompileHeadlessBlock(&Compiler))
     {
-        goto CompileError;
+        CompileBeginBlock(&Compiler);
     }
 
-
     CompilerDeinit(&Compiler);
-    return true;
-CompileError:
-    CompilerDeinit(&Compiler);
-    return false;
+    return !Compiler.Error;
 }
 
