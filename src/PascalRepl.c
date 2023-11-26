@@ -8,7 +8,7 @@
 #include "Pascal.h"
 #include "Memory.h"
 
-#include "PVM/_PVM.h"
+#include "PVM/PVM.h"
 #include "PVMCompiler.h"
 
 

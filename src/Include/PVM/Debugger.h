@@ -2,7 +2,7 @@
 #define PVM_DEBUGGER_H
 
 
-#include "_PVM.h"
+#include "PVM.h"
 
 void PVMDebugPause(const PascalVM *PVM, const PVMChunk *Chunk, 
         const U16 *IP, const PVMPTR SP, const PVMPTR FP

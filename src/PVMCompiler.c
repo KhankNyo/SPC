@@ -10,7 +10,7 @@
 
 #include "IntegralTypes.h"
 #include "PVMCompiler.h"
-#include "_PVMEmitter.h"
+#include "PVMEmitter.h"
 
 
 #define EMITTER() (&Compiler->Emitter)

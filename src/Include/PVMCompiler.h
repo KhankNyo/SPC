@@ -4,7 +4,7 @@
 
 
 #include "Common.h"
-#include "PVM/_Chunk.h"
+#include "PVM/Chunk.h"
 #include "Vartab.h"
 
 #define PVM_MAX_FUNCTION_COUNT 1024

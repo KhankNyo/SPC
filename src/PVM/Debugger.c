@@ -4,8 +4,8 @@
 
 #include "Common.h"
 
-#include "PVM/_PVM.h"
-#include "PVM/_Disassembler.h"
+#include "PVM/PVM.h"
+#include "PVM/Disassembler.h"
 #include "PVM/Debugger.h"
 
 

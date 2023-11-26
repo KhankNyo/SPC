@@ -1,62 +1,17 @@
-#ifndef PASCAL_VM_H
-#define PASCAL_VM_H
-
-
-#include "CodeChunk.h"
-#include "Isa.h"
-
-
-typedef union PVMGPR 
-{
-    PVMPtr Ptr;
-    PVMSPtr SPtr;
-    PVMSByte SByte[sizeof(PVMPtr)];
-    PVMByte Byte[sizeof(PVMPtr)];
-#if PASCAL_LITTLE_ENDIAN
-    struct {
-        PVMWord First, Second;
-    } Word;
-    struct {
-        PVMSWord First, Second;
-    } SWord;
-    struct {
-        PVMHalf First, Second, Third, Fourth;
-    } Half;
-    struct {
-        PVMSHalf First, Second, Third, Fourth;
-    } SHalf;
-#else
-    struct {
-        PVMWord Second, First;
-    } Word;
-    struct {
-        PVMHalf Fourth, Third, Second, First;
-    } Half;
-    struct {
-        PVMSWord Second, First;
-    } SWord;
-    struct {
-        PVMSHalf Fourth, Third, Second, First;
-    } SHalf;
-#endif /* PASCAL_LITTLE_ENDIAN */
-} PVMGPR;
-PASCAL_STATIC_ASSERT(sizeof(PVMGPR) == sizeof(PVMPtr), "Pack that damned struct");
+#ifndef PASCAL_PVM2_H
+#define PASCAL_PVM2_H
 
 
 
-typedef union PVMFPR 
-{
-    F64 Double;
-    PVMPtr Ptr;
-    F32 Single[2];
-    PVMWord Word[2];
-} PVMFPR;
+#include "PVM/Chunk.h"
+#include "PVM/Isa.h"
+
 
 
 typedef struct PVMSaveFrame 
 {
-    PVMWord *IP;
-    PVMPtr *Frame;
+    U16 *IP;
+    PVMPTR FP;
 } PVMSaveFrame;
 
 
@@ -66,9 +21,8 @@ typedef struct PascalVM
     PVMFPR F[PVM_REG_COUNT];
 
     struct {
-        PVMPtr *Start;
-        PVMPtr *Ptr;
-        PVMPtr *End;
+        PVMPTR Start;
+        PVMPTR End;
     } Stack;
     struct {
         PVMSaveFrame *Val;
@@ -93,17 +47,19 @@ typedef enum PVMReturnValue
     PVM_ILLEGAL_INSTRUCTION,
     PVM_DIVISION_BY_0,
     PVM_CALLSTACK_OVERFLOW,
-    PVM_CALLSTACK_UNDERFLOW,
 } PVMReturnValue;
-PVMReturnValue PVMInterpret(PascalVM *PVM, CodeChunk *Chunk);
+PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Code);
 
 /* Same as PVMInterpret, but handles and prints error to stdout */
-bool PVMRun(PascalVM *PVM, CodeChunk *Chunk);
+bool PVMRun(PascalVM *PVM, PVMChunk *Code);
 
 void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine);
 
 
 
 
-#endif /* PASCAL_VM_H */
+
+
+
+#endif /* PASCAL_PVM2_H */
 

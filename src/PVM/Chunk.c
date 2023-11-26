@@ -2,8 +2,8 @@
 #include "Common.h"
 
 #include "Memory.h"
-#include "PVM/_Chunk.h"
-#include "PVM/_Isa.h"
+#include "PVM/Chunk.h"
+#include "PVM/Isa.h"
 
 
 

@@ -1,98 +1,108 @@
-#ifndef PASCAL_VM_EMITTER_H
-#define PASCAL_VM_EMITTER_H
+#ifndef PASCAL_VM2_EMITTER_H
+#define PASCAL_VM2_EMITTER_H
 
-
-#include "Common.h"
-#include "IntegralTypes.h"
-#include "Tokenizer.h"
+#include "PVM/Chunk.h"
+#include "PVM/Isa.h"
 #include "Variable.h"
-#include "PVM/CodeChunk.h"
+#include "Tokenizer.h"
 #include "PVMCompiler.h"
 
 
-
-#define PVM_CONDITIONAL_BRANCH 21
-#define PVM_UNCONDITIONAL_BRANCH 26
+#define PVM_MAX_CALL_IN_EXPR 32
 
 typedef struct PVMEmitter 
 {
-    CodeChunk *Chunk;
+    PVMChunk *Chunk;
+    U16 Reglist;
+    U32 NumSavelist;
+    U16 SavedRegisters[PVM_MAX_CALL_IN_EXPR];
 
-    UInt SpilledRegCount;
-    U32 RegisterList;
-    U32 SavedRegisters[PVM_MAX_SCOPE_COUNT];
+    U32 SpilledRegCount;
+    U32 StackSpace;
+    struct {
+        VarLocation SP, FP, GP;
+    } Reg;
 
-    UInt CurrentScopeDepth;
-    U32 SP;
-
-    U32 GlobalDataSize;
-    U32 VarCount;
-    U32 GlobalCount;
+    VarLocation ReturnValue;
+    VarLocation ArgReg[PVM_ARGREG_COUNT];
 } PVMEmitter;
 
+typedef enum PVMBranchType
+{
+    BRANCHTYPE_UNCONDITIONAL    = 0x00FF,
+    BRANCHTYPE_CONDITIONAL      = 0x000F,
+} PVMBranchType;
 
 
-
-
-PVMEmitter PVMEmitterInit(CodeChunk *Chunk);
+PVMEmitter PVMEmitterInit(PVMChunk *Chunk);
 void PVMEmitterDeinit(PVMEmitter *Emitter);
 
-
-void PVMEmitterOptimize(PVMEmitter *Emitter, U32 StreamBegin, U32 StreamEnd);
-
+void PVMSetEntryPoint(PVMEmitter *Emitter, U32 EntryPoint);
 void PVMEmitterBeginScope(PVMEmitter *Emitter);
 void PVMEmitterEndScope(PVMEmitter *Emitter);
-GlobalVar PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
+void PVMEmitDebugInfo(PVMEmitter *Emitter, 
+        const U8 *Src, U32 Len, U32 LineNum
+);
+void PVMUpdateDebugInfo(PVMEmitter *Emitter, U32 LineLen, bool IsSubroutine);
+
+
 U32 PVMGetCurrentLocation(PVMEmitter *Emitter);
+/* TODO: weird semantics between these 2 functions */
+void PVMFreeRegister(PVMEmitter *Emitter, VarRegister Reg);
+VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type);
+void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, U32 RegID);
 
-U32 PVMEmitCode(PVMEmitter *Emitter, U32 Instruction);
-void PVMEmitGlobal(PVMEmitter *Emitter, GlobalVar Global);
-void PVMEmitDebugInfo(PVMEmitter *Emitter, const U8 *Src, U32 Line);
-void PVMUpdateDebugInfo(PVMEmitter *Emitter, UInt LineLen);
-bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *Target, const VarLocation *Src);
 
-U32 PVMMarkBranchTarget(PVMEmitter *Emitter);
+/* Branching instructions */
+#define PVMMarkBranchTarget(pEmitter) PVMGetCurrentLocation(pEmitter)
+/* returns the offset of the branch instruction for later patching */
 U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition);
-U32 PVMEmitBranch(PVMEmitter *Emitter, U32 Location);
-void PVMPatchBranch(PVMEmitter *Emitter, U32 StreamOffset, U32 Location, UInt ImmSize);
-void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 StreamOffset, UInt ImmSize); 
+U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition);
+/* returns the offset of the branch instruction for patching if necessary */
+U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To);
+void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMBranchType Type);
+void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMBranchType Type);
 
-void PVMEmitMov(PVMEmitter *Emitter, const VarLocation *Dest, const VarLocation *Src);
-void PVMEmitLoad(PVMEmitter *Emitter, const VarLocation *Dest, U64 Integer, IntegralType IntegerType);
-void PVMEmitAddImm(PVMEmitter *Emitter, const VarLocation *Dest, I16 Imm);
-void PVMEmitAdd(PVMEmitter *Emitter, const VarLocation *Dest, const VarLocation *Left, const VarLocation *Right);
-void PVMEmitSub(PVMEmitter *Emitter, const VarLocation *Dest, const VarLocation *Left, const VarLocation *Right);
-void PVMEmitMul(PVMEmitter *Emitter, const VarLocation *Dest, const VarLocation *Left, const VarLocation *Right);
-void PVMEmitDiv(PVMEmitter *Emitter, 
-        const VarLocation *Dividend, const VarLocation *Remainder, 
-        const VarLocation *Left, const VarLocation *Right
-);
-void PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, 
-        const VarLocation *Dest, 
-        const VarLocation *Left, const VarLocation *Right
-);
-void PVMEmitPush(PVMEmitter *Emitter, UInt RegID);
-void PVMEmitPop(PVMEmitter *Emitter, UInt RegID);
-void PVMEmitAddSp(PVMEmitter *Emitter, I32 Offset);
 
+/* move and load */
+void PVMEmitMov(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitLoadImm(PVMEmitter *Emitter, VarRegister Register, U64 Integer);
+
+
+/* arith instructions */
+void PVMEmitAddImm(PVMEmitter *Emitter, const VarLocation *Dst, I16 Imm);
+void PVMEmitAdd(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitSub(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitNeg(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitIMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitIDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitMod(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+/* returns true if there are no warning */
+bool PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dst, const VarLocation *Right);
+
+
+/* stack instructions */
+VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size, IntegralType Type);
+void PVMCommitStackAllocation(PVMEmitter *Emitter);
+
+
+/* global instructions */
+VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size, IntegralType Type);
+
+
+/* call instructions */
+#define NO_RETURN_REG PVM_REG_COUNT
 void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
-void PVMEmitCall(PVMEmitter *Emitter, FunctionVar *Callee);
+/* returns the location of the call instruction in case it needs a patch later on */
+U32 PVMEmitCall(PVMEmitter *Emitter, VarSubroutine *Callee);
 void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter);
-void PVMEmitReturn(PVMEmitter *Emitter);
+
+
+/* exit/return */
 void PVMEmitExit(PVMEmitter *Emitter);
 
-LocalVar PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size);
-void PVMCommitStackAllocation(PVMEmitter *Emitter);
-U32 PVMAllocateStackSpace(PVMEmitter *Emitter, UInt Size);
 
-VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type);
-void PVMFreeRegister(PVMEmitter *Emitter, const VarLocation *Register);
-void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, UInt RegID);
-bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt RegID);
-
-
-
-
-
-#endif /* PASCAL_VM_EMITTER_H */
+#endif /* PASCAL_VM2_EMITTER_H */
 
