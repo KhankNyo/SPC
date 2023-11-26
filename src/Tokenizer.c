@@ -202,7 +202,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_OBJECT", "TOKEN_OF", "TOKEN_ON", "TOKEN_OPERATOR", "TOKEN_OR", 
         "TOKEN_PACKED", "TOKEN_PROCEDURE", "TOKEN_PROGRAM", 
         "TOKEN_RECORD", "TOKEN_REPEAT", "TOKEN_RESULT",
-        "TOKEN_SET", "TOKEN_SHL", "TOKEN_SHR", "TOKEN_STRING", 
+        "TOKEN_SET", "TOKEN_SHL", "TOKEN_SHR",  
         "TOKEN_THEN", "TOKEN_TRUE", "TOKEN_TYPE", "TOKEN_TO",
         "TOKEN_UNIT", "TOKEN_UNTIL", "TOKEN_USES", 
         "TOKEN_VAR", 
@@ -427,6 +427,8 @@ static Token ConsumeNumber(PascalTokenizer *Lexer)
             Hex *= 16;
             Hex += Hexit;
         }
+        if (IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
+            goto Error;
 
         Token HexNumber = MakeToken(Lexer, Type);
         HexNumber.Literal.Int = Hex;
@@ -507,16 +509,25 @@ static Token ConsumeNumber(PascalTokenizer *Lexer)
                 : Decimal * Pow10;
         }
 
+        if (IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
+            goto Error;
+
         Token Number = MakeToken(Lexer, Type);
         Number.Literal.Real = Decimal;
         return Number;
     }
     else 
     {
+        if (IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
+            goto Error;
+
         Token Number = MakeToken(Lexer, Type);
         Number.Literal.Int = Integer;
         return Number;
     }
+
+Error:
+    return ErrorToken(Lexer, "Invalid character after number.");
 }
 
 
@@ -672,7 +683,6 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
             {.Str = (const U8 *)"ET", .Len = 2, .Type = TOKEN_SET},
             {.Str = (const U8 *)"HR", .Len = 2, .Type = TOKEN_SHR},
             {.Str = (const U8 *)"HL", .Len = 2, .Type = TOKEN_SHL},
-            {.Str = (const U8 *)"TRING", .Len = 5, .Type = TOKEN_STRING},
         },
         ['T'] = {
             {.Str = (const U8 *)"HEN", .Len = 3, .Type = TOKEN_THEN},

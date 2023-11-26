@@ -50,6 +50,7 @@ PascalVartab VartabPredefinedIdentifiers(PascalGPA *Allocator, ISize InitialCap)
     VartabSet(&Identifiers, (const U8*)"INTEGER", 7, TYPE_I16, NULL);
     VartabSet(&Identifiers, (const U8*)"REAL", 4, TYPE_F32, NULL);
     VartabSet(&Identifiers, (const U8*)"BOOLEAN", 7, TYPE_BOOLEAN, NULL);
+    VartabSet(&Identifiers, (const U8*)"STRING", 6, TYPE_STRING, NULL);
 
     VartabSet(&Identifiers, (const U8*)"int8", 4, TYPE_I8, NULL);
     VartabSet(&Identifiers, (const U8*)"int16", 5, TYPE_I16, NULL);

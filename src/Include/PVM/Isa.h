@@ -20,9 +20,6 @@ typedef enum PVMOp
     OP_ADDI,
     OP_ADDQI,
 
-    OP_SHL,
-    OP_SHR,
-    OP_ASR,
     OP_VSHL,
     OP_VSHR,
     OP_VASR,
@@ -77,18 +74,12 @@ typedef enum PVMOp
     OP_MOVSEX64_8,
     OP_MOVSEX32_16,
     OP_MOVSEX32_8,
-    OP_MOVSEXP_32,
-    OP_MOVSEXP_16,
-    OP_MOVSEXP_8,
 
     OP_MOVZEX64_32,
     OP_MOVZEX64_16,
     OP_MOVZEX64_8,
     OP_MOVZEX32_16,
     OP_MOVZEX32_8,
-    OP_MOVZEXP_32,
-    OP_MOVZEXP_16,
-    OP_MOVZEXP_8,
 
     OP_LD8,
     OP_ST8,
@@ -126,6 +117,12 @@ typedef enum PVMOp
     OP_IMUL64,
     OP_MOD64,
     OP_NEG64,
+
+    OP_VSHL64,
+    OP_VSHR64,
+    OP_VASR64,
+
+
 
     OP_SEQ64,
     OP_SNE64,

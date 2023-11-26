@@ -1014,6 +1014,10 @@ static VarLocation ExprUnary(PVMCompiler *Compiler)
     {
         PVMEmitNeg(EMITTER(), &Value, &Value);
     } break;
+    case TOKEN_NOT:
+    {
+
+    }
     default: PASCAL_UNREACHABLE("Invalid operator for unary"); break;
     }
     return Value;
@@ -1056,6 +1060,23 @@ static VarLocation ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
     {
         PVMEmitSub(EMITTER(), Left, &Right);
     } break;
+    case TOKEN_LESS_LESS:
+    case TOKEN_SHL:
+    {
+        PVMEmitShl(EMITTER(), Left, &Right);
+    } break;
+    case TOKEN_GREATER_GREATER:
+    case TOKEN_SHR:
+    {
+        if (IntegralTypeIsSigned(TypeOfLocation(Left)))
+        {
+            PVMEmitAsr(EMITTER(), Left, &Right);
+        }
+        else
+        {
+            PVMEmitShl(EMITTER(), Left, &Right);
+        }
+    } break;
 
     case TOKEN_LESS:
     case TOKEN_GREATER:
@@ -1086,14 +1107,20 @@ static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] =
     [TOKEN_INTEGER_LITERAL] = { FactorIntLit,       NULL,           PREC_SINGLE },
     [TOKEN_IDENTIFIER]      = { FactorVariable,     NULL,           PREC_SINGLE },
     [TOKEN_LEFT_PAREN]      = { FactorGrouping,     NULL,           PREC_SINGLE },
+    [TOKEN_NOT]             = { ExprUnary,          NULL,           PREC_SINGLE },
 
     [TOKEN_STAR]            = { NULL,               ExprBinary,     PREC_TERM },
     [TOKEN_DIV]             = { NULL,               ExprBinary,     PREC_TERM },
     [TOKEN_MOD]             = { NULL,               ExprBinary,     PREC_TERM },
 
     [TOKEN_OR]              = { NULL,               ExprBinary,     PREC_SIMPLE },
+    [TOKEN_AND]             = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_PLUS]            = { ExprUnary,          ExprBinary,     PREC_SIMPLE },
     [TOKEN_MINUS]           = { ExprUnary,          ExprBinary,     PREC_SIMPLE },
+    [TOKEN_SHR]             = { NULL,               ExprBinary,     PREC_SIMPLE },
+    [TOKEN_SHL]             = { NULL,               ExprBinary,     PREC_SIMPLE },
+    [TOKEN_LESS_LESS]       = { NULL,               ExprBinary,     PREC_SIMPLE },
+    [TOKEN_GREATER_GREATER] = { NULL,               ExprBinary,     PREC_SIMPLE },
 
     [TOKEN_LESS]            = { NULL,               ExprBinary,     PREC_EXPR },
     [TOKEN_GREATER]         = { NULL,               ExprBinary,     PREC_EXPR },

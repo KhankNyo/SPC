@@ -79,6 +79,9 @@ void PVMEmitDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *
 void PVMEmitIMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitIDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitMod(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitShl(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitShr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitAsr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 /* returns true if there are no warning */
 bool PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dst, const VarLocation *Right);
 

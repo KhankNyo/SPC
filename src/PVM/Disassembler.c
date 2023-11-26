@@ -313,7 +313,7 @@ static void DisasmRdSmallImm(FILE *f, const char *Mnemonic, U16 Opcode)
     const char *Rd = sIntReg[PVM_GET_RD(Opcode)];
     int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
-    fprintf(f, "%s, %d\n", Rd, PVM_GET_RS(Opcode));
+    fprintf(f, "%s, %d\n", Rd, BIT_SEX32(PVM_GET_RS(Opcode), 3));
 }
 
 
@@ -339,9 +339,6 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_MOD: DisasmRdRs(f, "mod", sIntReg, Opcode); break;
     case OP_NEG: DisasmRdRs(f, "neg", sIntReg, Opcode); break;
 
-    case OP_SHL: DisasmRdSmallImm(f, "shl", Opcode); break;
-    case OP_SHR: DisasmRdSmallImm(f, "shr", Opcode); break;
-    case OP_ASR: DisasmRdSmallImm(f, "asr", Opcode); break;
     case OP_VSHL: DisasmRdRs(f, "vshl", sIntReg, Opcode); break;
     case OP_VSHR: DisasmRdRs(f, "vshr", sIntReg, Opcode); break;
     case OP_VASR: DisasmRdRs(f, "vasr", sIntReg, Opcode); break;
@@ -421,18 +418,12 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_MOVSEX64_8:  DisasmRdRs(f, "movsex64_8", sIntReg, Opcode); break;
     case OP_MOVSEX32_16: DisasmRdRs(f, "movsex32_16", sIntReg, Opcode); break;
     case OP_MOVSEX32_8:  DisasmRdRs(f, "movsex32_8", sIntReg, Opcode); break;
-    case OP_MOVSEXP_32:  DisasmRdRs(f, "movsexP_32", sIntReg, Opcode); break;
-    case OP_MOVSEXP_16:  DisasmRdRs(f, "movsexP_16", sIntReg, Opcode); break;
-    case OP_MOVSEXP_8:   DisasmRdRs(f, "movsexP_8", sIntReg, Opcode); break;
 
     case OP_MOVZEX64_32: DisasmRdRs(f, "movzex64_32", sIntReg, Opcode); break;
     case OP_MOVZEX64_16: DisasmRdRs(f, "movzex64_16", sIntReg, Opcode); break;
     case OP_MOVZEX64_8:  DisasmRdRs(f, "movzex64_8", sIntReg, Opcode); break;
     case OP_MOVZEX32_16: DisasmRdRs(f, "movzex32_16", sIntReg, Opcode); break;
     case OP_MOVZEX32_8:  DisasmRdRs(f, "movzex32_8", sIntReg, Opcode); break;
-    case OP_MOVZEXP_32:  DisasmRdRs(f, "movzexP_32", sIntReg, Opcode); break;
-    case OP_MOVZEXP_16:  DisasmRdRs(f, "movzexP_16", sIntReg, Opcode); break;
-    case OP_MOVZEXP_8:   DisasmRdRs(f, "movzexP_8", sIntReg, Opcode); break;
 
     case OP_FMOV: DisasmRdRs(f, "fmov", sIntReg, Opcode); break;
     case OP_FMOV64: DisasmRdRs(f, "fmov64", sIntReg, Opcode); break;
@@ -455,6 +446,9 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_IDIV64: DisasmRdRs(f, "idiv64", sIntReg, Opcode); break;
     case OP_MOD64: DisasmRdRs(f, "mod64", sIntReg, Opcode); break;
     case OP_NEG64:  DisasmRdRs(f, "neg64", sIntReg, Opcode); break;
+    case OP_VSHL64: DisasmRdRs(f, "vshl64", sIntReg, Opcode); break;
+    case OP_VSHR64: DisasmRdRs(f, "vshr64", sIntReg, Opcode); break;
+    case OP_VASR64: DisasmRdRs(f, "vasr64", sIntReg, Opcode); break;
 
     case OP_SEQ64: DisasmRdRs(f, "seq64", sIntReg, Opcode); break;
     case OP_SNE64: DisasmRdRs(f, "sne64", sIntReg, Opcode); break;

@@ -263,21 +263,9 @@ do {\
         case OP_VSHL: INTEGER_BINARY_OP(<<, Opcode, .Word.First); break;
         case OP_VSHR: INTEGER_BINARY_OP(>>, Opcode, .Word.First); break;
         case OP_VASR: INTEGER_BINARY_OP(>>, Opcode, .SWord.First); break;
-        case OP_SHL:
-        {
-            PVM->R[PVM_GET_RD(Opcode)].Word.First <<= PVM_GET_RS(Opcode);
-        } break;
-        case OP_SHR:
-        {
-            PVM->R[PVM_GET_RD(Opcode)].Word.First >>= PVM_GET_RS(Opcode);
-        } break;
-        case OP_ASR:
-        {
-            PVM->R[PVM_GET_RD(Opcode)].SWord.First >>= PVM_GET_RS(Opcode);
-        } break;
         case OP_ADDQI:
         {
-            PVM->R[PVM_GET_RD(Opcode)].Word.First += PVM_GET_RS(Opcode); 
+            PVM->R[PVM_GET_RD(Opcode)].Word.First += BIT_SEX32(PVM_GET_RS(Opcode), 3); 
         } break;
 
 
@@ -371,18 +359,12 @@ do {\
         case OP_MOVSEX64_8:  MOVE_INTEGER(Opcode, .SDWord, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
         case OP_MOVSEX32_16: MOVE_INTEGER(Opcode, .SWord.First, .SHalf.First); break;
         case OP_MOVSEX32_8:  MOVE_INTEGER(Opcode, .SWord.First, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
-        case OP_MOVSEXP_32:  MOVE_INTEGER(Opcode, .Ptr.Int, .SWord.First); break;
-        case OP_MOVSEXP_16:  MOVE_INTEGER(Opcode, .Ptr.Int, .SWord.First); break;
-        case OP_MOVSEXP_8:   MOVE_INTEGER(Opcode, .Ptr.Int, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
 
         case OP_MOVZEX64_32: MOVE_INTEGER(Opcode, .DWord, .Word.First); break;
         case OP_MOVZEX64_16: MOVE_INTEGER(Opcode, .DWord, .SHalf.First); break;
         case OP_MOVZEX64_8:  MOVE_INTEGER(Opcode, .DWord, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
         case OP_MOVZEX32_16: MOVE_INTEGER(Opcode, .Word.First, .SHalf.First); break;
         case OP_MOVZEX32_8:  MOVE_INTEGER(Opcode, .Word.First, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
-        case OP_MOVZEXP_32:  MOVE_INTEGER(Opcode, .Ptr.UInt, .SWord.First); break;
-        case OP_MOVZEXP_16:  MOVE_INTEGER(Opcode, .Ptr.UInt, .SWord.First); break;
-        case OP_MOVZEXP_8:   MOVE_INTEGER(Opcode, .Ptr.UInt, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
         case OP_MOVI:
         {
             U64 Imm = 0;
@@ -454,6 +436,9 @@ do {\
         {
             PVM->R[PVM_GET_RD(Opcode)].DWord = -PVM->R[PVM_GET_RS(Opcode)].DWord;
         } break;
+        case OP_VSHL64: INTEGER_BINARY_OP(<<, Opcode, .DWord) & 0xFF; break;
+        case OP_VSHR64: INTEGER_BINARY_OP(>>, Opcode, .DWord) & 0xFF; break;
+        case OP_VASR64: INTEGER_BINARY_OP(>>, Opcode, .SDWord) & 0xFF; break;
 
         case OP_SEQ64: INTEGER_SET_IF(==, Opcode, .DWord); break;
         case OP_SNE64: INTEGER_SET_IF(!=, Opcode, .DWord); break;
