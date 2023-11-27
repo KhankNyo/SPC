@@ -16,6 +16,11 @@ typedef enum PVMOp
     OP_IDIV,
     OP_MOD,
     OP_NEG,
+    OP_NOT,
+
+    OP_AND,
+    OP_OR,
+    OP_XOR,
 
     OP_ADDI,
     OP_ADDQI,
@@ -35,7 +40,6 @@ typedef enum PVMOp
     OP_ISGE,
     OP_ISLE,
 
-    OP_BNZ,
     OP_BEZ,
     OP_BR,
     OP_BSR,
@@ -51,7 +55,6 @@ typedef enum PVMOp
     OP_FMUL,
     OP_FDIV,
     OP_FNEG,
-
     OP_FSEQ,
     OP_FSNE,
     OP_FSGT,
@@ -59,15 +62,34 @@ typedef enum PVMOp
     OP_FSGE,
     OP_FSLE,
 
+    OP_FADD64,
+    OP_FSUB64,
+    OP_FMUL64,
+    OP_FDIV64,
+    OP_FNEG64,
+    OP_FSEQ64,
+    OP_FSNE64,
+    OP_FSGT64,
+    OP_FSLT64,
+    OP_FSGE64,
+    OP_FSLE64,
+    OP_GETFCC,
+
+
 
     OP_MOV64,
     OP_MOV32,
-    OP_MOV16,
-    OP_MOV8,
     OP_MOVI,
     OP_MOVQI,
     OP_FMOV,
     OP_FMOV64,
+
+    OP_F32TOF64,
+    OP_F64TOF32,
+    OP_F64TOSDW,
+    OP_SDWTOF64,
+    OP_F32TOSDW,
+    OP_SDWTOF32,
 
     OP_MOVSEX64_32,
     OP_MOVSEX64_16,
@@ -117,6 +139,10 @@ typedef enum PVMOp
     OP_IMUL64,
     OP_MOD64,
     OP_NEG64,
+    OP_NOT64,
+    OP_AND64,
+    OP_OR64,
+    OP_XOR64,
 
     OP_VSHL64,
     OP_VSHR64,

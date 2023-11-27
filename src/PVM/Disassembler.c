@@ -92,15 +92,24 @@ static void DisasmRdRs(FILE *f, const char *Mnemonic, const char *RegSet[], U16 
     fprintf(f, "%s, %s\n", Rd, Rs);
 }
 
+static void DisasmInter(FILE *f, const char *Mnemonic, const char **RdSet, const char **RsSet, U16 Opcode)
+{
+    const char *Rd = RdSet[PVM_GET_RD(Opcode)];
+    const char *Rs = RsSet[PVM_GET_RS(Opcode)];
+
+    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    PrintPaddedMnemonic(f, Pad, Mnemonic);
+    fprintf(f, "%s, %s\n", Rd, Rs);
+}
+
 static void DisasmFscc(FILE *f, const char *Mnemonic, U16 Opcode)
 {
-    const char *Rd = sIntReg[PVM_GET_RD(Opcode)];
     const char *Fd = sFltReg[PVM_GET_RD(Opcode)];
     const char *Fs = sFltReg[PVM_GET_RS(Opcode)];
 
     int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
-    fprintf(f, "%s, %s, %s\n", Rd, Fd, Fs);
+    fprintf(f, "%s, %s\n", Fd, Fs);
 }
 
 static U32 DisasmBcc(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *Chunk, U32 Addr)
@@ -139,7 +148,7 @@ static U32 DisasmBr(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *C
 
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     Pad = fprintf(f, "[%u]", Addr + BrOffset);
-    if (NULL != SubroutineInfo && SubroutineInfo->IsSubroutine)
+    if (NULL != SubroutineInfo)
     {
         PrintComment(f, Pad, "line %d: '%.*s'\n", 
                 SubroutineInfo->Line[0], SubroutineInfo->SrcLen[0], SubroutineInfo->Src[0]
@@ -316,6 +325,14 @@ static void DisasmRdSmallImm(FILE *f, const char *Mnemonic, U16 Opcode)
     fprintf(f, "%s, %d\n", Rd, BIT_SEX32(PVM_GET_RS(Opcode), 3));
 }
 
+static void DisasmSingleOperand(FILE *f, const char *Mnemonic, U16 Opcode)
+{
+    const char *Rd = sIntReg[PVM_GET_RD(Opcode)];
+    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    PrintPaddedMnemonic(f, Pad, Mnemonic);
+    fprintf(f, "%s\n", Rd);
+}
+
 
 
 
@@ -338,7 +355,10 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_IDIV: DisasmRdRs(f, "idiv", sIntReg, Opcode); break;
     case OP_MOD: DisasmRdRs(f, "mod", sIntReg, Opcode); break;
     case OP_NEG: DisasmRdRs(f, "neg", sIntReg, Opcode); break;
-
+    case OP_NOT: DisasmRdRs(f, "not", sIntReg, Opcode); break;
+    case OP_AND: DisasmRdRs(f, "and", sIntReg, Opcode); break;
+    case OP_OR:  DisasmRdRs(f, "or", sIntReg, Opcode); break;
+    case OP_XOR: DisasmRdRs(f, "xor", sIntReg, Opcode); break;
     case OP_VSHL: DisasmRdRs(f, "vshl", sIntReg, Opcode); break;
     case OP_VSHR: DisasmRdRs(f, "vshr", sIntReg, Opcode); break;
     case OP_VASR: DisasmRdRs(f, "vasr", sIntReg, Opcode); break;
@@ -347,7 +367,6 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_ADDQI: DisasmRdSmallImm(f, "addqi", Opcode); break;
 
 
-    case OP_BNZ: return DisasmBcc(f, "bnz", Opcode, Chunk, Addr);
     case OP_BEZ: return DisasmBcc(f, "bez", Opcode, Chunk, Addr);
     case OP_BR: return DisasmBr(f, "br", Opcode, Chunk, Addr);
     case OP_BSR: return DisasmBr(f, "bsr", Opcode, Chunk, Addr);
@@ -406,12 +425,30 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_FDIV: DisasmRdRs(f, "fdiv", sFltReg, Opcode); break;
     case OP_FMUL: DisasmRdRs(f, "fmul", sFltReg, Opcode); break;
     case OP_FNEG: DisasmRdRs(f, "fneg", sFltReg, Opcode); break;
+    case OP_FSEQ: DisasmFscc(f, "fseq", Opcode); break;
+    case OP_FSNE: DisasmFscc(f, "fsne", Opcode); break;
+    case OP_FSLT: DisasmFscc(f, "fslt", Opcode); break;
+    case OP_FSGT: DisasmFscc(f, "fsgt", Opcode); break;
+    case OP_FSLE: DisasmFscc(f, "fsle", Opcode); break;
+    case OP_FSGE: DisasmFscc(f, "fsge", Opcode); break;
+
+    case OP_FADD64: DisasmRdRs(f, "fadd64", sFltReg, Opcode); break;
+    case OP_FSUB64: DisasmRdRs(f, "fsub64", sFltReg, Opcode); break;
+    case OP_FDIV64: DisasmRdRs(f, "fdiv64", sFltReg, Opcode); break;
+    case OP_FMUL64: DisasmRdRs(f, "fmul64", sFltReg, Opcode); break;
+    case OP_FNEG64: DisasmRdRs(f, "fneg64", sFltReg, Opcode); break;
+    case OP_FSEQ64: DisasmFscc(f, "fseq64", Opcode); break;
+    case OP_FSNE64: DisasmFscc(f, "fsne64", Opcode); break;
+    case OP_FSLT64: DisasmFscc(f, "fslt64", Opcode); break;
+    case OP_FSGT64: DisasmFscc(f, "fsgt64", Opcode); break;
+    case OP_FSLE64: DisasmFscc(f, "fsle64", Opcode); break;
+    case OP_FSGE64: DisasmFscc(f, "fsge64", Opcode); break;
+    case OP_GETFCC: DisasmSingleOperand(f, "getfcc", Opcode); break;
+
 
 
     case OP_MOV64: DisasmRdRs(f, "mov64", sIntReg, Opcode); break;
     case OP_MOV32: DisasmRdRs(f, "mov32", sIntReg, Opcode); break;
-    case OP_MOV16: DisasmRdRs(f, "mov16", sIntReg, Opcode); break;
-    case OP_MOV8: DisasmRdRs(f, "mov8", sIntReg, Opcode); break;
 
     case OP_MOVSEX64_32: DisasmRdRs(f, "movsex64_32", sIntReg, Opcode); break;
     case OP_MOVSEX64_16: DisasmRdRs(f, "movsex64_16", sIntReg, Opcode); break;
@@ -425,17 +462,17 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_MOVZEX32_16: DisasmRdRs(f, "movzex32_16", sIntReg, Opcode); break;
     case OP_MOVZEX32_8:  DisasmRdRs(f, "movzex32_8", sIntReg, Opcode); break;
 
-    case OP_FMOV: DisasmRdRs(f, "fmov", sIntReg, Opcode); break;
-    case OP_FMOV64: DisasmRdRs(f, "fmov64", sIntReg, Opcode); break;
+    case OP_FMOV: DisasmRdRs(f, "fmov", sFltReg, Opcode); break;
+    case OP_FMOV64: DisasmRdRs(f, "fmov64", sFltReg, Opcode); break;
     case OP_MOVI: return DisasmRdImm(f, "movi", Chunk, Addr, Opcode);
     case OP_MOVQI: DisasmRdSmallImm(f, "movqi", Opcode); break;
 
-    case OP_FSEQ: DisasmFscc(f, "fseq", Opcode); break;
-    case OP_FSNE: DisasmFscc(f, "fsne", Opcode); break;
-    case OP_FSLT: DisasmFscc(f, "fslt", Opcode); break;
-    case OP_FSGT: DisasmFscc(f, "fsgt", Opcode); break;
-    case OP_FSLE: DisasmFscc(f, "fsle", Opcode); break;
-    case OP_FSGE: DisasmFscc(f, "fsge", Opcode); break;
+    case OP_F64TOF32: DisasmRdRs(f, "f64tof32", sFltReg, Opcode); break;
+    case OP_F32TOF64: DisasmRdRs(f, "f32tof64", sFltReg, Opcode); break;
+    case OP_F64TOSDW: DisasmInter(f, "f64tosdw", sIntReg, sFltReg, Opcode); break;
+    case OP_F32TOSDW: DisasmInter(f, "f64tosdw", sIntReg, sFltReg, Opcode); break;
+    case OP_SDWTOF32: DisasmInter(f, "f64tosdw", sIntReg, sFltReg, Opcode); break;
+    case OP_SDWTOF64: DisasmInter(f, "f64tosdw", sIntReg, sFltReg, Opcode); break;
 
 
     case OP_ADD64:  DisasmRdRs(f, "add64", sIntReg, Opcode); break;
@@ -444,8 +481,12 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_IMUL64: DisasmRdRs(f, "imul64", sIntReg, Opcode); break;
     case OP_DIV64:  DisasmRdRs(f, "div64", sIntReg, Opcode); break;
     case OP_IDIV64: DisasmRdRs(f, "idiv64", sIntReg, Opcode); break;
-    case OP_MOD64: DisasmRdRs(f, "mod64", sIntReg, Opcode); break;
+    case OP_MOD64:  DisasmRdRs(f, "mod64", sIntReg, Opcode); break;
     case OP_NEG64:  DisasmRdRs(f, "neg64", sIntReg, Opcode); break;
+    case OP_NOT64:  DisasmRdRs(f, "not64", sIntReg, Opcode); break;
+    case OP_AND64:  DisasmRdRs(f, "and64", sIntReg, Opcode); break;
+    case OP_OR64:   DisasmRdRs(f, "or64", sIntReg, Opcode); break;
+    case OP_XOR64:  DisasmRdRs(f, "xor64", sIntReg, Opcode); break;
     case OP_VSHL64: DisasmRdRs(f, "vshl64", sIntReg, Opcode); break;
     case OP_VSHR64: DisasmRdRs(f, "vshr64", sIntReg, Opcode); break;
     case OP_VASR64: DisasmRdRs(f, "vasr64", sIntReg, Opcode); break;

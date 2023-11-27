@@ -27,13 +27,6 @@ PascalVartab VartabPredefinedIdentifiers(PascalGPA *Allocator, ISize InitialCap)
 void VartabDeinit(PascalVartab *Vartab);
 void VartabReset(PascalVartab *Vartab);
 
-/* creates a brand new const var table,
- * VartabSet and VartabDelete cannot be called,
- * only VartabFindWithHash can be called to find a key.
- * Each pascalvar is shallow copied */
-PascalVartab VartabShallowConsolidate(const PascalVartab *Src, PascalGPA *PermanentAlloc);
-
-
 /* Find the entry that has the given key and hash,
  * returns  NULL if no such entry exists,
  *          the pointer to the entry containing the key */

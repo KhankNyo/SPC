@@ -13,30 +13,21 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +202 PVM/_PVM.c
-badd +376 _PVMEmitter.c
-badd +217 Include/Common.h
-badd +25 PVM/_Disassembler.c
-badd +261 Include/pvm/_Isa.h
-badd +304 PVMCompiler.c
-badd +40 Include/_PVMEmitter.h
-badd +19 pvm/Debugger.c
-badd +46 PVM/_Chunk.c
-badd +47 Include/PVM/_Chunk.h
-badd +25 IntegralTypes.c
-badd +14 Include/IntegralTypes.h
-badd +7 Vartab.c
-badd +1 vsplit\ Include/IntegralTypes.h
-badd +13 Include/PVMCompiler.h
-badd +511 Tokenizer.c
-badd +74 Include/Tokenizer.h
-badd +79 PascalFile.c
-badd +44 PascalRepl.c
-badd +10 Include/Vartab.h
-badd +7 Include/Variable.h
+badd +631 PVMEmitter.c
+badd +439 PVM/PVM.c
+badd +427 PVM/Disassembler.c
+badd +686 Tokenizer.c
+badd +53 Vartab.c
+badd +0 Include/Variable.h
+badd +36 Include/IntegralTypes.h
+badd +6 IntegralTypes.c
+badd +1110 PVMCompiler.c
+badd +22 Include/Tokenizer.h
+badd +84 Include/PVMEmitter.h
+badd +83 Include/PVM/Isa.h
 argglobal
 %argdel
-$argadd PVM/_PVM.c
+$argadd PVMEmitter.c
 set stal=2
 tabnew +setlocal\ bufhidden=wipe
 tabnew +setlocal\ bufhidden=wipe
@@ -44,12 +35,28 @@ tabnew +setlocal\ bufhidden=wipe
 tabnew +setlocal\ bufhidden=wipe
 tabnew +setlocal\ bufhidden=wipe
 tabnew +setlocal\ bufhidden=wipe
-tabnew +setlocal\ bufhidden=wipe
-tabnew +setlocal\ bufhidden=wipe
 tabrewind
-edit Include/pvm/_Isa.h
+edit PVM/PVM.c
+let s:save_splitbelow = &splitbelow
+let s:save_splitright = &splitright
+set splitbelow splitright
+wincmd _ | wincmd |
+vsplit
+1wincmd h
+wincmd w
+let &splitbelow = s:save_splitbelow
+let &splitright = s:save_splitright
+wincmd t
+let s:save_winminheight = &winminheight
+let s:save_winminwidth = &winminwidth
+set winminheight=0
+set winheight=1
+set winminwidth=0
+set winwidth=1
+exe 'vert 1resize ' . ((&columns * 120 + 120) / 240)
+exe 'vert 2resize ' . ((&columns * 119 + 120) / 240)
 argglobal
-balt PVM/_PVM.c
+balt PVMEmitter.c
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -60,16 +67,19 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 123 - ((0 * winheight(0) + 30) / 60)
+let s:l = 439 - ((48 * winheight(0) + 30) / 60)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 123
-normal! 010|
-tabnext
-edit PVM/_PVM.c
+keepjumps 439
+normal! 076|
+wincmd w
 argglobal
-balt PVM/_Disassembler.c
+if bufexists(fnamemodify("PVMEmitter.c", ":p")) | buffer PVMEmitter.c | else | edit PVMEmitter.c | endif
+if &buftype ==# 'terminal'
+  silent file PVMEmitter.c
+endif
+balt PVM/PVM.c
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -80,16 +90,19 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 218 - ((59 * winheight(0) + 30) / 60)
+let s:l = 581 - ((42 * winheight(0) + 30) / 60)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 218
+keepjumps 581
 normal! 09|
+wincmd w
+exe 'vert 1resize ' . ((&columns * 120 + 120) / 240)
+exe 'vert 2resize ' . ((&columns * 119 + 120) / 240)
 tabnext
-edit PVM/_Disassembler.c
+edit Include/PVM/Isa.h
 argglobal
-balt PVM/_PVM.c
+balt PVM/PVM.c
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -100,16 +113,36 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 124 - ((59 * winheight(0) + 30) / 60)
+let s:l = 83 - ((51 * winheight(0) + 30) / 60)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 124
+keepjumps 83
+normal! 0
+tabnext
+edit PVM/Disassembler.c
+argglobal
+balt PVM/PVM.c
+setlocal fdm=manual
+setlocal fde=0
+setlocal fmr={{{,}}}
+setlocal fdi=#
+setlocal fdl=0
+setlocal fml=1
+setlocal fdn=20
+setlocal fen
+silent! normal! zE
+let &fdl = &fdl
+let s:l = 427 - ((16 * winheight(0) + 30) / 60)
+if s:l < 1 | let s:l = 1 | endif
+keepjumps exe s:l
+normal! zt
+keepjumps 427
 normal! 0
 tabnext
 edit PVMCompiler.c
 argglobal
-balt PascalFile.c
+balt PVM/Disassembler.c
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -120,14 +153,14 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 1733 - ((31 * winheight(0) + 30) / 60)
+let s:l = 1110 - ((42 * winheight(0) + 30) / 60)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 1733
-normal! 0
+keepjumps 1110
+normal! 079|
 tabnext
-edit PascalRepl.c
+edit Include/PVMEmitter.h
 let s:save_splitbelow = &splitbelow
 let s:save_splitright = &splitright
 set splitbelow splitright
@@ -147,7 +180,7 @@ set winwidth=1
 exe 'vert 1resize ' . ((&columns * 120 + 120) / 240)
 exe 'vert 2resize ' . ((&columns * 119 + 120) / 240)
 argglobal
-balt PascalFile.c
+balt PVMEmitter.c
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -158,19 +191,19 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 44 - ((30 * winheight(0) + 30) / 60)
+let s:l = 82 - ((39 * winheight(0) + 30) / 60)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 44
-normal! 07|
+keepjumps 82
+normal! 015|
 wincmd w
 argglobal
-if bufexists(fnamemodify("PascalFile.c", ":p")) | buffer PascalFile.c | else | edit PascalFile.c | endif
+if bufexists(fnamemodify("PVMEmitter.c", ":p")) | buffer PVMEmitter.c | else | edit PVMEmitter.c | endif
 if &buftype ==# 'terminal'
-  silent file PascalFile.c
+  silent file PVMEmitter.c
 endif
-balt PascalRepl.c
+balt Include/PVMEmitter.h
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -181,19 +214,19 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 79 - ((59 * winheight(0) + 30) / 60)
+let s:l = 631 - ((50 * winheight(0) + 30) / 60)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 79
-normal! 0
+keepjumps 631
+normal! 038|
 wincmd w
 exe 'vert 1resize ' . ((&columns * 120 + 120) / 240)
 exe 'vert 2resize ' . ((&columns * 119 + 120) / 240)
 tabnext
-edit Include/Variable.h
+edit Vartab.c
 argglobal
-balt PVMCompiler.c
+balt Tokenizer.c
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -204,14 +237,14 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 42 - ((41 * winheight(0) + 30) / 60)
+let s:l = 53 - ((38 * winheight(0) + 30) / 60)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 42
-normal! 018|
+keepjumps 53
+normal! 051|
 tabnext
-edit Include/_PVMEmitter.h
+edit Include/Tokenizer.h
 let s:save_splitbelow = &splitbelow
 let s:save_splitright = &splitright
 set splitbelow splitright
@@ -231,7 +264,7 @@ set winwidth=1
 exe 'vert 1resize ' . ((&columns * 120 + 120) / 240)
 exe 'vert 2resize ' . ((&columns * 119 + 120) / 240)
 argglobal
-balt _PVMEmitter.c
+balt Tokenizer.c
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -242,19 +275,19 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 40 - ((39 * winheight(0) + 30) / 60)
+let s:l = 22 - ((21 * winheight(0) + 30) / 60)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 40
-normal! 059|
+keepjumps 22
+normal! 038|
 wincmd w
 argglobal
-if bufexists(fnamemodify("_PVMEmitter.c", ":p")) | buffer _PVMEmitter.c | else | edit _PVMEmitter.c | endif
+if bufexists(fnamemodify("Tokenizer.c", ":p")) | buffer Tokenizer.c | else | edit Tokenizer.c | endif
 if &buftype ==# 'terminal'
-  silent file _PVMEmitter.c
+  silent file Tokenizer.c
 endif
-balt Include/_PVMEmitter.h
+balt Include/Tokenizer.h
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -265,144 +298,16 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 376 - ((41 * winheight(0) + 30) / 60)
+let s:l = 686 - ((29 * winheight(0) + 30) / 60)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 376
-normal! 054|
+keepjumps 686
+normal! 010|
 wincmd w
 exe 'vert 1resize ' . ((&columns * 120 + 120) / 240)
 exe 'vert 2resize ' . ((&columns * 119 + 120) / 240)
-tabnext
-edit PVM/_Chunk.c
-let s:save_splitbelow = &splitbelow
-let s:save_splitright = &splitright
-set splitbelow splitright
-wincmd _ | wincmd |
-vsplit
-1wincmd h
-wincmd w
-let &splitbelow = s:save_splitbelow
-let &splitright = s:save_splitright
-wincmd t
-let s:save_winminheight = &winminheight
-let s:save_winminwidth = &winminwidth
-set winminheight=0
-set winheight=1
-set winminwidth=0
-set winwidth=1
-exe 'vert 1resize ' . ((&columns * 120 + 120) / 240)
-exe 'vert 2resize ' . ((&columns * 119 + 120) / 240)
-argglobal
-balt Include/PVM/_Chunk.h
-setlocal fdm=manual
-setlocal fde=0
-setlocal fmr={{{,}}}
-setlocal fdi=#
-setlocal fdl=0
-setlocal fml=1
-setlocal fdn=20
-setlocal fen
-silent! normal! zE
-let &fdl = &fdl
-let s:l = 46 - ((45 * winheight(0) + 30) / 60)
-if s:l < 1 | let s:l = 1 | endif
-keepjumps exe s:l
-normal! zt
-keepjumps 46
-normal! 052|
-wincmd w
-argglobal
-if bufexists(fnamemodify("Include/PVM/_Chunk.h", ":p")) | buffer Include/PVM/_Chunk.h | else | edit Include/PVM/_Chunk.h | endif
-if &buftype ==# 'terminal'
-  silent file Include/PVM/_Chunk.h
-endif
-balt PVM/_Chunk.c
-setlocal fdm=manual
-setlocal fde=0
-setlocal fmr={{{,}}}
-setlocal fdi=#
-setlocal fdl=0
-setlocal fml=1
-setlocal fdn=20
-setlocal fen
-silent! normal! zE
-let &fdl = &fdl
-let s:l = 47 - ((46 * winheight(0) + 30) / 60)
-if s:l < 1 | let s:l = 1 | endif
-keepjumps exe s:l
-normal! zt
-keepjumps 47
-normal! 055|
-wincmd w
-exe 'vert 1resize ' . ((&columns * 120 + 120) / 240)
-exe 'vert 2resize ' . ((&columns * 119 + 120) / 240)
-tabnext
-edit Include/Vartab.h
-let s:save_splitbelow = &splitbelow
-let s:save_splitright = &splitright
-set splitbelow splitright
-wincmd _ | wincmd |
-vsplit
-1wincmd h
-wincmd w
-let &splitbelow = s:save_splitbelow
-let &splitright = s:save_splitright
-wincmd t
-let s:save_winminheight = &winminheight
-let s:save_winminwidth = &winminwidth
-set winminheight=0
-set winheight=1
-set winminwidth=0
-set winwidth=1
-exe 'vert 1resize ' . ((&columns * 120 + 120) / 240)
-exe 'vert 2resize ' . ((&columns * 119 + 120) / 240)
-argglobal
-balt Vartab.c
-setlocal fdm=manual
-setlocal fde=0
-setlocal fmr={{{,}}}
-setlocal fdi=#
-setlocal fdl=0
-setlocal fml=1
-setlocal fdn=20
-setlocal fen
-silent! normal! zE
-let &fdl = &fdl
-let s:l = 10 - ((9 * winheight(0) + 30) / 60)
-if s:l < 1 | let s:l = 1 | endif
-keepjumps exe s:l
-normal! zt
-keepjumps 10
-normal! 039|
-wincmd w
-argglobal
-if bufexists(fnamemodify("Vartab.c", ":p")) | buffer Vartab.c | else | edit Vartab.c | endif
-if &buftype ==# 'terminal'
-  silent file Vartab.c
-endif
-balt Include/Vartab.h
-setlocal fdm=manual
-setlocal fde=0
-setlocal fmr={{{,}}}
-setlocal fdi=#
-setlocal fdl=0
-setlocal fml=1
-setlocal fdn=20
-setlocal fen
-silent! normal! zE
-let &fdl = &fdl
-let s:l = 7 - ((6 * winheight(0) + 30) / 60)
-if s:l < 1 | let s:l = 1 | endif
-keepjumps exe s:l
-normal! zt
-keepjumps 7
-normal! 019|
-wincmd w
-exe 'vert 1resize ' . ((&columns * 120 + 120) / 240)
-exe 'vert 2resize ' . ((&columns * 119 + 120) / 240)
-tabnext 8
+tabnext 1
 set stal=1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
   silent exe 'bwipe ' . s:wipebuf

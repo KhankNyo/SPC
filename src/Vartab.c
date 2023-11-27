@@ -80,32 +80,6 @@ void VartabReset(PascalVartab *Vartab)
 }
 
 
-PascalVartab VartabShallowConsolidate(const PascalVartab *Src, PascalGPA *PermanentAlloc)
-{
-    U32 Cap = RoundUpToPow2(Src->Count);
-    PascalVartab NewVartab = {
-        .Cap = Cap,
-        .Count = 0,
-        .Allocator = NULL,
-        .Table = GPAAllocateZero(PermanentAlloc, Cap * sizeof(NewVartab.Table[0])),
-    };
-
-    for (ISize i = 0; i < Src->Cap && NewVartab.Count < Cap; i++)
-    {
-        /* skip invalid entries */
-        if (IS_EMPTY(&Src->Table[i]) || IS_TOMBSTONED(&Src->Table[i]))
-            continue;
-
-        PascalVar *Slot = VartabFindValidSlot(NewVartab.Table, Cap, 
-                Src->Table[i].Str, Src->Table[i].Len, Src->Table[i].Hash
-        );
-        *Slot = Src->Table[i];
-        NewVartab.Count++;
-    }
-    return NewVartab;
-}
-
-
 
 
 

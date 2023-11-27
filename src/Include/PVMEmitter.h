@@ -13,9 +13,9 @@
 typedef struct PVMEmitter 
 {
     PVMChunk *Chunk;
-    U16 Reglist;
+    U32 Reglist;
     U32 NumSavelist;
-    U16 SavedRegisters[PVM_MAX_CALL_IN_EXPR];
+    U32 SavedRegisters[PVM_MAX_CALL_IN_EXPR];
 
     U32 SpilledRegCount;
     U32 StackSpace;
@@ -57,7 +57,6 @@ void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, U32 RegID);
 #define PVMMarkBranchTarget(pEmitter) PVMGetCurrentLocation(pEmitter)
 /* returns the offset of the branch instruction for later patching */
 U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition);
-U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition);
 /* returns the offset of the branch instruction for patching if necessary */
 U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To);
 void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMBranchType Type);
@@ -66,33 +65,37 @@ void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMBranchType Type);
 
 /* move and load */
 void PVMEmitMov(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitLoadImm(PVMEmitter *Emitter, VarRegister Register, U64 Integer);
 
 
 /* arith instructions */
-void PVMEmitAddImm(PVMEmitter *Emitter, const VarLocation *Dst, I16 Imm);
-void PVMEmitAdd(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitSub(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitNeg(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitIMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitIDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitMod(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitShl(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitShr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitAsr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-/* returns true if there are no warning */
-bool PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dst, const VarLocation *Right);
+void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I16 Imm);
+void PVMEmitAdd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitSub(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitNeg(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitNot(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitAnd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitOr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitXor(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitIMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitIDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitMod(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitShl(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitShr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitAsr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+/* returns the register contains the result of the comparison */
+VarLocation PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dst, const VarLocation *Right);
 
 
 /* stack instructions */
-VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size, IntegralType Type);
+VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size);
 void PVMCommitStackAllocation(PVMEmitter *Emitter);
 
 
 /* global instructions */
-VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size, IntegralType Type);
+VarMemory PVMEmitGlobalData(PVMEmitter *Emitter, const void *Data, U32 Size);
+VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
 
 
 /* call instructions */

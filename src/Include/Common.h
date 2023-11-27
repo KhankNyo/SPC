@@ -140,7 +140,7 @@ static inline I64 BitSex64(U64 Value, UInt SignIndex)
         fprintf(stderr, "Invalid code path reached on line "\
                 STRFY(__LINE__)" in "__FILE__":\n    "\
                 __VA_ARGS__\
-                );\
+        );\
         DIE();\
     }while(0)
 #define PASCAL_STATIC_ASSERT(COND, MSG) extern int static_assertion(char foo[(COND)?1:-1])
@@ -149,11 +149,11 @@ static inline I64 BitSex64(U64 Value, UInt SignIndex)
 #ifdef DEBUG
 #  define PASCAL_ASSERT(expr, ...) do {\
     if (!(expr)) {\
-        fprintf(stderr, "Assertion failed on line "\
-                STRFY(__LINE__)" in "__FILE__": "\
-                STRFY(expr)":\n    "\
-                __VA_ARGS__\
-                );\
+        fprintf(stderr, "Assertion failed on line "STRFY(__LINE__)" in "__FILE__":"\
+                "\n    "STRFY(expr)":"\
+                "\n    "__VA_ARGS__\
+        );\
+        fputc('\n', stderr);\
         DIE();\
     }\
 }while(0)
@@ -196,6 +196,7 @@ typedef struct GenericPtr
         F32 *f32;
         F64 *f64;
         long double *ldbl;
+        uintptr_t UInt;
     } As;
 } GenericPtr;
 
@@ -223,6 +224,13 @@ static inline U64 RoundUpToPow2(U64 n)
     }
     return n % 2 == 0 
         ? Ret : 2 * Ret;
+}
+
+static inline U64 ArithmeticShiftRight(U64 n, U64 ShiftAmount)
+{
+    if (n & (U64)1 << 63)
+        return (n >> (ShiftAmount & 0x3F)) | ~(((U64)1 << ShiftAmount) - 1);
+    return n >> ShiftAmount;
 }
 
 

@@ -165,6 +165,12 @@ U32 ChunkWriteGlobalData(PVMChunk *Chunk, const void *Data, U32 Size)
     {
         memcpy(&Chunk->Global.Data.As.u8[Chunk->Global.Count], Data, Size);
     }
+
+    /* round to word boundary */
+    if (Size % sizeof(U32))
+    {
+        Size = (Size + sizeof(U32)) & ~(sizeof(U32) - 1);
+    }
     Chunk->Global.Count += Size;
     return Old;
 }

@@ -5,6 +5,7 @@
 #include "Common.h"
 #include "IntegralTypes.h"
 #include "Vartab.h"
+#include "PascalString.h"
 
 
 
@@ -21,16 +22,26 @@ typedef struct PascalVar
 
 
 
+typedef struct VarLiteral 
+{
+    union {
+        U64 Int;
+        F64 F64;
+        F32 F32;
+        bool Bool;
+        GenericPtr Ptr;
+        PascalStr Str;
+    };
+} VarLiteral;
+
 typedef struct VarMemory
 {
     U32 Location;
-    IntegralType Type;
     bool IsGlobal;
 } VarMemory;
 
 typedef struct VarRegister
 {
-    IntegralType Type;
     UInt ID;
 } VarRegister;
 
@@ -51,6 +62,7 @@ typedef enum VarLocationType
     VAR_INVALID = 0,
     VAR_REG,
     VAR_MEM,
+    VAR_LIT,
     VAR_SUBROUTINE,
 } VarLocationType;
 
@@ -60,28 +72,31 @@ typedef enum VarLocationType
 struct VarLocation 
 {
     VarLocationType LocationType;
+    IntegralType Type;
     union {
         VarMemory Memory;
         VarRegister Register;
         VarSubroutine Subroutine;
+        VarLiteral Literal;
     } As;
 };
 
-static inline IntegralType TypeOfLocation(const VarLocation *Location)
-{
-    switch (Location->LocationType)
-    {
-    case VAR_REG: return Location->As.Register.Type;
-    case VAR_MEM: return Location->As.Memory.Type;
-    case VAR_SUBROUTINE: return TYPE_POINTER;
-    case VAR_INVALID: 
-    {
-        PASCAL_UNREACHABLE("TypeOfLocation: Invalid location type.");
-    } break;
-    }
-    return TYPE_INVALID;
-}
 
+
+static inline F64 VarLiteralToF64(VarLiteral Literal, IntegralType Type)
+{
+    if (IntegralTypeIsInteger(Type))
+    {
+        return Literal.Int;
+    }
+    switch (Type)
+    {
+    case TYPE_F64: return Literal.F64;
+    case TYPE_F32: return Literal.F32;
+    default: PASCAL_UNREACHABLE("Cannot convert %s into F64.", IntegralTypeToStr(Type));
+    }
+    return 0;
+}
 
 
 
