@@ -42,8 +42,8 @@ USize PStrGetCap(const PascalStr *PStr)
 USize PStrAddToLen(PascalStr *PStr, ISize Extra)
 {
     USize Old = PStrGetLen(PStr);
-    USize New = (ISize)Old + Extra;
-    USize OldCap = PStrGetCap(PStr);
+    ISize New = (ISize)Old + Extra;
+    ISize OldCap = PStrGetCap(PStr);
     if (New > OldCap)
     {
         PStrReserve(PStr, New * 2);
