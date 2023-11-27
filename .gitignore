@@ -9,6 +9,8 @@ obj
 ~*.swp
 .cache
 compile_commands.json
+*~
+*.swp
 
 
 
