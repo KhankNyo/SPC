@@ -26,8 +26,7 @@ typedef struct VarLiteral
 {
     union {
         U64 Int;
-        F64 F64;
-        F32 F32;
+        F64 Flt;
         bool Bool;
         GenericPtr Ptr;
         PascalStr Str;
@@ -90,12 +89,11 @@ static inline F64 VarLiteralToF64(VarLiteral Literal, IntegralType Type)
     {
         return Literal.Int;
     }
-    switch (Type)
+    else if (IntegralTypeIsFloat(Type))
     {
-    case TYPE_F64: return Literal.F64;
-    case TYPE_F32: return Literal.F32;
-    default: PASCAL_UNREACHABLE("Cannot convert %s into F64.", IntegralTypeToStr(Type));
+        return Literal.Flt;
     }
+    PASCAL_UNREACHABLE("cannot convert %s into f64", IntegralTypeToStr(Type));
     return 0;
 }
 

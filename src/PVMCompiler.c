@@ -26,6 +26,8 @@ typedef struct CompilerFrame
 
 typedef struct PVMCompiler 
 {
+    PascalCompileFlags Flags;
+
     PVMEmitter Emitter;
     PascalTokenizer Lexer;
     Token Curr, Next;
@@ -62,6 +64,7 @@ typedef struct PVMCompiler
 
 /* and allocates a register for it, use FreeExpr to free the register */
 static VarLocation CompileExpr(PVMCompiler *Compiler);
+static void FreeExpr(PVMCompiler *Compiler, VarLocation Expr);
 static void CompileExprInto(PVMCompiler *Compiler, VarLocation *Location);
 
 
@@ -251,6 +254,7 @@ static U32 CompilerGetSizeOfType(PVMCompiler *Compiler, IntegralType Type)
 
 
 static PVMCompiler CompilerInit(const U8 *Source, 
+        PascalCompileFlags Flags,
         PascalVartab *PredefinedIdentifiers, PVMChunk *Chunk, PascalGPA *GlobalAlloc, FILE *LogFile)
 {
     PVMCompiler Compiler = {
@@ -259,6 +263,7 @@ static PVMCompiler CompilerInit(const U8 *Source,
         .Error = false,
         .Panic = false,
         .Scope = 0,
+        .Flags = Flags,
 
         .GlobalAlloc = GlobalAlloc,
         .InternalAlloc = GPAInit(4 * 1024 * 1024),
@@ -838,7 +843,7 @@ static void CompileParameterList(PVMCompiler *Compiler, VarSubroutine *CurrentFu
 }
 
 
-static VarLocation CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName, VarSubroutine *Subroutine)
+static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName, VarSubroutine *Subroutine)
 {
     UInt ExpectedArgCount = Subroutine->ArgCount;
     UInt ArgCount = 0;
@@ -850,45 +855,32 @@ static VarLocation CompileArgumentList(PVMCompiler *Compiler, const Token *Funct
 
 
 
+    PASCAL_ASSERT(Compiler->Flags.CallConv == CALLCONV_MSX64, 
+            "TODO: other calling convention"
+    );
+
+
     /* register args */
     do {
-        if (ArgCount >= ExpectedArgCount)
-		{
-			FreeExpr(CompileExpr(Compiler));
-		}
-		else
-		{
+        if (ArgCount < ExpectedArgCount)
+        {
 			Compiler->Emitter.ArgReg[ArgCount].Type = 
 				Subroutine->Args[ArgCount]->Location->Type;
 			CompileExprInto(Compiler, &EMITTER()->ArgReg[ArgCount]);
 			PVMMarkRegisterAsAllocated(EMITTER(), ArgCount);
+        }
+        else
+        {
+			FreeExpr(Compiler, CompileExpr(Compiler));
 		}
         ArgCount++;
     } while (ArgCount < PVM_ARGREG_COUNT && ConsumeIfNextIs(Compiler, TOKEN_COMMA));
 
     /* stack args */
-	PVMAllocateStack(EMITTER(), Subroutine->StackArgSize);
+	// PVMAllocateStack(EMITTER(), Subroutine->StackArgSize);
     while (!IsAtEnd(Compiler) && TOKEN_RIGHT_PAREN != Compiler->Next.Type)
 	{
-		if (ArgCount >= ExpectedArgCount) 
-		{
-			FreeExpr(CompileExpr(Compiler));
-		}
-		else /* TODO: cdecl calling convention */
-		{
-			U32 TypeSize = CompilerGetSizeOfType(Compiler, Subroutine->Args[ArgCount]->Location->Type);
-			VarLocation Arg = {
-				.Type = Subroutine->Args[ArgCount]->Location->Type,
-				.LocationType = VAR_MEM,
-				.As.Memory = PVMQueueStackArg(EMITTER(), TypeSize),
-			};
-			CompileExprInto(Compiler, &Arg);
-		}
-		ArgCount++;
-	}
-	if (StackSpace)
-	{
-		PVMCommitStackAllocation(EMITTER());
+        PASCAL_UNREACHABLE("TODO: stack args");
 	}
 
 
@@ -974,7 +966,7 @@ static VarLocation FactorLiteral(PVMCompiler *Compiler)
     case TOKEN_NUMBER_LITERAL:
     {
         Location.Type = TYPE_F64;
-        Location.As.Literal.F64 = Compiler->Curr.Literal.Real;
+        Location.As.Literal.Flt = Compiler->Curr.Literal.Real;
     } break;
     case TOKEN_TRUE:
     case TOKEN_FALSE:
@@ -1022,16 +1014,16 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
 
         /* call the function */
         PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
-        bool CallerCleanup = CompileArgumentList(Compiler, &Identifier, Callee);
+        CompileArgumentList(Compiler, &Identifier, Callee);
         PVMEmitCall(EMITTER(), Callee);
 
         /* carefully move return reg into the return location */
         Compiler->Emitter.ReturnValue.Type = Callee->ReturnType;
         PVMEmitMov(EMITTER(), &ReturnValue, &EMITTER()->ReturnValue);
         PVMEmitUnsaveCallerRegs(EMITTER());
-		if (CallerCleanup) 
+		if (Callee->StackArgSize) 
 		{
-			PVMEmitCleanupAfterCall(EMITTER());
+            PVMAllocateStack(EMITTER(), -Callee->StackArgSize);
 		}
         return ReturnValue;
     }
@@ -1068,15 +1060,10 @@ static VarLocation NegateLiteral(PVMCompiler *Compiler, const Token *OpToken, Va
         Literal.Int = -Literal.Int;
         Location.Type = TypeOfIntLit(Literal.Int);
     }
-    else if (TYPE_F64 == LiteralType)
+    else if (IntegralTypeIsFloat(LiteralType))
     {
-        Literal.F64 = -Literal.F64;
+        Literal.Flt = -Literal.Flt;
         Location.Type = TYPE_F64;
-    }
-    else if (TYPE_F32 == LiteralType)
-    {
-        Literal.F32 = -Literal.F32;
-        Location.Type = TYPE_F32;
     }
     else 
     {
@@ -1182,10 +1169,8 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     if (IntegralTypeIsInteger(LeftType)) {\
         if (IntegralTypeIsInteger(RightType)) {\
             Left.Int GLUE(Operator,=) Right.Int;\
-        } else if (TYPE_F32 == RightType) {\
-            Left.F32 = (F32)Left.Int Operator Right.F32;\
-        } else if (TYPE_F64 == RightType) {\
-            Left.F64 = (F64)Left.Int Operator Right.F64;\
+        } else if (IntegralTypeIsFloat(RightType)) {\
+            Left.Flt = (F64)Left.Int Operator Right.Flt;\
         } else if (TYPE_POINTER == RightType) {\
             PASCAL_UNREACHABLE("TODO: "" pointer");\
         } else {\
@@ -1193,25 +1178,11 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
                     IntegralTypeToStr(LeftType), IntegralTypeToStr(RightType)\
             );\
         }\
-    } else if (TYPE_F32 == LeftType) {\
+    } else if (IntegralTypeIsFloat(LeftType)) {\
         if (IntegralTypeIsInteger(RightType)) {\
-            Left.F32 GLUE(Operator,=) Right.Int;\
-        } else if (TYPE_F32 == RightType) {\
-            Left.F32 GLUE(Operator,=) Right.F32;\
-        } else if (TYPE_F64 == RightType) {\
-            Left.F64 = (F64)Left.F32 Operator Right.F64;\
-        } else {\
-            PASCAL_UNREACHABLE("err should have been reported by coerce type: %s and %s", \
-                    IntegralTypeToStr(LeftType), IntegralTypeToStr(RightType)\
-            );\
-        }\
-    } else if (TYPE_F64 == LeftType) {\
-        if (IntegralTypeIsInteger(RightType)) {\
-            Left.F64 GLUE(Operator,=) (F64)Right.Int;\
-        } else if (TYPE_F32 == RightType) {\
-            Left.F64 GLUE(Operator,=) (F64)Right.F32;\
-        } else if (TYPE_F64 == RightType) {\
-            Left.F64 GLUE(Operator,=) Right.F64;\
+            Left.Flt GLUE(Operator,=) Right.Int;\
+        } else if (IntegralTypeIsFloat(RightType)) {\
+            Left.Flt = Left.Flt Operator Right.Flt;\
         } else {\
             PASCAL_UNREACHABLE("err should have been reported by coerce type: %s and %s", \
                     IntegralTypeToStr(LeftType), IntegralTypeToStr(RightType)\
@@ -1228,26 +1199,14 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     if (IntegralTypeIsInteger(LeftType)) {\
         if (IntegralTypeIsInteger(RightType)) {\
             Left.Bool = Left.Int Operator Right.Int;\
-        } else if (TYPE_F64 == RightType) {\
-            Left.Bool = (F64)Left.Int Operator Right.F64;\
-        } else if (TYPE_F32 == RightType) {\
-            Left.Bool = (F32)Left.Int Operator Right.F32;\
+        } else if (IntegralTypeIsFloat(RightType)) {\
+            Left.Bool = (F64)Left.Int Operator Right.Flt;\
         } else goto InvalidOperands;\
-    } else if (TYPE_F64 == LeftType) {\
+    } else if (IntegralTypeIsFloat(LeftType)) {\
         if (IntegralTypeIsInteger(RightType)) {\
-            Left.Bool = Left.F64 Operator Right.Int;\
-        } else if (TYPE_F32 == RightType) {\
-            Left.Bool = Left.F64 Operator (F64)Right.F32;\
-        } else if (TYPE_F64 == RightType) {\
-            Left.Bool = Left.F64 Operator Right.F64;\
-        } else goto InvalidOperands;\
-    } else if (TYPE_F32 == LeftType) {\
-        if (IntegralTypeIsInteger(RightType)) {\
-            Left.Bool = Left.F32 Operator Right.Int;\
-        } else if (TYPE_F32 == RightType) {\
-            Left.Bool = Left.F32 Operator (F64)Right.F32;\
-        } else if (TYPE_F64 == RightType) {\
-            Left.Bool = (F64)Left.F32 Operator Right.F64;\
+            Left.Bool = Left.Flt Operator Right.Int;\
+        } else if (IntegralTypeIsFloat(RightType)) {\
+            Left.Bool = Left.Flt Operator Right.Flt;\
         } else goto InvalidOperands;\
     } else if (TYPE_POINTER == LeftType && TYPE_POINTER == RightType) {\
         Left.Bool = Left.Ptr.As.Raw Operator Right.Ptr.As.Raw;\
@@ -1295,13 +1254,9 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
         {
             Location.As.Literal.Int = a;
         }
-        else if (TYPE_F64 == Location.Type)
+        else if (IntegralTypeIsFloat(Location.Type))
         {
-            Location.As.Literal.F64 = a;
-        }
-        else if (TYPE_F32 == Location.Type)
-        {
-            Location.As.Literal.F32 = a;
+            Location.As.Literal.Flt = a;
         }
         else goto Exit; /* error reported */
     } break;
@@ -1890,19 +1845,21 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token *Callee, PascalVa
 {
     PASCAL_ASSERT(NULL != IdenInfo, "Unreachable, IdenInfo is NULL in CompileCallStmt()");
     PASCAL_ASSERT(NULL != IdenInfo->Location, "Unreachable, Location is NULL in CompileCallStmt()");
-    PASCAL_ASSERT(TYPE_FUNCTION == IdenInfo->Type, "Unreachable, IdenInfo is not a subroutine in CompileCallStmt()");
+    PASCAL_ASSERT(TYPE_FUNCTION == IdenInfo->Type, 
+            "Unreachable, IdenInfo is not a subroutine in CompileCallStmt()"
+    );
 
     /* iden consumed */
     CompilerInitDebugInfo(Compiler, Callee);
 
     VarSubroutine *Subroutine = &IdenInfo->Location->As.Subroutine;
     PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
-    bool CallerCleanup = CompileArgumentList(Compiler, Callee, Subroutine);
+    CompileArgumentList(Compiler, Callee, Subroutine);
     PVMEmitCall(EMITTER(), Subroutine);
     PVMEmitUnsaveCallerRegs(EMITTER());
-	if (CallerCleanup) 
+	if (Subroutine->StackArgSize) 
 	{
-		PMEmitCleanupAfterAll(EMITTER());
+        PVMAllocateStack(EMITTER(), -Subroutine->StackArgSize);
 	}
 
     CompilerEmitDebugInfo(Compiler, Callee);
@@ -2243,9 +2200,10 @@ static bool CompileProgram(PVMCompiler *Compiler)
 
 
 bool PVMCompile(const U8 *Source, 
+        PascalCompileFlags Flags,
         PascalVartab *PredefinedIdentifiers, PVMChunk *Chunk, PascalGPA *GlobalAlloc, FILE *LogFile)
 {
-    PVMCompiler Compiler = CompilerInit(Source, PredefinedIdentifiers, Chunk, GlobalAlloc, LogFile);
+    PVMCompiler Compiler = CompilerInit(Source, Flags, PredefinedIdentifiers, Chunk, GlobalAlloc, LogFile);
     ConsumeToken(&Compiler);
 
     if (ConsumeIfNextIs(&Compiler, TOKEN_PROGRAM))

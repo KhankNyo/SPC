@@ -64,7 +64,7 @@ void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMBranchType Type);
 
 
 /* move and load */
-void PVMEmitMov(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 
 
 /* arith instructions */
@@ -92,8 +92,7 @@ VarLocation PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *D
 VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size);
 VarMemory PVMQueueStackArg(PVMEmitter *Emitter, U32 Size);
 void PVMCommitStackAllocation(PVMEmitter *Emitter);
-void PVMAllocateStack(PVMEmitter *Emitter);
-void PVMEmitCleanupAfterCall(PVMEmitter *Emitter);
+void PVMAllocateStack(PVMEmitter *Emitter, I32 Size);
 
 
 /* global instructions */

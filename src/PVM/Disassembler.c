@@ -481,15 +481,15 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
 
     case OP_F64TOF32: DisasmRdRs(f, "f64tof32", sFltReg, Opcode); break;
     case OP_F32TOF64: DisasmRdRs(f, "f32tof64", sFltReg, Opcode); break;
-    case OP_F64TOI64: DisasmInter(f, "f64toi64", sFltReg, sIntReg, Opcode); break;
-    case OP_I64TOF32: DisasmInter(f, "i64tof64", sIntReg, sFltReg, Opcode); break;
-    case OP_I64TOF64: DisasmInter(f, "i64tof32", sIntReg, sFltReg, Opcode); break;
-    case OP_U64TOF64: DisasmInter(f, "u64tof64", sIntReg, sFltReg, Opcode); break;
-    case OP_U64TOF32: DisasmInter(f, "u32tof32", sIntReg, sFltReg, Opcode); break;
-    case OP_I32TOF32: DisasmInter(f, "i32tof64", sIntReg, sFltReg, Opcode); break;
-    case OP_I32TOF64: DisasmInter(f, "i32tof32", sIntReg, sFltReg, Opcode); break;
-    case OP_U32TOF64: DisasmInter(f, "u32tof64", sIntReg, sFltReg, Opcode); break;
-    case OP_U32TOF32: DisasmInter(f, "u32tof32", sIntReg, sFltReg, Opcode); break;
+    case OP_F64TOI64: DisasmInter(f, "f64toi64", sIntReg, sFltReg, Opcode); break;
+    case OP_I64TOF32: DisasmInter(f, "i64tof32", sFltReg, sIntReg, Opcode); break;
+    case OP_I64TOF64: DisasmInter(f, "i64tof64", sFltReg, sIntReg, Opcode); break;
+    case OP_U64TOF64: DisasmInter(f, "u64tof64", sFltReg, sIntReg, Opcode); break;
+    case OP_U64TOF32: DisasmInter(f, "u64tof32", sFltReg, sIntReg, Opcode); break;
+    case OP_I32TOF32: DisasmInter(f, "i32tof32", sFltReg, sIntReg, Opcode); break;
+    case OP_I32TOF64: DisasmInter(f, "i32tof64", sFltReg, sIntReg, Opcode); break;
+    case OP_U32TOF64: DisasmInter(f, "u32tof64", sFltReg, sIntReg, Opcode); break;
+    case OP_U32TOF32: DisasmInter(f, "u32tof32", sFltReg, sIntReg, Opcode); break;
 
 
     case OP_ADD64:  DisasmRdRs(f, "add64", sIntReg, Opcode); break;

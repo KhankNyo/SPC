@@ -36,8 +36,8 @@ int PascalRepl(void)
         memcpy(CurrentSource, Tmp, SourceLen);
         CurrentSource[SourceLen] = '\0';
 
-
-        if (PVMCompile(CurrentSource, &Identifiers, &Chunk, &Permanent, stderr))
+        PascalCompileFlags Flags = { 0 };
+        if (PVMCompile(CurrentSource, Flags, &Identifiers, &Chunk, &Permanent, stderr))
         {
             PVMRun(&PVM, &Chunk);
         }

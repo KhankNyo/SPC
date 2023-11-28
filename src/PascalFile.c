@@ -74,7 +74,8 @@ static bool PascalRun(const U8 *Source)
     PascalVartab Identifiers = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);    
 
     PVMChunk Code = ChunkInit(1024);
-    if (!PVMCompile(Source, &Identifiers, &Code, MemGetAllocator(), stderr))
+    PascalCompileFlags Flags = { 0 };
+    if (!PVMCompile(Source, Flags, &Identifiers, &Code, MemGetAllocator(), stderr))
         goto CompileError;
 
     PascalVM VM = PVMInit(1024, 128);

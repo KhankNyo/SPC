@@ -15,8 +15,19 @@
 #define VAR_ID_TYPE UINT32_MAX
 #define VAR_ID_INVALID (UINT32_MAX - 1)
 
+typedef enum PVMCallConv 
+{
+    CALLCONV_MSX64,
+} PVMCallConv;
+
+typedef struct PascalCompileFlags 
+{
+    PVMCallConv CallConv;
+} PascalCompileFlags;
+
 /* Returns true on success, false on failure and logs error to log file */
 bool PVMCompile(const U8 *Source, 
+        PascalCompileFlags Flags,
         PascalVartab *PredefinedIdentifiers, PVMChunk *Chunk, 
         PascalGPA *GlobalAlloc, FILE *LogFile
 );
