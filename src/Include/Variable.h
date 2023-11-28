@@ -50,6 +50,7 @@ typedef struct VarSubroutine
     U32 Location;
 
     U32 ArgCount, Cap;
+	U32 StackArgSize;
     PascalVar **Args; /* owned by the function's scope */
 
     bool HasReturnType;

@@ -268,7 +268,7 @@ static PVMCompiler CompilerInit(const U8 *Source,
         },
         .Global = PredefinedIdentifiers,
         .Iden = {
-            .Cap = 8,
+            .Cap = STATIC_ARRAY_SIZE(Compiler.Iden.Array),
             .Count = 0,
         },
         .Frame = { {0} },
@@ -328,8 +328,10 @@ static VarLocation *CompilerAllocateVarLocation(PVMCompiler *Compiler)
     {
         U32 OldCap = Compiler->Var.Cap;
         Compiler->Var.Cap *= 2;
-        Compiler->Var.Location = 
-            GPAReallocate(&Compiler->InternalAlloc, Compiler->Var.Location, Compiler->Var.Cap);
+        Compiler->Var.Location = GPAReallocateArray(&Compiler->InternalAlloc, 
+                Compiler->Var.Location, *Compiler->Var.Location, 
+                Compiler->Var.Cap
+        );
         for (U32 i = OldCap; i < Compiler->Var.Cap; i++)
         {
             Compiler->Var.Location[i] = 
@@ -668,7 +670,10 @@ static void FunctionDataPushParameter(PascalGPA *Allocator, VarSubroutine *Funct
     if (Function->ArgCount == Function->Cap)
     {
         Function->Cap = Function->Cap * 2 + 8;
-        Function->Args = GPAReallocate(Allocator, Function->Args, Function->Cap);
+        Function->Args = GPAReallocateArray(Allocator, 
+                Function->Args, *Function->Args, 
+                Function->Cap
+        );
     }
 
     Function->Args[Function->ArgCount++] = Param;
@@ -691,6 +696,7 @@ static bool CompileAndDeclareParameter(PVMCompiler *Compiler,
             "cannot be called outside of CompileAndDeclareVarList()");
 
     bool HasStackParams = false;
+	Function->StackArgSize = 0;
     for (U32 i = 0; i < VarCount; i++)
     {
         VarLocation *Location = CompilerAllocateVarLocation(Compiler);
@@ -709,15 +715,18 @@ static bool CompileAndDeclareParameter(PVMCompiler *Compiler,
             /* TODO: nested functions */
             PVMMarkRegisterAsAllocated(EMITTER(), Location->As.Register.ID);
         }
-        else /* stack args */
+        else /* stack args, pascal LTR calling convention, TODO: cdecl */
         {
             HasStackParams = true;
             Location->LocationType = VAR_MEM;
             Location->As.Memory = PVMQueueStackAllocation(EMITTER(), VarSize);
+			Location->As.Memory.Location = -Location->As.Memory.Location;
+			Function->StackArgSize += VarSize;
         }
         Location->Type = VarType;
         FunctionDataPushParameter(Compiler->GlobalAlloc, Function, Var);
     }
+	/* align func args */
     return HasStackParams;
 }
 
@@ -829,7 +838,7 @@ static void CompileParameterList(PVMCompiler *Compiler, VarSubroutine *CurrentFu
 }
 
 
-static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName, VarSubroutine *Subroutine)
+static VarLocation CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName, VarSubroutine *Subroutine)
 {
     UInt ExpectedArgCount = Subroutine->ArgCount;
     UInt ArgCount = 0;
@@ -844,19 +853,44 @@ static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName
     /* register args */
     do {
         if (ArgCount >= ExpectedArgCount)
-            break;
-
-        Compiler->Emitter.ArgReg[ArgCount].Type = 
-            Subroutine->Args[ArgCount]->Location->Type;
-        CompileExprInto(Compiler, &EMITTER()->ArgReg[ArgCount]);
+		{
+			FreeExpr(CompileExpr(Compiler));
+		}
+		else
+		{
+			Compiler->Emitter.ArgReg[ArgCount].Type = 
+				Subroutine->Args[ArgCount]->Location->Type;
+			CompileExprInto(Compiler, &EMITTER()->ArgReg[ArgCount]);
+			PVMMarkRegisterAsAllocated(EMITTER(), ArgCount);
+		}
         ArgCount++;
     } while (ArgCount < PVM_ARGREG_COUNT && ConsumeIfNextIs(Compiler, TOKEN_COMMA));
 
     /* stack args */
+	PVMAllocateStack(EMITTER(), Subroutine->StackArgSize);
     while (!IsAtEnd(Compiler) && TOKEN_RIGHT_PAREN != Compiler->Next.Type)
-    {
-        PASCAL_UNREACHABLE("TODO: stack args");
-    }
+	{
+		if (ArgCount >= ExpectedArgCount) 
+		{
+			FreeExpr(CompileExpr(Compiler));
+		}
+		else /* TODO: cdecl calling convention */
+		{
+			U32 TypeSize = CompilerGetSizeOfType(Compiler, Subroutine->Args[ArgCount]->Location->Type);
+			VarLocation Arg = {
+				.Type = Subroutine->Args[ArgCount]->Location->Type,
+				.LocationType = VAR_MEM,
+				.As.Memory = PVMQueueStackArg(EMITTER(), TypeSize),
+			};
+			CompileExprInto(Compiler, &Arg);
+		}
+		ArgCount++;
+	}
+	if (StackSpace)
+	{
+		PVMCommitStackAllocation(EMITTER());
+	}
+
 
     /* end of arg */
     ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after argument list.");
@@ -916,8 +950,10 @@ static VarLocation ParsePrecedence(PVMCompiler *Compiler, Precedence Prec);
 
 static void FreeExpr(PVMCompiler *Compiler, VarLocation Expr)
 {
-    PASCAL_ASSERT(Expr.LocationType == VAR_REG, "Cannot free expression.");
-    PVMFreeRegister(EMITTER(), Expr.As.Register);
+	if (VAR_REG == Expr.LocationType)
+	{
+		PVMFreeRegister(EMITTER(), Expr.As.Register);
+	}
 }
 
 
@@ -986,13 +1022,17 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
 
         /* call the function */
         PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
-        CompileArgumentList(Compiler, &Identifier, Callee);
+        bool CallerCleanup = CompileArgumentList(Compiler, &Identifier, Callee);
         PVMEmitCall(EMITTER(), Callee);
 
         /* carefully move return reg into the return location */
         Compiler->Emitter.ReturnValue.Type = Callee->ReturnType;
         PVMEmitMov(EMITTER(), &ReturnValue, &EMITTER()->ReturnValue);
         PVMEmitUnsaveCallerRegs(EMITTER());
+		if (CallerCleanup) 
+		{
+			PVMEmitCleanupAfterCall(EMITTER());
+		}
         return ReturnValue;
     }
     else
@@ -1606,11 +1646,7 @@ static void CompileExprInto(PVMCompiler *Compiler, VarLocation *Location)
 
     CoerceTypes(Compiler, NULL, Location->Type, Expr.Type);
     PVMEmitMov(EMITTER(), Location, &Expr);
-
-    if (VAR_REG == Expr.LocationType)
-    {
-        FreeExpr(Compiler, Expr);
-    }
+	FreeExpr(Compiler, Expr);
 }
 
 
@@ -1861,9 +1897,13 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token *Callee, PascalVa
 
     VarSubroutine *Subroutine = &IdenInfo->Location->As.Subroutine;
     PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
-    CompileArgumentList(Compiler, Callee, Subroutine);
+    bool CallerCleanup = CompileArgumentList(Compiler, Callee, Subroutine);
     PVMEmitCall(EMITTER(), Subroutine);
     PVMEmitUnsaveCallerRegs(EMITTER());
+	if (CallerCleanup) 
+	{
+		PMEmitCleanupAfterAll(EMITTER());
+	}
 
     CompilerEmitDebugInfo(Compiler, Callee);
 }

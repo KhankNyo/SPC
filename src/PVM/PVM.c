@@ -149,11 +149,12 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
 #define MOVE_INTER(Opc, Rd, RdSize, Rs, RsSize)\
     PVM->Rd[PVM_GET_RD(Opc)]RdSize = PVM->Rs[PVM_GET_RS(Opc)]RsSize
 
-#define LOAD_INTEGER(Opc, ImmType, IP, DestSize, AddrMode)\
+#define LOAD_INTEGER(Opc, ImmType, IP, DestSize, AddrMode, Type, Cast)\
 do {\
     U64 Offset = 0;\
     GET_SEX_IMM(Offset, ImmType, IP);\
-    memcpy(&PVM->R[PVM_GET_RD(Opc)]DestSize, PVM->R[PVM_GET_RS(Opcode)]AddrMode + Offset, sizeof PVM->R[0]DestSize);\
+    memcpy(&PVM->R[PVM_GET_RD(Opc)]DestSize, PVM->R[PVM_GET_RS(Opcode)]AddrMode + Offset, sizeof Type);\
+    PVM->R[PVM_GET_RD(Opcode)]DestSize = (Cast PVM->R[PVM_GET_RD(Opcode)]DestSize);\
 } while(0)
 #define STORE_INTEGER(Opc, ImmType, IP, SrcSize, AddrMode)\
 do {\
@@ -367,19 +368,14 @@ do {\
 
 
 
-        case OP_MOV64:       MOVE_INTEGER(Opcode, .DWord, .DWord); break;
         case OP_MOV32:       MOVE_INTEGER(Opcode, .Word.First, .Word.First); break;
-        case OP_MOVSEX64_32: MOVE_INTEGER(Opcode, .SDWord, .SWord.First); break;
-        case OP_MOVSEX64_16: MOVE_INTEGER(Opcode, .SDWord, .SHalf.First); break;
-        case OP_MOVSEX64_8:  MOVE_INTEGER(Opcode, .SDWord, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
-        case OP_MOVSEX32_16: MOVE_INTEGER(Opcode, .SWord.First, .SHalf.First); break;
-        case OP_MOVSEX32_8:  MOVE_INTEGER(Opcode, .SWord.First, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
-
-        case OP_MOVZEX64_32: MOVE_INTEGER(Opcode, .DWord, .Word.First); break;
-        case OP_MOVZEX64_16: MOVE_INTEGER(Opcode, .DWord, .SHalf.First); break;
-        case OP_MOVZEX64_8:  MOVE_INTEGER(Opcode, .DWord, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
-        case OP_MOVZEX32_16: MOVE_INTEGER(Opcode, .Word.First, .SHalf.First); break;
         case OP_MOVZEX32_8:  MOVE_INTEGER(Opcode, .Word.First, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
+        case OP_MOVZEX32_16: MOVE_INTEGER(Opocde, .Word.First, .Half.First); break;
+        case OP_MOV64:       MOVE_INTEGER(Opcode, .DWord, .DWord); break;
+        case OP_MOVZEX64_8:  MOVE_INTEGER(Opcode, .DWord, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
+        case OP_MOVZEX64_16: MOVE_INTEGER(Opcode, .DWord, .Half.First); break;
+        case OP_MOVZEX64_32: MOVE_INTEGER(Opcode, .DWord, .Word.First); break;
+        case OP_MOVSEX64_32: MOVE_INTEGER(Opcode, .SDWord, .SWord.First); break;
         case OP_MOVI:
         {
             U64 Imm = 0;
@@ -392,45 +388,65 @@ do {\
             PVM->R[PVM_GET_RD(Opcode)].SWord.First = Imm;
         } break;
         case OP_FMOV:   MOVE_FLOAT(Opcode, .Single, .Single); break;
-        case OP_FMOV64: MOVE_FLOAT(Opcode, .Single, .Single); break;
+        case OP_FMOV64: MOVE_FLOAT(Opcode, .Double, .Double); break;
 
 
-        case OP_F32TOF64:    MOVE_FLOAT(Opcode, .Double, .Single); break;
-        case OP_F64TOF32:    MOVE_FLOAT(Opcode, .Single, .Double); break;
-        case OP_F64TOSDW:    MOVE_INTER(Opcode, R, .SDWord, F, .Double); break;
-        case OP_SDWTOF64:    MOVE_INTER(Opcode, F, .Double, R, .SDWord); break;
-        case OP_F32TOSDW:    MOVE_INTER(Opcode, R, .SDWord, F, .Single); break;
-        case OP_SDWTOF32:    MOVE_INTER(Opcode, F, .Single, R, .SDWord); break;
+        case OP_F32TOF64:   MOVE_FLOAT(Opcode, .Double, .Single); break;
+        case OP_F64TOF32:   MOVE_FLOAT(Opcode, .Single, .Double); break;
+        case OP_F64TOI64:   MOVE_INTER(Opcode, R, .SDWord, F, .Double); break;
+        case OP_I64TOF64:   MOVE_INTER(Opcode, F, .Double, R, .SDWord); break;
+        case OP_I64TOF32:   MOVE_INTER(Opcode, F, .Single, R, .SDWord); break;
+        case OP_U64TOF64:   MOVE_INTER(Opcode, F, .Double, R, .DWord); break;
+        case OP_U64TOF32:   MOVE_INTER(Opcode, F, .Single, R, .DWord); break;
+        case OP_U32TOF32:   MOVE_INTER(Opcode, F, .Single, R, .Word.First); break;
+        case OP_U32TOF64:   MOVE_INTER(Opcode, F, .Double, R, .Word.First); break;
+        case OP_I32TOF32:   MOVE_INTER(Opcode, F, .Single, R, .SWord.First); break;
+        case OP_I32TOF64:   MOVE_INTER(Opcode, F, .Double, R, .SWord.First); break;
 
 
-        case OP_LD8:  LOAD_INTEGER(Opcode, IMMTYPE_U16, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
-        case OP_LD16: LOAD_INTEGER(Opcode, IMMTYPE_U16, IP, .Half.First, .Ptr.Byte); break;
-        case OP_LD32: LOAD_INTEGER(Opcode, IMMTYPE_U16, IP, .Word.First, .Ptr.Byte); break;
-        case OP_LD64: LOAD_INTEGER(Opcode, IMMTYPE_U16, IP, .DWord, .Ptr.Byte); break;
-        case OP_ST8:  STORE_INTEGER(Opcode, IMMTYPE_U16, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
-        case OP_ST16: STORE_INTEGER(Opcode, IMMTYPE_U16, IP, .Half.First, .Ptr.Byte); break;
-        case OP_ST32: STORE_INTEGER(Opcode, IMMTYPE_U16, IP, .Word.First, .Ptr.Byte); break;
-        case OP_ST64: STORE_INTEGER(Opcode, IMMTYPE_U16, IP, .DWord, .Ptr.Byte); break;
+        case OP_LD32:       LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .Word.First,  .Ptr.Byte, (U32), (U32)); break;
+        case OP_LD64:       LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .DWord,       .Ptr.Byte, (U64), (U64)); break;
+        case OP_LDZEX32_8:  LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .Word.First,  .Ptr.Byte, (U8),  (U32)(U8)); break;
+        case OP_LDZEX32_16: LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .Word.First,  .Ptr.Byte, (U16), (U32)(U16)); break;
+        case OP_LDZEX64_8:  LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .DWord,       .Ptr.Byte, (U8),  (U64)(U8)); break;
+        case OP_LDZEX64_16: LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .DWord,       .Ptr.Byte, (U16), (U64)(U16)); break;
+        case OP_LDZEX64_32: LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .DWord,       .Ptr.Byte, (U32), (U64)(U32)); break;
+        case OP_LDSEX32_8:  LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .SWord.First, .Ptr.Byte, (U8),  (I32)(I8)); break;
+        case OP_LDSEX32_16: LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .SWord.First, .Ptr.Byte, (U16), (I32)(I16)); break;
+        case OP_LDSEX64_8:  LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .SDWord,      .Ptr.Byte, (U8),  (I64)(I8)); break;
+        case OP_LDSEX64_16: LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .SDWord,      .Ptr.Byte, (U16), (I64)(I32)); break;
+        case OP_LDSEX64_32: LOAD_INTEGER(Opcode, IMMTYPE_I16, IP, .SDWord,      .Ptr.Byte, (U32), (I64)(I32)); break;
 
-        case OP_LD8L:  LOAD_INTEGER(Opcode, IMMTYPE_U32, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
-        case OP_LD16L: LOAD_INTEGER(Opcode, IMMTYPE_U32, IP, .Half.First, .Ptr.Byte); break;
-        case OP_LD32L: LOAD_INTEGER(Opcode, IMMTYPE_U32, IP, .Word.First, .Ptr.Byte); break;
-        case OP_LD64L: LOAD_INTEGER(Opcode, IMMTYPE_U32, IP, .DWord, .Ptr.Byte); break;
-        case OP_ST8L:  STORE_INTEGER(Opcode, IMMTYPE_U32, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
-        case OP_ST16L: STORE_INTEGER(Opcode, IMMTYPE_U32, IP, .Half.First, .Ptr.Byte); break;
-        case OP_ST32L: STORE_INTEGER(Opcode, IMMTYPE_U32, IP, .Word.First, .Ptr.Byte); break;
-        case OP_ST64L: STORE_INTEGER(Opcode, IMMTYPE_U32, IP, .DWord, .Ptr.Byte); break;
+        case OP_LD32L:       LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .Word.First, .Ptr.Byte, (U32), (U32)); break;
+        case OP_LD64L:       LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .DWord,      .Ptr.Byte, (U64), (U64)); break;
+        case OP_LDZEX32_8L:  LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .Word.First, .Ptr.Byte, (U8),  (U32)(U8)); break;
+        case OP_LDZEX32_16L: LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .Word.First, .Ptr.Byte, (U16), (U32)(U16)); break;
+        case OP_LDZEX64_8L:  LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .DWord,      .Ptr.Byte, (U8),  (U64)(U8)); break;
+        case OP_LDZEX64_16L: LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .DWord,      .Ptr.Byte, (U16), (U64)(U16)); break;
+        case OP_LDZEX64_32L: LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .DWord,      .Ptr.Byte, (U32), (U64)(U32)); break;
+        case OP_LDSEX32_8L:  LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .SWord.First,.Ptr.Byte, (U8),  (I32)(I8)); break;
+        case OP_LDSEX32_16L: LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .SWord.First,.Ptr.Byte, (U16), (I32)(I16)); break;
+        case OP_LDSEX64_8L:  LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .SDWord,     .Ptr.Byte, (U8),  (I64)(I8)); break;
+        case OP_LDSEX64_16L: LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .SDWord,     .Ptr.Byte, (U16), (I64)(I16)); break;
+        case OP_LDSEX64_32L: LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .SDWord,     .Ptr.Byte, (U32), (I64)(I32)); break;
 
+        case OP_ST8:  STORE_INTEGER(Opcode, IMMTYPE_I16, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
+        case OP_ST16: STORE_INTEGER(Opcode, IMMTYPE_I16, IP, .Half.First, .Ptr.Byte); break;
+        case OP_ST32: STORE_INTEGER(Opcode, IMMTYPE_I16, IP, .Word.First, .Ptr.Byte); break;
+        case OP_ST64: STORE_INTEGER(Opcode, IMMTYPE_I16, IP, .DWord, .Ptr.Byte); break;
+        case OP_ST8L:  STORE_INTEGER(Opcode, IMMTYPE_I32, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
+        case OP_ST16L: STORE_INTEGER(Opcode, IMMTYPE_I32, IP, .Half.First, .Ptr.Byte); break;
+        case OP_ST32L: STORE_INTEGER(Opcode, IMMTYPE_I32, IP, .Word.First, .Ptr.Byte); break;
+        case OP_ST64L: STORE_INTEGER(Opcode, IMMTYPE_I32, IP, .DWord, .Ptr.Byte); break;
 
-        case OP_LDF32: LOAD_FLOAT(Opcode, IMMTYPE_U16, IP, .Single, .Ptr.Byte); break;
-        case OP_STF32: STORE_FLOAT(Opcode, IMMTYPE_U16, IP, .Single, .Ptr.Byte); break;
-        case OP_LDF64: LOAD_FLOAT(Opcode, IMMTYPE_U16, IP, .Double, .Ptr.Byte); break;
-        case OP_STF64: STORE_FLOAT(Opcode, IMMTYPE_U16, IP, .Double, .Ptr.Byte); break;
-
-        case OP_LDF32L: LOAD_FLOAT(Opcode, IMMTYPE_U32, IP, .Single, .Ptr.Byte); break;
-        case OP_STF32L: STORE_FLOAT(Opcode, IMMTYPE_U32, IP, .Single, .Ptr.Byte); break;
-        case OP_LDF64L: LOAD_FLOAT(Opcode, IMMTYPE_U32, IP, .Double, .Ptr.Byte); break;
-        case OP_STF64L: STORE_FLOAT(Opcode, IMMTYPE_U32, IP, .Double, .Ptr.Byte); break;
+        case OP_LDF32: LOAD_FLOAT(Opcode, IMMTYPE_I16, IP, .Single, .Ptr.Byte); break;
+        case OP_STF32: STORE_FLOAT(Opcode, IMMTYPE_I16, IP, .Single, .Ptr.Byte); break;
+        case OP_LDF64: LOAD_FLOAT(Opcode, IMMTYPE_I16, IP, .Double, .Ptr.Byte); break;
+        case OP_STF64: STORE_FLOAT(Opcode, IMMTYPE_I16, IP, .Double, .Ptr.Byte); break;
+        case OP_LDF32L: LOAD_FLOAT(Opcode, IMMTYPE_I32, IP, .Single, .Ptr.Byte); break;
+        case OP_STF32L: STORE_FLOAT(Opcode, IMMTYPE_I32, IP, .Single, .Ptr.Byte); break;
+        case OP_LDF64L: LOAD_FLOAT(Opcode, IMMTYPE_I32, IP, .Double, .Ptr.Byte); break;
+        case OP_STF64L: STORE_FLOAT(Opcode, IMMTYPE_I32, IP, .Double, .Ptr.Byte); break;
 
 
         case OP_ADD64: INTEGER_BINARY_OP(+, Opcode, .DWord); break;

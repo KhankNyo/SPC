@@ -18,7 +18,7 @@ typedef struct PVMEmitter
     U32 SavedRegisters[PVM_MAX_CALL_IN_EXPR];
 
     U32 SpilledRegCount;
-    U32 StackSpace;
+    U32 StackSpace, ArgSpace;
     struct {
         VarLocation SP, FP, GP;
     } Reg;
@@ -90,7 +90,10 @@ VarLocation PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *D
 
 /* stack instructions */
 VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size);
+VarMemory PVMQueueStackArg(PVMEmitter *Emitter, U32 Size);
 void PVMCommitStackAllocation(PVMEmitter *Emitter);
+void PVMAllocateStack(PVMEmitter *Emitter);
+void PVMEmitCleanupAfterCall(PVMEmitter *Emitter);
 
 
 /* global instructions */

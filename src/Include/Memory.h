@@ -85,6 +85,7 @@ static inline void *GPAAllocateZero(PascalGPA *GPA, U32 ByteCount)
     return memset(GPAAllocate(GPA, ByteCount), 0, ByteCount);
 }
 void *GPAReallocate(PascalGPA *GPA, void *Ptr, U32 NewSize);
+#define GPAReallocateArray(pGPA, pPtr, TypeName_T, U32_ElemCount) GPAReallocate(pGPA, pPtr, U32_ElemCount * sizeof TypeName_T)
 void GPADeallocate(PascalGPA *GPA, void *Ptr);
 
 

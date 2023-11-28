@@ -156,6 +156,7 @@ void *GPAReallocate(PascalGPA *GPA, void *Ptr, U32 NewSize)
     }
     if (GetSize(PtrHeader) > NewSize)
     {
+        SET_FREE_TAG(PtrHeader);
         return GPASplitNode(PtrHeader, NewSize)->Data;
     }
 

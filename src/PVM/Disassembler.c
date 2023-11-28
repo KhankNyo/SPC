@@ -389,22 +389,40 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_POPL: DisasmReglist(f, "popl", Opcode, false); break;
     case OP_POPH: DisasmReglist(f, "pshh", Opcode, true); break;
 
-    case OP_LD64: return DisasmMem(f, "ld64", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_ST64: return DisasmMem(f, "st64", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
     case OP_LD32: return DisasmMem(f, "ld32", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_ST32: return DisasmMem(f, "st32", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LD16: return DisasmMem(f, "ld16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_ST16: return DisasmMem(f, "st16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LD8: return DisasmMem(f, "ld8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_ST8: return DisasmMem(f, "st8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LD64: return DisasmMem(f, "ld64", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDZEX32_8: return DisasmMem(f, "ldzex32_8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDZEX32_16: return DisasmMem(f, "ldzex32_16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDZEX64_8: return DisasmMem(f, "ldzex64_8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDZEX64_16: return DisasmMem(f, "ldzex64_16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDZEX64_32: return DisasmMem(f, "ldzex64_32", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDSEX32_8: return DisasmMem(f, "ldsex32_8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDSEX32_16: return DisasmMem(f, "ldsex32_16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDSEX64_8: return DisasmMem(f, "ldsex64_8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDSEX64_16: return DisasmMem(f, "ldsex64_16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LDSEX64_32: return DisasmMem(f, "ldsex64_32", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
 
-    case OP_LD64L: return DisasmMem(f, "ld64l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_ST64L: return DisasmMem(f, "st64l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
     case OP_LD32L: return DisasmMem(f, "ld32l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LD64L: return DisasmMem(f, "ld64l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LDZEX32_8L: return DisasmMem(f, "ldzex32_8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LDZEX32_16L: return DisasmMem(f, "ldzex32_16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LDZEX64_8L: return DisasmMem(f, "ldzex64_8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LDZEX64_16L: return DisasmMem(f, "ldzex64_16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LDZEX64_32L: return DisasmMem(f, "ldzex64_32l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LDSEX32_8L: return DisasmMem(f, "ldsex32_8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LDSEX32_16L: return DisasmMem(f, "ldsex32_16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LDSEX64_8L: return DisasmMem(f, "ldsex64_8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LDSEX64_16L: return DisasmMem(f, "ldsex64_16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LDSEX64_32L: return DisasmMem(f, "ldsex64_32l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+
+
+    case OP_ST64: return DisasmMem(f, "st64", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_ST32: return DisasmMem(f, "st32", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_ST16: return DisasmMem(f, "st16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_ST8: return DisasmMem(f, "st8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_ST64L: return DisasmMem(f, "st64l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
     case OP_ST32L: return DisasmMem(f, "st32l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LD16L: return DisasmMem(f, "ld16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
     case OP_ST16L: return DisasmMem(f, "st16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LD8L: return DisasmMem(f, "ld8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
     case OP_ST8L: return DisasmMem(f, "st8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
 
 
@@ -447,20 +465,14 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
 
 
 
-    case OP_MOV64: DisasmRdRs(f, "mov64", sIntReg, Opcode); break;
     case OP_MOV32: DisasmRdRs(f, "mov32", sIntReg, Opcode); break;
-
-    case OP_MOVSEX64_32: DisasmRdRs(f, "movsex64_32", sIntReg, Opcode); break;
-    case OP_MOVSEX64_16: DisasmRdRs(f, "movsex64_16", sIntReg, Opcode); break;
-    case OP_MOVSEX64_8:  DisasmRdRs(f, "movsex64_8", sIntReg, Opcode); break;
-    case OP_MOVSEX32_16: DisasmRdRs(f, "movsex32_16", sIntReg, Opcode); break;
-    case OP_MOVSEX32_8:  DisasmRdRs(f, "movsex32_8", sIntReg, Opcode); break;
-
-    case OP_MOVZEX64_32: DisasmRdRs(f, "movzex64_32", sIntReg, Opcode); break;
-    case OP_MOVZEX64_16: DisasmRdRs(f, "movzex64_16", sIntReg, Opcode); break;
-    case OP_MOVZEX64_8:  DisasmRdRs(f, "movzex64_8", sIntReg, Opcode); break;
+    case OP_MOVZEX32_8: DisasmRdRs(f, "movzex32_8", sIntReg, Opcode); break;
     case OP_MOVZEX32_16: DisasmRdRs(f, "movzex32_16", sIntReg, Opcode); break;
-    case OP_MOVZEX32_8:  DisasmRdRs(f, "movzex32_8", sIntReg, Opcode); break;
+    case OP_MOV64: DisasmRdRs(f, "mov64", sIntReg, Opcode); break;
+    case OP_MOVZEX64_8: DisasmRdRs(f, "movzex64_8", sIntReg, Opcode); break;
+    case OP_MOVZEX64_16: DisasmRdRs(f, "movzex64_16", sIntReg, Opcode); break;
+    case OP_MOVZEX64_32: DisasmRdRs(f, "movzex64_32", sIntReg, Opcode); break;
+    case OP_MOVSEX64_32: DisasmRdRs(f, "movsex64_32", sIntReg, Opcode); break;
 
     case OP_FMOV: DisasmRdRs(f, "fmov", sFltReg, Opcode); break;
     case OP_FMOV64: DisasmRdRs(f, "fmov64", sFltReg, Opcode); break;
@@ -469,10 +481,15 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
 
     case OP_F64TOF32: DisasmRdRs(f, "f64tof32", sFltReg, Opcode); break;
     case OP_F32TOF64: DisasmRdRs(f, "f32tof64", sFltReg, Opcode); break;
-    case OP_F64TOSDW: DisasmInter(f, "f64tosdw", sIntReg, sFltReg, Opcode); break;
-    case OP_F32TOSDW: DisasmInter(f, "f64tosdw", sIntReg, sFltReg, Opcode); break;
-    case OP_SDWTOF32: DisasmInter(f, "f64tosdw", sIntReg, sFltReg, Opcode); break;
-    case OP_SDWTOF64: DisasmInter(f, "f64tosdw", sIntReg, sFltReg, Opcode); break;
+    case OP_F64TOI64: DisasmInter(f, "f64toi64", sFltReg, sIntReg, Opcode); break;
+    case OP_I64TOF32: DisasmInter(f, "i64tof64", sIntReg, sFltReg, Opcode); break;
+    case OP_I64TOF64: DisasmInter(f, "i64tof32", sIntReg, sFltReg, Opcode); break;
+    case OP_U64TOF64: DisasmInter(f, "u64tof64", sIntReg, sFltReg, Opcode); break;
+    case OP_U64TOF32: DisasmInter(f, "u32tof32", sIntReg, sFltReg, Opcode); break;
+    case OP_I32TOF32: DisasmInter(f, "i32tof64", sIntReg, sFltReg, Opcode); break;
+    case OP_I32TOF64: DisasmInter(f, "i32tof32", sIntReg, sFltReg, Opcode); break;
+    case OP_U32TOF64: DisasmInter(f, "u32tof64", sIntReg, sFltReg, Opcode); break;
+    case OP_U32TOF32: DisasmInter(f, "u32tof32", sIntReg, sFltReg, Opcode); break;
 
 
     case OP_ADD64:  DisasmRdRs(f, "add64", sIntReg, Opcode); break;
