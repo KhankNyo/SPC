@@ -543,13 +543,31 @@ static PascalVar *GetIdenInfo(PVMCompiler *Compiler, const Token *Identifier, co
     return Info;
 }
 
+/* returns the type that both sides should be */
 static IntegralType CoerceTypes(PVMCompiler *Compiler, const Token *Op, IntegralType Left, IntegralType Right)
 {
     PASCAL_ASSERT(Left >= TYPE_INVALID && Right >= TYPE_INVALID, "Unreachable");
     if (Left > TYPE_COUNT || Right > TYPE_COUNT)
-    {
         PASCAL_UNREACHABLE("Invalid types");
+
+    IntegralType CommonType = sCoercionRules[Left][Right];
+    if (TYPE_INVALID == CommonType)
+        goto InvalidTypeCombo;
+
+    return CommonType;
+InvalidTypeCombo:
+    if (NULL == Op)
+    {
+        Error(Compiler, "Invalid combination of %s and %s.");
     }
+    else
+    {
+        ErrorAt(Compiler, Op, "Invalid combination of %s and %s");
+    }
+    return TYPE_INVALID;
+
+#if 1
+#else
 
     IntegralType Type = sCoercionRules[Left][Right];
     if (TYPE_INVALID == Type)
@@ -615,6 +633,7 @@ InvalidTypeCombo:
         );
     }
     return TYPE_INVALID;
+#endif
 }
 
 
@@ -1262,20 +1281,17 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     } break;
     case TOKEN_MOD:
     {
-        if (IntegralTypeIsInteger(RightType) && 0 == Right.Int)
-        {
-            ErrorAt(Compiler, OpToken, "Integer modulo by 0 in a compile-time literal is not acceptable.");
-            goto Exit;
-        }
+        Location.Type = CoerceTypes(Compiler, OpToken, LeftType, RightType);
         if (IntegralTypeIsInteger(LeftType) && IntegralTypeIsInteger(RightType)) 
         {
+            if (0 == Right.Int) 
+            {
+                ErrorAt(Compiler, OpToken, "Integer modulo by 0.");
+                goto Exit;
+            }
             Left.Int %= Right.Int;
         }
-        else if (IntegralTypeIsFloat(RightType) || IntegralTypeIsFloat(LeftType)) 
-        {
-            ErrorAt(Compiler, OpToken, "Cannot perform modulo on floating point value.");
-        }
-        Location.Type = TypeOfIntLit(Left.Int);
+        else goto InvalidOperands;
         Location.As.Literal = Left;
     } break;
 
@@ -1286,7 +1302,6 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
         {
             goto InvalidOperands;
         }
-
         Left.Int <<= Right.Int & 0x3F;
         Location.Type = TypeOfIntLit(Left.Int);
         Location.As.Literal = Left;
@@ -1383,6 +1398,9 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
     }
 
     /* TODO: CoerceTypes is kinda useless */
+    /* TODO: Coerce types now returns the type from an expression,
+     * cast both sides of the operand to that type? 
+     * */
     IntegralType Type = CoerceTypes(Compiler, OpToken, Left->Type, Right->Type);
     switch (OpToken->Type)
     {
