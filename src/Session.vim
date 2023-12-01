@@ -18,14 +18,14 @@ vmap <C-Insert> "*y
 vmap <S-Insert> "-d"*P
 nmap <S-Insert> "*P
 inoremap " ""ha
+nmap Îw <C-Home>
+nmap Îu <C-End>
 vmap ÎØ "*d
 vmap Î× "*d
 vmap ÎÕ "*y
 vmap ÎÔ "-d"*P
 nmap ÎÔ "*P
-nmap Îu <C-End>
 vmap Îu <C-End>
-nmap Îw <C-Home>
 vmap Îw <C-Home>
 inoremap { {}ha
 let &cpo=s:cpo_save
@@ -34,6 +34,7 @@ set autoindent
 set background=dark
 set backspace=indent,eol,start
 set cindent
+set expandtab
 set fileencodings=ucs-bom,utf-8,default,latin1
 set helplang=En
 set incsearch
@@ -53,18 +54,18 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +0 PVMCompiler.c
-badd +1268 PVMEmitter.c
-badd +0 Include\Variable.h
-badd +0 Include\PVMCompiler.h
-badd +129 Include\PVMEmitter.h
+badd +1 PVMCompiler.c
+badd +1 PVMEmitter.c
+badd +61 Include\Variable.h
+badd +1 Include\PVMCompiler.h
+badd +43 Include\PVMEmitter.h
 badd +640 Tokenizer.c
 badd +27 Include\Tokenizer.h
 badd +9 ~\.vimrc
 argglobal
 %argdel
 $argadd PVMCompiler.c
-edit Include\Variable.h
+edit Include\PVMEmitter.h
 let s:save_splitbelow = &splitbelow
 let s:save_splitright = &splitright
 set splitbelow splitright
@@ -86,10 +87,10 @@ set winheight=1
 set winminwidth=0
 set winwidth=1
 exe '1resize ' . ((&lines * 30 + 31) / 63)
-exe 'vert 1resize ' . ((&columns * 137 + 137) / 274)
+exe 'vert 1resize ' . ((&columns * 136 + 137) / 274)
 exe '2resize ' . ((&lines * 30 + 31) / 63)
-exe 'vert 2resize ' . ((&columns * 137 + 137) / 274)
-exe 'vert 3resize ' . ((&columns * 136 + 137) / 274)
+exe 'vert 2resize ' . ((&columns * 136 + 137) / 274)
+exe 'vert 3resize ' . ((&columns * 137 + 137) / 274)
 argglobal
 balt PVMEmitter.c
 setlocal keymap=
@@ -127,7 +128,7 @@ setlocal dictionary=
 setlocal nodiff
 setlocal equalprg=
 setlocal errorformat=
-setlocal noexpandtab
+setlocal expandtab
 if &filetype != 'cpp'
 setlocal filetype=cpp
 endif
@@ -223,16 +224,16 @@ setlocal wrap
 setlocal wrapmargin=0
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 60 - ((22 * winheight(0) + 15) / 30)
+let s:l = 32 - ((28 * winheight(0) + 15) / 30)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 60
+keepjumps 32
 normal! 0
 wincmd w
 argglobal
 if bufexists(fnamemodify("PVMEmitter.c", ":p")) | buffer PVMEmitter.c | else | edit PVMEmitter.c | endif
-balt Include\Variable.h
+balt Include\PVMEmitter.h
 setlocal keymap=
 setlocal noarabic
 setlocal autoindent
@@ -364,12 +365,12 @@ setlocal wrap
 setlocal wrapmargin=0
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 1288 - ((13 * winheight(0) + 15) / 30)
+let s:l = 1157 - ((0 * winheight(0) + 15) / 30)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 1288
-normal! 043|
+keepjumps 1157
+normal! 0
 wincmd w
 argglobal
 if bufexists(fnamemodify("PVMCompiler.c", ":p")) | buffer PVMCompiler.c | else | edit PVMCompiler.c | endif
@@ -505,19 +506,19 @@ setlocal wrap
 setlocal wrapmargin=0
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 2102 - ((30 * winheight(0) + 30) / 61)
+let s:l = 784 - ((30 * winheight(0) + 30) / 61)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 2102
-normal! 062|
+keepjumps 784
+normal! 067|
 wincmd w
 3wincmd w
 exe '1resize ' . ((&lines * 30 + 31) / 63)
-exe 'vert 1resize ' . ((&columns * 137 + 137) / 274)
+exe 'vert 1resize ' . ((&columns * 136 + 137) / 274)
 exe '2resize ' . ((&lines * 30 + 31) / 63)
-exe 'vert 2resize ' . ((&columns * 137 + 137) / 274)
-exe 'vert 3resize ' . ((&columns * 136 + 137) / 274)
+exe 'vert 2resize ' . ((&columns * 136 + 137) / 274)
+exe 'vert 3resize ' . ((&columns * 137 + 137) / 274)
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0
   silent exe 'bwipe ' . s:wipebuf
