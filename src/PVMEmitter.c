@@ -688,6 +688,11 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
                 IntegralTypeToStr(Dst->Type), IntegralTypeToStr(Src->Type)
         );
     }
+    if (Dst->LocationType == VAR_REG && Src->LocationType == VAR_MEM)
+    {
+        LoadIntoReg(Emitter, &Dst->As.Register, Dst->Type, Src->As.Memory, Src->Type);
+        return;
+    }
 
 
     /* make sure src is in reg */
@@ -712,7 +717,7 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
     case VAR_SUBROUTINE:
     case VAR_LIT:
     {
-        PASCAL_UNREACHABLE("PVMEmitMov: invalid Dst");
+        PASCAL_UNREACHABLE("invalid Dst in %s", __func__);
     } break;
 
 
