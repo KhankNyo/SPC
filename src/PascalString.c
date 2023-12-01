@@ -130,6 +130,7 @@ PascalStr PStrCopyReserved(const U8 *Str, USize Len, USize Extra)
     return PStr;
 }
 
+
 PascalStr PStrInit(USize Len)
 {
     return PStrInitReserved(Len, 0);
@@ -140,6 +141,7 @@ PascalStr PStrCopy(const U8 *Str, USize Len)
     return PStrCopyReserved(Str, Len, 0);
 }
 
+
 void PStrDeinit(PascalStr *PStr)
 {
     if (PStrIsDyn(PStr))
@@ -148,6 +150,42 @@ void PStrDeinit(PascalStr *PStr)
     *PStr = (PascalStr) { {{0}} };
     PStr->Loc.LenLeft = PSTR_MAX_LOCAL_LEN;
 }
+
+
+
+
+
+
+
+bool PStrEqu(const PascalStr *s1, const PascalStr *s2)
+{
+    USize Len = PStrGetLen(s1);
+    return Len == PStrGetLen(s2) 
+        && 0 == strncmp(
+                (const char *)PStrGetConstPtr(s1), 
+                (const char *)PStrGetConstPtr(s2), 
+            Len);
+}
+
+bool PStrIsLess(const PascalStr *s1, const PascalStr *s2)
+{
+    USize Len = PStrGetLen(s1);
+    {
+        USize Len2 = PStrGetLen(s2);
+        if (Len > Len2)
+            Len = Len2;
+    }
+    const U8 *PtrS1 = PStrGetConstPtr(s1);
+    const U8 *PtrS2 = PStrGetConstPtr(s2);
+    for (USize i = 0; i < Len; i++)
+    {
+        if (PtrS1[i] >= PtrS2[i])
+            return false;
+    }
+    return true;
+}
+
+
 
 
 

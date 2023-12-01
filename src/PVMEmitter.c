@@ -9,7 +9,7 @@
  * */
 #define EMPTY_REGLIST 0xE000
 
-#if UINTPTR_MAX == UINT64_MAX
+#if UINTPTR_MAX == UINT32_MAX
 #  define CASE_PTR32(Colon) case TYPE_POINTER Colon
 #  define CASE_PTR64(Colon)
 #else
@@ -55,6 +55,7 @@ PVMEmitter PVMEmitterInit(PVMChunk *Chunk)
             .Type = TYPE_INVALID,
             .As.Register.ID = PVM_RETREG,
         },
+        .NumArgs = 0,
     };
     for (int i = PVM_ARGREG_0; i < PVM_ARGREG_COUNT; i++)
     {
@@ -153,7 +154,7 @@ static void MakeDstTypeCompatible(PVMEmitter *Emitter, VarRegister *Dst, Integra
     {
         VarLocation NewLocation = PVMAllocateRegister(Emitter, DstType);
         PVMFreeRegister(Emitter, *Dst);
-        Dst->ID = NewLocation.As.Register.ID;
+        *Dst = NewLocation.As.Register;
     }
 }
 
@@ -173,7 +174,6 @@ Unreachable:
     {
         switch (SrcType)
         {
-        CASE_PTR64(:)
         case TYPE_I64:
         case TYPE_U64: if (Dst->ID != Src.ID) WriteOp16(Emitter, PVM_OP(MOV64, Dst->ID, Src.ID)); break;
         case TYPE_BOOLEAN:
@@ -191,6 +191,7 @@ Unreachable:
     {
         switch (SrcType) 
         {
+        CASE_PTR64(:)
         case TYPE_U64:
         case TYPE_I64: if (Dst->ID != Src.ID) WriteOp16(Emitter, PVM_OP(MOV64, Dst->ID, Src.ID)); break;
         case TYPE_I32:
@@ -239,25 +240,25 @@ Unreachable:
         case TYPE_U16:
         case TYPE_U32:
         {
-            TransferRegister(Emitter, &Src, TYPE_U64, Src, SrcType);
-            FALLTHROUGH;
-        }
+            MakeDstTypeCompatible(Emitter, Dst, DstType, Src);
+            WriteOp16(Emitter, PVM_OP(U32TOF32, Dst->ID, Src.ID)); break;
+        } break;
         case TYPE_U64: 
         {
             MakeDstTypeCompatible(Emitter, Dst, DstType, Src);
-            WriteOp16(Emitter, PVM_OP(U64TOF64, Dst->ID, Src.ID)); break;
+            WriteOp16(Emitter, PVM_OP(U64TOF32, Dst->ID, Src.ID)); break;
         } break;
         case TYPE_I8:
         case TYPE_I16:
         case TYPE_I32:
         {
-            TransferRegister(Emitter, &Src, TYPE_I64, Src, SrcType);
-            FALLTHROUGH;
-        }
+            MakeDstTypeCompatible(Emitter, Dst, TYPE_F32, Src);
+            WriteOp16(Emitter, PVM_OP(I32TOF32, Dst->ID, Src.ID));
+        } break;
         case TYPE_I64: 
         {
             MakeDstTypeCompatible(Emitter, Dst, DstType, Src);
-            WriteOp16(Emitter, PVM_OP(I64TOF64, Dst->ID, Src.ID)); break;
+            WriteOp16(Emitter, PVM_OP(I64TOF32, Dst->ID, Src.ID));
         } break;
         default: goto Unreachable;
         }
@@ -272,25 +273,25 @@ Unreachable:
         case TYPE_U16:
         case TYPE_U32:
         {
-            TransferRegister(Emitter, &Src, TYPE_U64, Src, SrcType);
-            FALLTHROUGH;
-        }
+            MakeDstTypeCompatible(Emitter, Dst, DstType, Src);
+            WriteOp16(Emitter, PVM_OP(U32TOF64, Dst->ID, Src.ID));
+        } break;
         case TYPE_U64: 
         {
             MakeDstTypeCompatible(Emitter, Dst, DstType, Src);
-            WriteOp16(Emitter, PVM_OP(U64TOF32, Dst->ID, Src.ID));
+            WriteOp16(Emitter, PVM_OP(U64TOF64, Dst->ID, Src.ID));
         } break;
         case TYPE_I8:
         case TYPE_I16:
         case TYPE_I32:
         {
-            TransferRegister(Emitter, &Src, TYPE_I64, Src, SrcType);
-            FALLTHROUGH;
-        }
+            MakeDstTypeCompatible(Emitter, Dst, DstType, Src);
+            WriteOp16(Emitter, PVM_OP(I32TOF64, Dst->ID, Src.ID));
+        } break;
         case TYPE_I64: 
         {
             MakeDstTypeCompatible(Emitter, Dst, DstType, Src);
-            WriteOp16(Emitter, PVM_OP(I64TOF32, Dst->ID, Src.ID));
+            WriteOp16(Emitter, PVM_OP(I64TOF64, Dst->ID, Src.ID));
         } break;
         default: goto Unreachable;
         }
@@ -302,7 +303,7 @@ static void StoreFromReg(PVMEmitter *Emitter, VarMemory Dst, IntegralType DstTyp
 {
 #define STORE(Base)\
     do {\
-        if (IN_I16(Dst.Location)) {\
+        if (IN_I16((I32)Dst.Location)) {\
             switch (DstType) {\
             case TYPE_BOOLEAN:\
             case TYPE_I8:\
@@ -355,7 +356,7 @@ static void LoadIntoFloatReg(PVMEmitter *Emitter, VarRegister *Dst, IntegralType
 {
 #define LOAD(FloatType)\
 do {\
-    if (IN_I16(Src.Location)) {\
+    if (IN_I16((I32)Src.Location)) {\
         WriteOp16(Emitter, PVM_OP(LD ## FloatType, Dst->ID, Base));\
         WriteOp16(Emitter, Src.Location);\
     } else {\
@@ -434,7 +435,7 @@ static void LoadIntoReg(PVMEmitter *Emitter, VarRegister *Dst, IntegralType DstT
         return;
     }
 
-    if (IN_I16(Src.Location))
+    if (IN_I16((I32)Src.Location))
     {
         LOAD(Base, );
         WriteOp16(Emitter, Src.Location);
@@ -738,8 +739,219 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 }
 
 
+
+/* type conversion */
+
+void PVMEmitIntegerTypeConversion(PVMEmitter *Emitter, 
+        VarRegister Dst, IntegralType DstType, 
+        VarRegister Src, IntegralType SrcType
+)
+{
+    if (Dst.ID == Src.ID && DstType == SrcType)
+        return;
+
+    switch (DstType)
+    {
+    case TYPE_U8:
+    case TYPE_U16:
+    case TYPE_U32:
+    {
+        switch (SrcType)
+        {
+        case TYPE_I8:
+        case TYPE_U8: WriteOp16(Emitter, PVM_OP(MOVZEX32_8, Dst.ID, Src.ID)); break;
+        case TYPE_I16:
+        case TYPE_U16: WriteOp16(Emitter, PVM_OP(MOVZEX32_16, Dst.ID, Src.ID)); break;
+        case TYPE_I64:
+        case TYPE_U64:
+        case TYPE_I32:
+        case TYPE_U32: WriteOp16(Emitter, PVM_OP(MOV32, Dst.ID, Src.ID)); break;
+        default: 
+        {
+            PASCAL_UNREACHABLE("Invalid src type in %s: %s", __func__, IntegralTypeToStr(SrcType));
+        } break;
+        }
+    } break;
+    case TYPE_U64:
+    {
+        switch (SrcType)
+        {
+        case TYPE_I8:
+        case TYPE_U8: WriteOp16(Emitter, PVM_OP(MOVZEX64_8, Dst.ID, Src.ID)); break;
+        case TYPE_I16:
+        case TYPE_U16: WriteOp16(Emitter, PVM_OP(MOVZEX64_16, Dst.ID, Src.ID)); break;
+        case TYPE_I32:
+        case TYPE_U32: WriteOp16(Emitter, PVM_OP(MOVZEX64_32, Dst.ID, Src.ID)); break;
+        case TYPE_I64:
+        case TYPE_U64: WriteOp16(Emitter, PVM_OP(MOV64, Dst.ID, Src.ID)); break;
+        default: 
+        {
+            PASCAL_UNREACHABLE("Invalid src type in %s: %s", __func__, IntegralTypeToStr(SrcType));
+        } break;
+        }
+    } break;
+    case TYPE_I8:
+    case TYPE_I16:
+    case TYPE_I32:
+    {
+        switch (SrcType)
+        {
+        case TYPE_U8:  WriteOp16(Emitter, PVM_OP(MOVZEX32_8, Dst.ID, Src.ID)); break;
+        case TYPE_U16: WriteOp16(Emitter, PVM_OP(MOVZEX32_16, Dst.ID, Src.ID)); break;
+        case TYPE_U32:
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+        case TYPE_U64: WriteOp16(Emitter, PVM_OP(MOV32, Dst.ID, Src.ID)); break;
+        default: 
+        {
+            PASCAL_UNREACHABLE("Invalid src type in %s: %s", __func__, IntegralTypeToStr(SrcType));
+        } break;
+        }
+    } break;
+    case TYPE_I64:
+    {
+        switch (SrcType)
+        {
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32: WriteOp16(Emitter, PVM_OP(MOVSEX64_32, Dst.ID, Src.ID)); break;
+        case TYPE_U8:  WriteOp16(Emitter, PVM_OP(MOVZEX64_8, Dst.ID, Src.ID)); break;
+        case TYPE_U16: WriteOp16(Emitter, PVM_OP(MOVZEX64_16, Dst.ID, Src.ID)); break;
+        case TYPE_U32: WriteOp16(Emitter, PVM_OP(MOVZEX64_32, Dst.ID, Src.ID)); break;
+        case TYPE_I64:
+        case TYPE_U64: WriteOp16(Emitter, PVM_OP(MOV64, Dst.ID, Src.ID)); break;
+        default: 
+        {
+            PASCAL_UNREACHABLE("Invalid src type in %s: %s", __func__, IntegralTypeToStr(SrcType));
+        } break;
+        }
+    } break;
+    default: 
+    {
+        PASCAL_UNREACHABLE("invalid dst type in %s: %s", __func__, IntegralTypeToStr(DstType));
+    } break;
+    }
+}
+
+void PVMEmitFloatTypeConversion(PVMEmitter *Emitter,
+        VarRegister Dst, IntegralType DstType, 
+        VarRegister Src, IntegralType SrcType
+)
+{
+    if (Dst.ID == Src.ID && SrcType == DstType)
+        return;
+
+    if (TYPE_F32 == DstType)
+    {
+        if (TYPE_F64 == SrcType)
+        {
+            WriteOp16(Emitter, PVM_OP(F64TOF32, Dst.ID, Src.ID));
+        }
+        else 
+        {
+            WriteOp16(Emitter, PVM_OP(FMOV, Dst.ID, Src.ID));
+        }
+        return;
+    }
+
+    if (TYPE_F64 == DstType)
+    {
+        if (TYPE_F64 == SrcType)
+        {
+            WriteOp16(Emitter, PVM_OP(FMOV64, Dst.ID, Src.ID));
+        }
+        else 
+        {
+            WriteOp16(Emitter, PVM_OP(F32TOF64, Dst.ID, Src.ID));
+        }
+        return;
+    }
+
+    PASCAL_UNREACHABLE("Invalid type in %s: dst=%s and src=%s", 
+            __func__, IntegralTypeToStr(DstType), IntegralTypeToStr(SrcType)
+    );
+}
+
+void PVMEmitIntToFltTypeConversion(PVMEmitter *Emitter,
+        VarRegister Dst, IntegralType DstType, 
+        VarRegister Src, IntegralType SrcType
+)
+{
+    if (TYPE_F64 == DstType)
+    {
+        switch (SrcType)
+        {
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        {
+            WriteOp16(Emitter, PVM_OP(I32TOF64, Dst.ID, Src.ID));
+        } break;
+        case TYPE_I64:
+        {
+            WriteOp16(Emitter, PVM_OP(I64TOF64, Dst.ID, Src.ID));
+        } break;
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        {
+            WriteOp16(Emitter, PVM_OP(U32TOF64, Dst.ID, Src.ID));
+        } break;
+        case TYPE_U64:
+        {
+            WriteOp16(Emitter, PVM_OP(U64TOF64, Dst.ID, Src.ID));
+        } break;
+        default: goto Unreachable;
+        }
+        return;
+    }
+    if (TYPE_F32 == DstType)
+    {
+        switch (SrcType)
+        {
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        {
+            WriteOp16(Emitter, PVM_OP(I32TOF32, Dst.ID, Src.ID));
+        } break;
+        case TYPE_I64:
+        {
+            WriteOp16(Emitter, PVM_OP(I64TOF32, Dst.ID, Src.ID));
+        } break;
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        {
+            WriteOp16(Emitter, PVM_OP(U32TOF32, Dst.ID, Src.ID));
+        } break;
+        case TYPE_U64:
+        {
+            WriteOp16(Emitter, PVM_OP(U64TOF32, Dst.ID, Src.ID));
+        } break;
+        default: goto Unreachable;
+        }
+        return;
+    }
+Unreachable:
+    PASCAL_UNREACHABLE("Invalid type in %s: dst=%s and src=%s", 
+            __func__, IntegralTypeToStr(DstType), IntegralTypeToStr(SrcType)
+    );
+}
+
+
+
+
+
+
+/* arith instructions */
+
 void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I16 Imm)
 {
+    if (0 == Imm)
+        return;
     VarLocation Target;
     bool IsOwning = PVMEmitIntoReg(Emitter, &Target, Dst);
 
@@ -765,6 +977,7 @@ void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I16 Imm)
 
 #define DEFINE_INTEGER_BINARY_OP(FnName, Mnemonic)\
 void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src) {\
+    PASCAL_ASSERT(Dst->Type == Src->Type, "Dst and Src type must be the same in %s", __func__);\
     VarLocation Rd, Rs;\
     bool OwningRd = PVMEmitIntoReg(Emitter, &Rd, Dst);\
     bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, Src);\
@@ -785,18 +998,15 @@ void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
 #define DEFINE_GENERIC_BINARY_OP(FnName, Mnemonic)\
 void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src) {\
+    PASCAL_ASSERT(Dst->Type == Src->Type, "Dst and Src type must be the same in %s", __func__);\
     VarLocation Rd, Rs;\
     bool OwningRd = PVMEmitIntoReg(Emitter, &Rd, Dst);\
     bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, Src);\
     if (TYPE_U64 == Dst->Type || TYPE_I64 == Dst->Type) {\
         WriteOp16(Emitter, PVM_OP( Mnemonic ## 64, Rd.As.Register.ID, Rs.As.Register.ID));\
     } else if (TYPE_F64 == Dst->Type || TYPE_F64 == Src->Type) {\
-        TransferRegister(Emitter, &Rs.As.Register, TYPE_F64, Rs.As.Register, Rs.Type);\
-        TransferRegister(Emitter, &Rd.As.Register, TYPE_F64, Rd.As.Register, Rd.Type);\
         WriteOp16(Emitter, PVM_OP( F ## Mnemonic ## 64, Rd.As.Register.ID, Rs.As.Register.ID));\
     } else if (TYPE_F32 == Dst->Type || TYPE_F32 == Dst->Type) {\
-        TransferRegister(Emitter, &Rs.As.Register, TYPE_F32, Rs.As.Register, Rs.Type);\
-        TransferRegister(Emitter, &Rd.As.Register, TYPE_F32, Rd.As.Register, Rd.Type);\
         WriteOp16(Emitter, PVM_OP( F ## Mnemonic, Rd.As.Register.ID, Rs.As.Register.ID));\
     } else {\
         WriteOp16(Emitter, PVM_OP( Mnemonic , Rd.As.Register.ID, Rs.As.Register.ID));\
@@ -937,6 +1147,66 @@ do {\
 
 
 
+/* subroutine arguments */
+VarLocation PVMSetParamType(PVMEmitter *Emitter, IntegralType ParamType)
+{
+    if (Emitter->NumArgs < PVM_ARGREG_COUNT)
+    {
+        Emitter->ArgReg[Emitter->NumArgs].Type = ParamType;
+        return Emitter->ArgReg[Emitter->NumArgs++];
+    }
+
+    /* TODO: pascal calling convetion */
+    I32 ArgOffset = (PVM_ARGREG_COUNT - Emitter->NumArgs - 1) * sizeof(PVMGPR);
+    VarLocation Location = {
+        .Type = ParamType,
+        .LocationType = VAR_MEM,
+        .As.Memory = {
+            .IsGlobal = false,
+            .Location = ArgOffset,
+        },
+    };
+    Emitter->NumArgs++;
+    return Location;
+}
+
+VarLocation PVMSetArgType(PVMEmitter *Emitter, IntegralType ArgType)
+{
+    if (Emitter->NumArgs < PVM_ARGREG_COUNT)
+    {
+        Emitter->ArgReg[Emitter->NumArgs].Type = ArgType;
+        return Emitter->ArgReg[Emitter->NumArgs++];
+    }
+
+    /* TODO: pascal calling convention */
+    I32 ArgOffset = (PVM_ARGREG_COUNT - Emitter->NumArgs - 1) * sizeof(PVMGPR);
+    ArgOffset += Emitter->StackSpace;
+    VarLocation Mem = {
+        .Type = ArgType,
+        .LocationType = VAR_MEM,
+        .As.Memory = {
+            .Location = ArgOffset,
+            .IsGlobal = false,
+        },
+    };
+    Emitter->NumArgs++;
+    PASCAL_ASSERT(ArgOffset >= 0, "allocate space before call");
+    return Mem;
+}
+
+
+
+
+void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg)
+{
+    if (VAR_REG == Arg->LocationType)
+    {
+        PVMMarkRegisterAsAllocated(Emitter, Arg->As.Register.ID);
+    }
+}
+
+
+
 /* stack allocation */
 VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size)
 {
@@ -952,20 +1222,6 @@ VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size)
     return Mem;
 }
 
-VarMemory PVMQueueStackArg(PVMEmitter *Emitter, U32 Size) 
-{
-	I32 NewOffset = Emitter->StackSpace - Size;
-	if (NewOffset % sizeof(PVMPTR)) 
-	{
-		NewOffset &= ~(sizeof(PVMPTR)) - 1;
-	}
-
-	VarMemory Arg = {
-		.IsGlobal = false,
-		.Location = Emitter->StackSpace,
-	};
-	return Arg;
-}
 
 void PVMCommitStackAllocation(PVMEmitter *Emitter)
 {
@@ -1042,6 +1298,15 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter)
     if (Restorelist & 0xFF)
     {
         WriteOp16(Emitter, PVM_REGLIST(POPL, Restorelist & 0xFF));
+    }
+
+    if (Emitter->NumSavelist > 0)
+    {
+        Emitter->Reglist = Emitter->SavedRegisters[Emitter->NumSavelist - 1];
+    }
+    else
+    {
+        Emitter->Reglist = EMPTY_REGLIST;
     }
 }
 

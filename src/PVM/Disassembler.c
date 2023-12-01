@@ -311,7 +311,7 @@ static U32 DisasmMem(FILE *f,
     const char *Rs = sIntReg[PVM_GET_RS(Opcode)];
     int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
-    fprintf(f, "%s, [%s + %llu]", Rd, Rs, Info.Imm);
+    fprintf(f, "%s, [%s + %lld]", Rd, Rs, (I64)Info.Imm);
 
     DisplayImmBytes(f, Info);
     return Info.Addr;
@@ -389,52 +389,52 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_POPL: DisasmReglist(f, "popl", Opcode, false); break;
     case OP_POPH: DisasmReglist(f, "pshh", Opcode, true); break;
 
-    case OP_LD32: return DisasmMem(f, "ld32", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LD64: return DisasmMem(f, "ld64", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDZEX32_8: return DisasmMem(f, "ldzex32_8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDZEX32_16: return DisasmMem(f, "ldzex32_16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDZEX64_8: return DisasmMem(f, "ldzex64_8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDZEX64_16: return DisasmMem(f, "ldzex64_16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDZEX64_32: return DisasmMem(f, "ldzex64_32", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDSEX32_8: return DisasmMem(f, "ldsex32_8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDSEX32_16: return DisasmMem(f, "ldsex32_16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDSEX64_8: return DisasmMem(f, "ldsex64_8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDSEX64_16: return DisasmMem(f, "ldsex64_16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDSEX64_32: return DisasmMem(f, "ldsex64_32", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
+    case OP_LD32: return DisasmMem(f, "ld32", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LD64: return DisasmMem(f, "ld64", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDZEX32_8: return DisasmMem(f, "ldzex32_8", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDZEX32_16: return DisasmMem(f, "ldzex32_16", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDZEX64_8: return DisasmMem(f, "ldzex64_8", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDZEX64_16: return DisasmMem(f, "ldzex64_16", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDZEX64_32: return DisasmMem(f, "ldzex64_32", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDSEX32_8: return DisasmMem(f, "ldsex32_8", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDSEX32_16: return DisasmMem(f, "ldsex32_16", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDSEX64_8: return DisasmMem(f, "ldsex64_8", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDSEX64_16: return DisasmMem(f, "ldsex64_16", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDSEX64_32: return DisasmMem(f, "ldsex64_32", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
 
-    case OP_LD32L: return DisasmMem(f, "ld32l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LD64L: return DisasmMem(f, "ld64l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LDZEX32_8L: return DisasmMem(f, "ldzex32_8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LDZEX32_16L: return DisasmMem(f, "ldzex32_16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LDZEX64_8L: return DisasmMem(f, "ldzex64_8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LDZEX64_16L: return DisasmMem(f, "ldzex64_16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LDZEX64_32L: return DisasmMem(f, "ldzex64_32l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LDSEX32_8L: return DisasmMem(f, "ldsex32_8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LDSEX32_16L: return DisasmMem(f, "ldsex32_16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LDSEX64_8L: return DisasmMem(f, "ldsex64_8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LDSEX64_16L: return DisasmMem(f, "ldsex64_16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_LDSEX64_32L: return DisasmMem(f, "ldsex64_32l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-
-
-    case OP_ST64: return DisasmMem(f, "st64", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_ST32: return DisasmMem(f, "st32", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_ST16: return DisasmMem(f, "st16", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_ST8: return DisasmMem(f, "st8", sIntReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_ST64L: return DisasmMem(f, "st64l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_ST32L: return DisasmMem(f, "st32l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_ST16L: return DisasmMem(f, "st16l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_ST8L: return DisasmMem(f, "st8l", sIntReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LD32L: return DisasmMem(f, "ld32l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_LD64L: return DisasmMem(f, "ld64l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_LDZEX32_8L: return DisasmMem(f, "ldzex32_8l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_LDZEX32_16L: return DisasmMem(f, "ldzex32_16l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_LDZEX64_8L: return DisasmMem(f, "ldzex64_8l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_LDZEX64_16L: return DisasmMem(f, "ldzex64_16l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_LDZEX64_32L: return DisasmMem(f, "ldzex64_32l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_LDSEX32_8L: return DisasmMem(f, "ldsex32_8l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_LDSEX32_16L: return DisasmMem(f, "ldsex32_16l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_LDSEX64_8L: return DisasmMem(f, "ldsex64_8l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_LDSEX64_16L: return DisasmMem(f, "ldsex64_16l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_LDSEX64_32L: return DisasmMem(f, "ldsex64_32l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
 
 
-    case OP_LDF32: return DisasmMem(f, "ldf32", sFltReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_STF32: return DisasmMem(f, "stf32", sFltReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDF32L: return DisasmMem(f, "ldf32l", sFltReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_STF32L: return DisasmMem(f, "stf32l", sFltReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_ST64: return DisasmMem(f, "st64", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_ST32: return DisasmMem(f, "st32", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_ST16: return DisasmMem(f, "st16", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_ST8: return DisasmMem(f, "st8", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_ST64L: return DisasmMem(f, "st64l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_ST32L: return DisasmMem(f, "st32l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_ST16L: return DisasmMem(f, "st16l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_ST8L: return DisasmMem(f, "st8l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+
+
+    case OP_LDF32: return DisasmMem(f, "ldf32", sFltReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_STF32: return DisasmMem(f, "stf32", sFltReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDF32L: return DisasmMem(f, "ldf32l", sFltReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_STF32L: return DisasmMem(f, "stf32l", sFltReg, Opcode, IMMTYPE_I32, Chunk, Addr);
  
-    case OP_LDF64: return DisasmMem(f, "ldf64", sFltReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_STF64: return DisasmMem(f, "stf64", sFltReg, Opcode, IMMTYPE_U16, Chunk, Addr);
-    case OP_LDF64L: return DisasmMem(f, "ldf64l", sFltReg, Opcode, IMMTYPE_U32, Chunk, Addr);
-    case OP_STF64L: return DisasmMem(f, "stf64l", sFltReg, Opcode, IMMTYPE_U32, Chunk, Addr);
+    case OP_LDF64: return DisasmMem(f, "ldf64", sFltReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_STF64: return DisasmMem(f, "stf64", sFltReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LDF64L: return DisasmMem(f, "ldf64l", sFltReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+    case OP_STF64L: return DisasmMem(f, "stf64l", sFltReg, Opcode, IMMTYPE_I32, Chunk, Addr);
        
 
 

@@ -52,6 +52,12 @@ PascalStr PStrCopy(const U8 *Str, USize Len);
 void PStrDeinit(PascalStr *PStr);
 
 
+/* returns true if s1 == s2, else returns false */
+bool PStrEqu(const PascalStr *s1, const PascalStr *s2);
+/* returns true is s1 is lexicographically less than s2, else returns false */
+bool PStrIsLess(const PascalStr *s1, const PascalStr *s2);
+
+
 U8 PStrAppendChr(PascalStr *PStr, U8 Chr);
 USize PStrAppendStr(PascalStr *PStr, const U8 *Str, USize Len);
 

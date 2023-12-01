@@ -25,6 +25,7 @@ typedef struct PVMEmitter
 
     VarLocation ReturnValue;
     VarLocation ArgReg[PVM_ARGREG_COUNT];
+    int NumArgs;
 } PVMEmitter;
 
 typedef enum PVMBranchType
@@ -67,6 +68,20 @@ void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMBranchType Type);
 void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 
 
+/* type conversion */
+void PVMEmitIntegerTypeConversion(PVMEmitter *Emitter, 
+        VarRegister Dst, IntegralType DstType, 
+        VarRegister Src, IntegralType SrcType
+);
+void PVMEmitFloatTypeConversion(PVMEmitter *Emitter,
+        VarRegister Dst, IntegralType DstType, 
+        VarRegister Src, IntegralType SrcType
+);
+void PVMEmitIntToFltTypeConversion(PVMEmitter *Emitter,
+        VarRegister Dst, IntegralType DstType, 
+        VarRegister Src, IntegralType SrcType
+);
+
 /* arith instructions */
 void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I16 Imm);
 void PVMEmitAdd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
@@ -86,6 +101,13 @@ void PVMEmitShr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 void PVMEmitAsr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 /* returns the register contains the result of the comparison */
 VarLocation PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dst, const VarLocation *Right);
+
+
+
+/* subroutine arguments */
+VarLocation PVMSetParamType(PVMEmitter *Emitter, IntegralType ParamType);
+VarLocation PVMSetArgType(PVMEmitter *Emitter, IntegralType ArgType);
+void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg);
 
 
 /* stack instructions */
