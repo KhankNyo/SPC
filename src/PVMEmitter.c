@@ -624,6 +624,7 @@ VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type)
 
 void PVMFreeRegister(PVMEmitter *Emitter, VarRegister Reg)
 {
+    PASCAL_ASSERT(!PVMRegisterIsFree(Emitter, Reg.ID), "double free register: %d", Reg.ID);
     UInt SpilledReg = (Emitter->SpilledRegCount - 1) % PVM_REG_COUNT;
     if (Emitter->SpilledRegCount > 0 && SpilledReg == Reg.ID)
     {
@@ -688,7 +689,7 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
                 IntegralTypeToStr(Dst->Type), IntegralTypeToStr(Src->Type)
         );
     }
-    if (Dst->LocationType == VAR_REG && Src->LocationType == VAR_MEM)
+    if (Dst->LocationType == VAR_REG && VAR_MEM == Src->LocationType)
     {
         LoadIntoReg(Emitter, &Dst->As.Register, Dst->Type, Src->As.Memory, Src->Type);
         return;
@@ -770,7 +771,7 @@ void PVMEmitIntegerTypeConversion(PVMEmitter *Emitter,
         case TYPE_I64:
         case TYPE_U64:
         case TYPE_I32:
-        case TYPE_U32: WriteOp16(Emitter, PVM_OP(MOV32, Dst.ID, Src.ID)); break;
+        case TYPE_U32: if (Dst.ID != Src.ID) WriteOp16(Emitter, PVM_OP(MOV32, Dst.ID, Src.ID)); break;
         default: 
         {
             PASCAL_UNREACHABLE("Invalid src type in %s: %s", __func__, IntegralTypeToStr(SrcType));
@@ -788,7 +789,7 @@ void PVMEmitIntegerTypeConversion(PVMEmitter *Emitter,
         case TYPE_I32:
         case TYPE_U32: WriteOp16(Emitter, PVM_OP(MOVZEX64_32, Dst.ID, Src.ID)); break;
         case TYPE_I64:
-        case TYPE_U64: WriteOp16(Emitter, PVM_OP(MOV64, Dst.ID, Src.ID)); break;
+        case TYPE_U64: if (Dst.ID != Src.ID) WriteOp16(Emitter, PVM_OP(MOV64, Dst.ID, Src.ID)); break;
         default: 
         {
             PASCAL_UNREACHABLE("Invalid src type in %s: %s", __func__, IntegralTypeToStr(SrcType));
@@ -808,7 +809,7 @@ void PVMEmitIntegerTypeConversion(PVMEmitter *Emitter,
         case TYPE_I16:
         case TYPE_I32:
         case TYPE_I64:
-        case TYPE_U64: WriteOp16(Emitter, PVM_OP(MOV32, Dst.ID, Src.ID)); break;
+        case TYPE_U64: if (Dst.ID != Src.ID) WriteOp16(Emitter, PVM_OP(MOV32, Dst.ID, Src.ID)); break;
         default: 
         {
             PASCAL_UNREACHABLE("Invalid src type in %s: %s", __func__, IntegralTypeToStr(SrcType));
@@ -826,7 +827,7 @@ void PVMEmitIntegerTypeConversion(PVMEmitter *Emitter,
         case TYPE_U16: WriteOp16(Emitter, PVM_OP(MOVZEX64_16, Dst.ID, Src.ID)); break;
         case TYPE_U32: WriteOp16(Emitter, PVM_OP(MOVZEX64_32, Dst.ID, Src.ID)); break;
         case TYPE_I64:
-        case TYPE_U64: WriteOp16(Emitter, PVM_OP(MOV64, Dst.ID, Src.ID)); break;
+        case TYPE_U64: if (Dst.ID != Src.ID) WriteOp16(Emitter, PVM_OP(MOV64, Dst.ID, Src.ID)); break;
         default: 
         {
             PASCAL_UNREACHABLE("Invalid src type in %s: %s", __func__, IntegralTypeToStr(SrcType));
@@ -1293,7 +1294,7 @@ U32 PVMEmitCall(PVMEmitter *Emitter, VarSubroutine *Callee)
 }
 
 
-void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter)
+void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 {
     U16 Restorelist = Emitter->SavedRegisters[--Emitter->NumSavelist];
     if (Restorelist >> 8)
@@ -1304,15 +1305,8 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter)
     {
         WriteOp16(Emitter, PVM_REGLIST(POPL, Restorelist & 0xFF));
     }
-
-    if (Emitter->NumSavelist > 0)
-    {
-        Emitter->Reglist = Emitter->SavedRegisters[Emitter->NumSavelist - 1];
-    }
-    else
-    {
-        Emitter->Reglist = EMPTY_REGLIST;
-    }
+    Emitter->Reglist |= Restorelist;
+    PVMMarkRegisterAsAllocated(Emitter, ReturnRegID);
 }
 
 

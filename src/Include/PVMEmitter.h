@@ -127,7 +127,7 @@ VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
 void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
 /* returns the location of the call instruction in case it needs a patch later on */
 U32 PVMEmitCall(PVMEmitter *Emitter, VarSubroutine *Callee);
-void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter);
+void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
 
 
 /* exit/return */

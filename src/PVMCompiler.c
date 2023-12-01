@@ -1042,7 +1042,7 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
         /* carefully move return reg into the return location */
         Compiler->Emitter.ReturnValue.Type = Callee->ReturnType;
         PVMEmitMov(EMITTER(), &ReturnValue, &EMITTER()->ReturnValue);
-        PVMEmitUnsaveCallerRegs(EMITTER());
+        PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg);
 		if (Callee->StackArgSize) 
 		{
             PVMAllocateStack(EMITTER(), -Callee->StackArgSize);
@@ -1881,7 +1881,7 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token *Callee, PascalVa
     PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
     CompileArgumentList(Compiler, Callee, Subroutine);
     PVMEmitCall(EMITTER(), Subroutine);
-    PVMEmitUnsaveCallerRegs(EMITTER());
+    PVMEmitUnsaveCallerRegs(EMITTER(), NO_RETURN_REG);
 	if (Subroutine->StackArgSize) 
 	{
         PVMAllocateStack(EMITTER(), -Subroutine->StackArgSize);
