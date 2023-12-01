@@ -20,7 +20,7 @@
 typedef struct CompilerFrame 
 {
     U32 Location;
-    VarSubroutine *Current;
+    VarSubroutine *Current; /* VarLocation never resizes, this is safe */
 } CompilerFrame;
 
 
@@ -35,7 +35,7 @@ typedef struct PVMCompiler
     PascalGPA InternalAlloc;
     PascalGPA *GlobalAlloc;
 
-    PascalVartab Locals[PVM_MAX_SCOPE_COUNT];
+    PascalVartab *Locals[PVM_MAX_SCOPE_COUNT];
     PascalVartab *Global;
 
     struct {
@@ -50,7 +50,7 @@ typedef struct PVMCompiler
     } Var;
 
     /* TODO: dynamic */
-    CompilerFrame Frame[PVM_MAX_SCOPE_COUNT];
+    CompilerFrame Subroutine[PVM_MAX_SCOPE_COUNT];
 
 
     U32 Scope;
@@ -109,9 +109,14 @@ static IntegralType sCoercionRules[TYPE_COUNT][TYPE_COUNT] = {
 
 static void ConsumeToken(PVMCompiler *Compiler);
 
+static bool NextTokenIs(const PVMCompiler *Compiler, TokenType Type)
+{
+    return Type == Compiler->Next.Type;
+}
+
 static bool ConsumeIfNextIs(PVMCompiler *Compiler, TokenType Type)
 {
-    if (Type == Compiler->Next.Type)
+    if (NextTokenIs(Compiler, Type))
     {
         ConsumeToken(Compiler);
         return true;
@@ -276,7 +281,7 @@ static PVMCompiler CompilerInit(const U8 *Source,
             .Cap = STATIC_ARRAY_SIZE(Compiler.Iden.Array),
             .Count = 0,
         },
-        .Frame = { {0} },
+        .Subroutine = { {0} },
         .Emitter = PVMEmitterInit(Chunk),
     };
 
@@ -306,8 +311,8 @@ static bool IsAtGlobalScope(const PVMCompiler *Compiler)
 
 static void CompilerPushSubroutine(PVMCompiler *Compiler, VarSubroutine *Subroutine)
 {
-    Compiler->Frame[Compiler->Scope].Current = Subroutine;
-    Compiler->Frame[Compiler->Scope].Location = Compiler->Var.Count;
+    Compiler->Subroutine[Compiler->Scope].Current = Subroutine;
+    Compiler->Subroutine[Compiler->Scope].Location = Compiler->Var.Count;
     Compiler->Scope++;
 }
 
@@ -315,7 +320,7 @@ static VarSubroutine *CompilerPopSubroutine(PVMCompiler *Compiler)
 {
     Compiler->Scope--;
     U32 Last = Compiler->Var.Count;
-    Compiler->Var.Count = Compiler->Frame[Compiler->Scope].Location;
+    Compiler->Var.Count = Compiler->Subroutine[Compiler->Scope].Location;
 
     /* refill the variables that have been taken */
     for (U32 i = Compiler->Var.Count; i < Last; i++)
@@ -323,7 +328,7 @@ static VarSubroutine *CompilerPopSubroutine(PVMCompiler *Compiler)
         Compiler->Var.Location[i] = 
             GPAAllocateZero(Compiler->GlobalAlloc, sizeof(Compiler->Var.Location[0][0]));
     }
-    return Compiler->Frame[Compiler->Scope].Current;
+    return Compiler->Subroutine[Compiler->Scope].Current;
 }
 
 
@@ -357,7 +362,7 @@ static void ConsumeToken(PVMCompiler *Compiler)
 {
     Compiler->Curr = Compiler->Next;
     Compiler->Next = TokenizerGetToken(&Compiler->Lexer);
-    if (Compiler->Next.Type == TOKEN_ERROR)
+    if (NextTokenIs(Compiler, TOKEN_ERROR))
     {
         Error(Compiler, "%s", Compiler->Next.Literal.Err);
     }
@@ -365,12 +370,12 @@ static void ConsumeToken(PVMCompiler *Compiler)
 
 static bool IsAtEnd(const PVMCompiler *Compiler)
 {
-    return TOKEN_EOF == Compiler->Next.Type;
+    return NextTokenIs(Compiler, TOKEN_EOF);
 }
 
 static bool IsAtStmtEnd(const PVMCompiler *Compiler)
 {
-    return IsAtEnd(Compiler) || TOKEN_SEMICOLON == Compiler->Next.Type;
+    return IsAtEnd(Compiler) || NextTokenIs(Compiler, TOKEN_SEMICOLON);
 }
 
 
@@ -472,7 +477,7 @@ static PascalVartab *CurrentScope(PVMCompiler *Compiler)
     }
     else 
     {
-        return &Compiler->Locals[Compiler->Scope - 1];
+        return Compiler->Locals[Compiler->Scope - 1];
     }
 }
 
@@ -481,10 +486,9 @@ static PascalVartab *CurrentScope(PVMCompiler *Compiler)
 static void BeginScope(PVMCompiler *Compiler, VarSubroutine *Subroutine)
 {
     /* creates new variable table */
-    PascalVartab *NewScope = &Compiler->Locals[Compiler->Scope];
     PASCAL_ASSERT(Compiler->Scope <= PVM_MAX_SCOPE_COUNT, "Too many scopes");
 
-    *NewScope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+	Compiler->Locals[Compiler->Scope] = &Subroutine->Scope;
 
     /* mark allocation point */
     CompilerPushSubroutine(Compiler, Subroutine);
@@ -493,9 +497,7 @@ static void BeginScope(PVMCompiler *Compiler, VarSubroutine *Subroutine)
 
 static void EndScope(PVMCompiler *Compiler)
 {
-    PascalVartab *SubroutineScope = CurrentScope(Compiler);
-    VarSubroutine *Subroutine = CompilerPopSubroutine(Compiler);
-    Subroutine->Scope = *SubroutineScope;
+	CompilerPopSubroutine(Compiler);
     PVMEmitterEndScope(EMITTER());
 }
 
@@ -516,23 +518,30 @@ static PascalVar *DefineGlobal(PVMCompiler *Compiler,
     return VartabSet(Compiler->Global, Identifier->Str, Identifier->Len, Type, Location);
 }
 
-
-static PascalVar *GetIdenInfo(PVMCompiler *Compiler, const Token *Identifier, const char *ErrFmt, ...)
+static PascalVar *FindIdentifier(PVMCompiler *Compiler, const Token *Identifier)
 {
-    U32 Hash = VartabHashStr(Identifier->Str, Identifier->Len);
+	U32 Hash = VartabHashStr(Identifier->Str, Identifier->Len);
+	PascalVar *Info = NULL;
 
-    PascalVar *Info = NULL;
-    for (int i = Compiler->Scope - 1; i >= 0; i--)
-    {
-        Info = VartabFindWithHash(&Compiler->Locals[i],
-                Identifier->Str, Identifier->Len, Hash
-        );
-        if (NULL != Info)
-            return Info;
-    }
+	/* iterate from innermost scope to global - 1 */
+	for (int i = Compiler->Scope - 1; i >= 0; i--)
+	{
+		Info = VartabFindWithHash(Compiler->Locals[i], 
+				Identifier->Str, Identifier->Len, Hash
+		);
+		if (NULL != Info)
+			return Info;
+	}
     Info = VartabFindWithHash(Compiler->Global,
             Identifier->Str, Identifier->Len, Hash
     );
+	return Info;
+}
+
+/* reports error if identifier is not found */
+static PascalVar *GetIdenInfo(PVMCompiler *Compiler, const Token *Identifier, const char *ErrFmt, ...)
+{
+    PascalVar *Info = FindIdentifier(Compiler, Identifier);
     if (NULL == Info)
     {
         va_list ArgList;
@@ -644,6 +653,9 @@ InvalidTypeConversion:
 
 
 
+
+
+
 /*===============================================================================*/
 /*
  *                                  HELPERS
@@ -690,44 +702,76 @@ static UInt CompilerGetTmpIdentifierCount(const PVMCompiler *Compiler)
     return Compiler->Iden.Count;
 }
 
-
-
-static void FunctionDataPushParameter(PascalGPA *Allocator, VarSubroutine *Function, PascalVar *Param)
-{
-    if (Function->ArgCount == Function->Cap)
-    {
-        Function->Cap = Function->Cap * 2 + 8;
-        Function->Args = GPAReallocateArray(Allocator, 
-                Function->Args, *Function->Args, 
-                Function->Cap
-        );
-    }
-
-    Function->Args[Function->ArgCount++] = Param;
-}
-
-
-
-
-
 static Token *CompilerGetTmpIdentifier(PVMCompiler *Compiler, UInt Idx)
 {
     return &Compiler->Iden.Array[Idx];
 }
 
 
+
+
+
+static void SubroutineDataPushParameter(PascalGPA *Allocator, VarSubroutine *Subroutine, PascalVar *Param)
+{
+    if (Subroutine->ArgCount == Subroutine->Cap)
+    {
+        Subroutine->Cap = Subroutine->Cap * 2 + 8;
+        Subroutine->Args = GPAReallocateArray(Allocator, 
+                Subroutine->Args, *Subroutine->Args, 
+                Subroutine->Cap
+        );
+    }
+	/* TODO: Param is from the hash table, and the hash table may reallocate itself, rendering
+	 * Param invalid, fix this */
+    Subroutine->Args[Subroutine->ArgCount++] = *Param;
+}
+
+static void SubroutineDataPushRef(PascalGPA *Allocator, VarSubroutine *Subroutine, U32 CallSite)
+{
+	if (Subroutine->RefCount == Subroutine->RefCap)
+	{
+		Subroutine->Cap = Subroutine->Cap*2 + 8;
+		Subroutine->References = GPAReallocateArray(Allocator,
+				Subroutine->References, *Subroutine->References,
+				Subroutine->Cap
+		);
+	}
+	Subroutine->References[Subroutine->RefCount++] = CallSite;
+}
+
+static void CompilerResolveSubroutineCalls(PVMCompiler *Compiler, VarSubroutine *Subroutine, U32 SubroutineLocation)
+{
+	for (U32 i = 0; i < Subroutine->RefCount; i++)
+	{
+		PVMPatchBranch(EMITTER(), 
+				Subroutine->References[i], 
+				SubroutineLocation, 
+				BRANCHTYPE_UNCONDITIONAL
+		);
+	}
+	GPADeallocate(Compiler->GlobalAlloc, Subroutine->References);
+	Subroutine->References = NULL;
+	Subroutine->RefCount = 0;
+	Subroutine->RefCap = 0;
+}
+
+
+
+
+
 static bool CompileAndDeclareParameter(PVMCompiler *Compiler, 
-        U32 VarCount, U32 VarSize, IntegralType VarType, VarSubroutine *Function)
+        U32 VarCount, U32 VarSize, IntegralType VarType, VarSubroutine *Subroutine)
 {
     PASCAL_ASSERT(CompilerGetTmpIdentifierCount(Compiler) != 0, 
             "cannot be called outside of CompileAndDeclareVarList()");
 
     bool HasStackParams = false;
+	/* TODO: let the emitter determine rounded size */
     VarSize += sizeof(PVMGPR);
     if (VarSize % sizeof(PVMGPR))
         VarSize &= ~(sizeof(PVMGPR) - 1);
 
-    Function->StackArgSize = 0;
+    Subroutine->StackArgSize = 0;
     for (U32 i = 0; i < VarCount; i++)
     {
         VarLocation *Location = CompilerAllocateVarLocation(Compiler);
@@ -737,20 +781,20 @@ static bool CompileAndDeclareParameter(PVMCompiler *Compiler,
                 Location
         );
 
-        *Location = PVMSetParamType(EMITTER(), VarType);
+        *Location = PVMSetParamType(EMITTER(), Subroutine->ArgCount + i, VarType);
         PVMMarkArgAsOccupied(EMITTER(), Location);
         /* register args */
-        if (Function->ArgCount < PVM_ARGREG_COUNT)
+        if (Subroutine->ArgCount < PVM_ARGREG_COUNT)
         {
             /* TODO: nested functions */
         }
         else /* stack args, pascal LTR calling convention, TODO: cdecl */
         {
             HasStackParams = true;
-			Function->StackArgSize += VarSize;
+			Subroutine->StackArgSize += VarSize;
         }
         Location->Type = VarType;
-        FunctionDataPushParameter(Compiler->GlobalAlloc, Function, Var);
+        SubroutineDataPushParameter(Compiler->GlobalAlloc, Subroutine, Var);
     }
 	/* align func args */
     return HasStackParams;
@@ -858,7 +902,6 @@ static void CompileParameterList(PVMCompiler *Compiler, VarSubroutine *CurrentFu
         return;
 
     bool StackArgs = false;
-    EMITTER()->NumArgs = 0;
     do {
         StackArgs = CompileAndDeclareVarList(Compiler, CurrentFunction);
     } while (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON));
@@ -871,7 +914,7 @@ static void CompileParameterList(PVMCompiler *Compiler, VarSubroutine *CurrentFu
 }
 
 
-static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName, VarSubroutine *Subroutine)
+static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName, const VarSubroutine *Subroutine)
 {
     UInt ExpectedArgCount = Subroutine->ArgCount;
     UInt ArgCount = 0;
@@ -889,13 +932,12 @@ static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName
 
 
     /* TODO: compiler should not be the one doing this */
-    EMITTER()->NumArgs = 0;
     EMITTER()->StackSpace += Subroutine->StackArgSize;
     PVMAllocateStack(EMITTER(), Subroutine->StackArgSize);
     do {
         if (ArgCount < ExpectedArgCount)
         {
-            VarLocation Arg = PVMSetArgType(EMITTER(), Subroutine->Args[ArgCount]->Location->Type);
+            VarLocation Arg = PVMSetArgType(EMITTER(), ArgCount, Subroutine->Args[ArgCount].Location->Type);
 			CompileExprInto(Compiler, &Arg);
             PVMMarkArgAsOccupied(EMITTER(), &Arg);
         }
@@ -919,7 +961,43 @@ CheckArgs:
     }
 }
 
+static void CompilerCallSubroutine(PVMCompiler *Compiler, VarSubroutine *Callee, const Token *Name, VarLocation *ReturnValue)
+{
+	U32 CallSite = 0;
+	/* calling a function */
+	if (NULL != ReturnValue)
+	{
+        UInt ReturnReg = ReturnValue->As.Register.ID;
 
+        /* call the function */
+        PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
+        CompileArgumentList(Compiler, Name, Callee);
+        CallSite = PVMEmitCall(EMITTER(), Callee);
+
+        /* carefully move return reg into the return location */
+        Compiler->Emitter.ReturnValue.Type = Callee->ReturnType;
+        PVMEmitMov(EMITTER(), ReturnValue, &EMITTER()->ReturnValue);
+		PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg);
+	}
+	/* calling a procedure, or function without caring about its return value */
+	else
+	{
+		PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
+		CompileArgumentList(Compiler, Name, Callee);
+		CallSite = PVMEmitCall(EMITTER(), Callee);
+		PVMEmitUnsaveCallerRegs(EMITTER(), NO_RETURN_REG);
+	}
+
+	if (Callee->StackArgSize) 
+	{
+		PVMAllocateStack(EMITTER(), -Callee->StackArgSize);
+	}
+
+	if (!Callee->Defined)
+	{
+		SubroutineDataPushRef(Compiler->GlobalAlloc, Callee, CallSite);
+	}
+}
 
 
 
@@ -1032,21 +1110,7 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
 
         /* setup return reg */
         VarLocation ReturnValue = PVMAllocateRegister(EMITTER(), Callee->ReturnType);
-        UInt ReturnReg = ReturnValue.As.Register.ID;
-
-        /* call the function */
-        PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
-        CompileArgumentList(Compiler, &Identifier, Callee);
-        PVMEmitCall(EMITTER(), Callee);
-
-        /* carefully move return reg into the return location */
-        Compiler->Emitter.ReturnValue.Type = Callee->ReturnType;
-        PVMEmitMov(EMITTER(), &ReturnValue, &EMITTER()->ReturnValue);
-        PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg);
-		if (Callee->StackArgSize) 
-		{
-            PVMAllocateStack(EMITTER(), -Callee->StackArgSize);
-		}
+		CompilerCallSubroutine(Compiler, Callee, &Identifier, &ReturnValue);
         return ReturnValue;
     }
     else
@@ -1657,19 +1721,19 @@ static void CompileExitStmt(PVMCompiler *Compiler)
             EMITTER()->ReturnValue.Type = TYPE_I32;
             CompileExprInto(Compiler, &EMITTER()->ReturnValue);
         }
-        else if (Compiler->Frame[Compiler->Scope - 1].Current->HasReturnType)
+        else if (Compiler->Subroutine[Compiler->Scope - 1].Current->HasReturnType)
         {
             /* Exit(expr), must have return value */
-            if (TOKEN_RIGHT_PAREN == Compiler->Next.Type)
+            if (NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
             {
                 Error(Compiler, "Function must return a value.");
                 goto Done;
             }
 
-            EMITTER()->ReturnValue.Type = Compiler->Frame[Compiler->Scope - 1].Current->ReturnType;
+            EMITTER()->ReturnValue.Type = Compiler->Subroutine[Compiler->Scope - 1].Current->ReturnType;
             CompileExprInto(Compiler, &EMITTER()->ReturnValue);
         }
-        else if (TOKEN_RIGHT_PAREN != Compiler->Next.Type)
+        else if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
         {
             /* Exit(), no return type */
             Error(Compiler, "Procedure cannot return a value.");
@@ -1691,7 +1755,7 @@ static void CompileBeginStmt(PVMCompiler *Compiler)
      * this complex-looking loop is necessary bc 
      * Pascal allows the last stmt of a begin-end block to not have a semicolon 
      */
-    while (!IsAtEnd(Compiler) && TOKEN_END != Compiler->Next.Type)
+    while (!IsAtEnd(Compiler) && !NextTokenIs(Compiler, TOKEN_END))
     {
         CompileStmt(Compiler);
         if (ConsumeIfNextIs(Compiler, TOKEN_END))
@@ -1705,10 +1769,10 @@ static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
 {
     /* 'repeat' consumed */
     U32 LoopHead = PVMMarkBranchTarget(EMITTER());
-    while (!IsAtEnd(Compiler) && TOKEN_UNTIL != Compiler->Next.Type)
+    while (!IsAtEnd(Compiler) && !NextTokenIs(Compiler, TOKEN_UNTIL))
     {
         CompileStmt(Compiler);
-        if (TOKEN_UNTIL == Compiler->Next.Type)
+        if (NextTokenIs(Compiler, TOKEN_UNTIL))
             break;
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' in between statements.");
     }
@@ -1846,9 +1910,8 @@ static void CompileIfStmt(PVMCompiler *Compiler)
     FreeExpr(Compiler, Tmp);
     /* if body */
     CompileStmt(Compiler);
-    if (TOKEN_ELSE == Compiler->Next.Type)
+    if (ConsumeIfNextIs(Compiler, TOKEN_ELSE))
     {
-        ConsumeToken(Compiler);
         CompilerInitDebugInfo(Compiler, &Compiler->Curr);
         CompilerEmitDebugInfo(Compiler, &Compiler->Curr);
 
@@ -1866,28 +1929,22 @@ static void CompileIfStmt(PVMCompiler *Compiler)
 
 
 
-static void CompileCallStmt(PVMCompiler *Compiler, const Token *Callee, PascalVar *IdenInfo)
+static void CompileCallStmt(PVMCompiler *Compiler, const Token *Name, PascalVar *IdenInfo)
 {
-    PASCAL_ASSERT(NULL != IdenInfo, "Unreachable, IdenInfo is NULL in CompileCallStmt()");
-    PASCAL_ASSERT(NULL != IdenInfo->Location, "Unreachable, Location is NULL in CompileCallStmt()");
+    PASCAL_ASSERT(NULL != IdenInfo, "Unreachable, IdenInfo is NULL in %s", __func__);
+    PASCAL_ASSERT(NULL != IdenInfo->Location, "Unreachable, Location is NULL in %s", __func__);
     PASCAL_ASSERT(TYPE_FUNCTION == IdenInfo->Type, 
-            "Unreachable, IdenInfo is not a subroutine in CompileCallStmt()"
+            "Unreachable, IdenInfo is not a subroutine in %s", __func__
     );
 
     /* iden consumed */
-    CompilerInitDebugInfo(Compiler, Callee);
+    CompilerInitDebugInfo(Compiler, Name);
 
-    VarSubroutine *Subroutine = &IdenInfo->Location->As.Subroutine;
-    PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
-    CompileArgumentList(Compiler, Callee, Subroutine);
-    PVMEmitCall(EMITTER(), Subroutine);
-    PVMEmitUnsaveCallerRegs(EMITTER(), NO_RETURN_REG);
-	if (Subroutine->StackArgSize) 
-	{
-        PVMAllocateStack(EMITTER(), -Subroutine->StackArgSize);
-	}
+	/* call the subroutine */
+	VarSubroutine *Callee = &IdenInfo->Location->As.Subroutine;
+	CompilerCallSubroutine(Compiler, Callee, Name, NULL);
 
-    CompilerEmitDebugInfo(Compiler, Callee);
+    CompilerEmitDebugInfo(Compiler, Name);
 }
 
 
@@ -1925,8 +1982,19 @@ static void CompileIdenStmt(PVMCompiler *Compiler)
     );
     if (NULL != IdentifierInfo && TYPE_FUNCTION == IdentifierInfo->Type)
     {
-        Token Callee = Compiler->Curr;
-        CompileCallStmt(Compiler, &Callee, IdentifierInfo);
+		Token Callee = Compiler->Curr;
+		/* Pascal's weird return statement */
+        if (IdentifierInfo->Len == Callee.Len && TokenEqualNoCase(IdentifierInfo->Str, Callee.Str, Callee.Len) 
+		&& ConsumeIfNextIs(Compiler, TOKEN_COLON_EQUAL))
+        {
+			PASCAL_UNREACHABLE("TODO: return by assigning to function name");
+			Compiler->Emitter.ReturnValue.Type = IdentifierInfo->Location->As.Subroutine.ReturnType;
+			CompileExprInto(Compiler, &Compiler->Emitter.ReturnValue);
+        }
+        else
+        {
+            CompileCallStmt(Compiler, &Callee, IdentifierInfo);
+        }
     }
     else
     {
@@ -2038,29 +2106,49 @@ static void CompileBeginBlock(PVMCompiler *Compiler)
 
 static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *SubroutineType)
 {
+	/* TODO: factor this */
     /* 'function', 'procedure' consumed */
-    VarLocation *Var = CompilerAllocateVarLocation(Compiler);
-    Var->LocationType = VAR_SUBROUTINE;
-    Var->As.Subroutine = (VarSubroutine) {
-        .HasReturnType = TOKEN_FUNCTION == Compiler->Curr.Type,
-        .Location = PVMGetCurrentLocation(EMITTER()),
-    };
-    VarSubroutine *Subroutine = &Var->As.Subroutine;
-
-
-    /* begin function decl */
     Token Keyword = Compiler->Curr;
-    CompilerInitDebugInfo(Compiler, &Keyword);
+	CompilerInitDebugInfo(Compiler, &Keyword);
+	U32 Location = PVMGetCurrentLocation(EMITTER());
 
 
     /* function/proc name */
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected %s name.", SubroutineType);
-    PascalVar *FunctionInfo = DefineIdentifier(Compiler, &Compiler->Curr, TYPE_FUNCTION, Var);
-    PASCAL_ASSERT(FunctionInfo->Location == Var, "Unreachable");
+	Token Name = Compiler->Curr;
+	PascalVar *SubroutineInfo = FindIdentifier(Compiler, &Name);
+	VarSubroutine *Subroutine = NULL;
+	/* subroutine is already declared */
+	if (NULL != SubroutineInfo)
+	{
+		Subroutine = &SubroutineInfo->Location->As.Subroutine;
+		/* redefinition error */
+		if (Subroutine->Defined)
+		{
+			ErrorAt(Compiler, &Name, "Redefinition of %s '%.*s' that was defined on line %d.",
+					SubroutineType, Name.Len, Name.Str, Subroutine->Line
+			);
+		}
+	}
+	/* new subroutine declaration */
+	else 
+	{
+		VarLocation *Var = CompilerAllocateVarLocation(Compiler);
+		Var->LocationType = VAR_SUBROUTINE;
+		Var->As.Subroutine = (VarSubroutine) {
+			.HasReturnType = TOKEN_FUNCTION == Keyword.Type,
+			.Location = Location,
+			.Defined = false,
+		};
+		Subroutine = &Var->As.Subroutine;
+
+		SubroutineInfo = DefineIdentifier(Compiler, &Name, TYPE_FUNCTION, Var);
+		Subroutine->Scope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+	}
 
 
     /* param list */
-    BeginScope(Compiler, Subroutine);
+	BeginScope(Compiler, Subroutine);
     CompileParameterList(Compiler, Subroutine);
 
 
@@ -2077,7 +2165,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     else
     {
         if (ConsumeIfNextIs(Compiler, TOKEN_COLON) 
-        && TOKEN_IDENTIFIER == Compiler->Next.Type)
+        && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
         {
             Error(Compiler, "Procedure does not have a return type.");
         }
@@ -2092,17 +2180,29 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     CompilerEmitDebugInfo(Compiler, &Keyword);
 
 
-    /* body */
-    CompileBlock(Compiler);
-    EndScope(Compiler);
+	/* forward declaration */
+	if (ConsumeIfNextIs(Compiler, TOKEN_FORWARD))
+	{
+		ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after '%.*s'", Compiler->Curr.Len, Compiler->Curr.Str);
+	}
+	else /* body */
+	{
+		CompilerResolveSubroutineCalls(Compiler, Subroutine, Location);
+		Subroutine->Defined = true;
 
+		Subroutine->Line = Name.Line;
+		PVMEmitSaveFrame(EMITTER());
+		CompileBlock(Compiler);
 
-    /* 'end' at the end of function */
-    Token End = Compiler->Curr;
-    CompilerInitDebugInfo(Compiler, &End);
-    PVMEmitExit(EMITTER());
-    CompilerEmitDebugInfo(Compiler, &End);
-    ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s body.", SubroutineType);
+		/* emit the exit instruction,
+		 * associate it with the 'end' token */
+		Token End = Compiler->Curr;
+		CompilerInitDebugInfo(Compiler, &End);
+		PVMEmitExit(EMITTER());
+		CompilerEmitDebugInfo(Compiler, &End);
+		ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s body.", SubroutineType);
+	}
+	EndScope(Compiler);
 }
 
 
@@ -2116,14 +2216,14 @@ static void CompileVarBlock(PVMCompiler *Compiler)
      */
     Token Keyword = Compiler->Curr;
 
-    if (TOKEN_IDENTIFIER != Compiler->Next.Type)
+    if (!NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         Error(Compiler, "Var block must have at least 1 declaration.");
         return;
     }
 
     bool HasStackAllocation = false;
-    while (!IsAtEnd(Compiler) && TOKEN_IDENTIFIER == Compiler->Next.Type)
+    while (!IsAtEnd(Compiler) && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         HasStackAllocation = CompileAndDeclareVarList(Compiler, NULL);
         /* TODO: initialization */
@@ -2145,7 +2245,7 @@ static void CompileVarBlock(PVMCompiler *Compiler)
 /* returns true if Begin is encountered */
 static bool CompileHeadlessBlock(PVMCompiler *Compiler)
 {
-    while (!IsAtEnd(Compiler) && Compiler->Next.Type != TOKEN_BEGIN)
+    while (!IsAtEnd(Compiler) && !NextTokenIs(Compiler, TOKEN_BEGIN))
     {
         switch (Compiler->Next.Type)
         {

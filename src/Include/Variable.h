@@ -48,9 +48,14 @@ typedef struct VarSubroutine
 {
     U32 Location;
 
+	bool Defined;
+	U32 Line;
+	U32 *References;
+	U32 RefCount, RefCap;
+
     U32 ArgCount, Cap;
 	U32 StackArgSize;
-    PascalVar **Args; /* owned by the function's scope */
+	PascalVar *Args;
 
     bool HasReturnType;
     IntegralType ReturnType;

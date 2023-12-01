@@ -25,7 +25,6 @@ typedef struct PVMEmitter
 
     VarLocation ReturnValue;
     VarLocation ArgReg[PVM_ARGREG_COUNT];
-    int NumArgs;
 } PVMEmitter;
 
 typedef enum PVMBranchType
@@ -40,6 +39,7 @@ void PVMEmitterDeinit(PVMEmitter *Emitter);
 
 void PVMSetEntryPoint(PVMEmitter *Emitter, U32 EntryPoint);
 void PVMEmitterBeginScope(PVMEmitter *Emitter);
+void PVMEmitSaveFrame(PVMEmitter *Emitter);
 void PVMEmitterEndScope(PVMEmitter *Emitter);
 void PVMEmitDebugInfo(PVMEmitter *Emitter, 
         const U8 *Src, U32 Len, U32 LineNum
@@ -105,8 +105,8 @@ VarLocation PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *D
 
 
 /* subroutine arguments */
-VarLocation PVMSetParamType(PVMEmitter *Emitter, IntegralType ParamType);
-VarLocation PVMSetArgType(PVMEmitter *Emitter, IntegralType ArgType);
+VarLocation PVMSetParamType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ParamType);
+VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgType);
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg);
 
 
@@ -126,7 +126,7 @@ VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
 #define NO_RETURN_REG PVM_REG_COUNT
 void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
 /* returns the location of the call instruction in case it needs a patch later on */
-U32 PVMEmitCall(PVMEmitter *Emitter, VarSubroutine *Callee);
+U32 PVMEmitCall(PVMEmitter *Emitter, const VarSubroutine *Callee);
 void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
 
 
