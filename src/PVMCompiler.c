@@ -781,7 +781,7 @@ static bool CompileAndDeclareParameter(PVMCompiler *Compiler,
                 Location
         );
 
-        *Location = PVMSetParamType(EMITTER(), Subroutine->ArgCount + i, VarType);
+        *Location = PVMSetParamType(EMITTER(), Subroutine->ArgCount, VarType);
         PVMMarkArgAsOccupied(EMITTER(), Location);
         /* register args */
         if (Subroutine->ArgCount < PVM_ARGREG_COUNT)
