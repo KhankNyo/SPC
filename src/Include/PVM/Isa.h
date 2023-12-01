@@ -131,6 +131,9 @@ typedef enum PVMOp
     OP_LDSEX64_16L,
     OP_LDSEX64_32L,
 
+    OP_LEA,
+    OP_LEAL,
+
     OP_ST8,
     OP_ST16,
     OP_ST32,

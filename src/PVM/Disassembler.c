@@ -415,6 +415,9 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_LDSEX64_16L: return DisasmMem(f, "ldsex64_16l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
     case OP_LDSEX64_32L: return DisasmMem(f, "ldsex64_32l", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
 
+    case OP_LEA: return DisasmMem(f, "lea", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
+    case OP_LEAL: return DisasmMem(f, "leal", sIntReg, Opcode, IMMTYPE_I32, Chunk, Addr);
+
 
     case OP_ST64: return DisasmMem(f, "st64", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
     case OP_ST32: return DisasmMem(f, "st32", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);

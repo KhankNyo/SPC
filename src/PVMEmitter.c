@@ -309,9 +309,11 @@ static void StoreFromReg(PVMEmitter *Emitter, VarMemory Dst, IntegralType DstTyp
             case TYPE_U8: WriteOp32(Emitter, PVM_OP(ST8, Src.ID, Base), Dst.Location); break;\
             case TYPE_I16:\
             case TYPE_U16: WriteOp32(Emitter, PVM_OP(ST16, Src.ID, Base), Dst.Location); break;\
+            CASE_PTR32(:)\
             case TYPE_I32:\
             case TYPE_U32: WriteOp32(Emitter, PVM_OP(ST32, Src.ID, Base), Dst.Location); break;\
             case TYPE_I64:\
+            CASE_PTR64(:)\
             case TYPE_U64: WriteOp32(Emitter, PVM_OP(ST64, Src.ID, Base), Dst.Location); break;\
             case TYPE_F32: WriteOp32(Emitter, PVM_OP(STF32, Src.ID, Base), Dst.Location); break;\
             case TYPE_F64: WriteOp32(Emitter, PVM_OP(STF64, Src.ID, Base), Dst.Location); break;\
@@ -324,8 +326,10 @@ static void StoreFromReg(PVMEmitter *Emitter, VarMemory Dst, IntegralType DstTyp
             case TYPE_U8: WriteOp16(Emitter, PVM_OP(ST8L, Src.ID, Base)); break;\
             case TYPE_I16:\
             case TYPE_U16: WriteOp16(Emitter, PVM_OP(ST16L, Src.ID, Base)); break;\
+            CASE_PTR32(:)\
             case TYPE_I32:\
             case TYPE_U32: WriteOp16(Emitter, PVM_OP(ST32L, Src.ID, Base)); break;\
+            CASE_PTR64(:)\
             case TYPE_I64:\
             case TYPE_U64: WriteOp16(Emitter, PVM_OP(ST64L, Src.ID, Base)); break;\
             case TYPE_F32: WriteOp32(Emitter, PVM_OP(STF32L, Src.ID, Base), Dst.Location); break;\
@@ -744,6 +748,29 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
     if (IsOwning)
     {
         PVMFreeRegister(Emitter, Tmp.As.Register);
+    }
+}
+
+
+void PVMEmitLoadPtr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
+{
+    PASCAL_ASSERT(Src->LocationType == VAR_MEM, "Src of %s must be a VAR_MEM", __func__);
+    PASCAL_ASSERT(Dst->LocationType == VAR_REG, "Dst of %s must be a VAR_REG", __func__);
+
+    UInt Base = Emitter->Reg.FP.As.Register.ID;
+    if (Src->As.Memory.IsGlobal)
+        Base = Emitter->Reg.GP.As.Register.ID;
+
+    UInt Rd = Dst->As.Register.ID;
+    U32 Offset = Src->As.Memory.Location;
+    if (IN_I16(Src->As.Memory.Location))
+    {
+        WriteOp32(Emitter, PVM_OP(LEA, Rd, Base), Offset);
+    }
+    else 
+    {
+        WriteOp16(Emitter, PVM_OP(LEAL, Rd, Base));
+        WriteOp32(Emitter, Offset, Offset >> 16);
     }
 }
 

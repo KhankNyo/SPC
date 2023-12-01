@@ -430,6 +430,19 @@ do {\
         case OP_LDSEX64_16L: LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .SDWord,     .Ptr.Byte, (U16), (I64)(I16)); break;
         case OP_LDSEX64_32L: LOAD_INTEGER(Opcode, IMMTYPE_I32, IP, .SDWord,     .Ptr.Byte, (U32), (I64)(I32)); break;
 
+        case OP_LEA:
+        {
+            U64 Offset = 0;
+            GET_SEX_IMM(Offset, IMMTYPE_I16, IP);
+            PVM->R[PVM_GET_RD(Opcode)].Ptr.UInt = PVM->R[PVM_GET_RS(Opcode)].Ptr.UInt + Offset;
+        } break;
+        case OP_LEAL:
+        {
+            U64 Offset = 0;
+            GET_SEX_IMM(Offset, IMMTYPE_I32, IP);
+            PVM->R[PVM_GET_RD(Opcode)].Ptr.UInt = PVM->R[PVM_GET_RS(Opcode)].Ptr.UInt + Offset;
+        } break;
+
         case OP_ST8:  STORE_INTEGER(Opcode, IMMTYPE_I16, IP, .Byte[PVM_LEAST_SIGNIF_BYTE], .Ptr.Byte); break;
         case OP_ST16: STORE_INTEGER(Opcode, IMMTYPE_I16, IP, .Half.First, .Ptr.Byte); break;
         case OP_ST32: STORE_INTEGER(Opcode, IMMTYPE_I16, IP, .Word.First, .Ptr.Byte); break;
