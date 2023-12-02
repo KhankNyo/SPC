@@ -274,6 +274,18 @@ do {\
         case OP_VSHL: INTEGER_BINARY_OP(<<, Opcode, .Word.First) & 0x1F; break;
         case OP_VSHR: INTEGER_BINARY_OP(>>, Opcode, .Word.First) & 0x1F; break;
         case OP_VASR: INTEGER_BINARY_OP(>>, Opcode, .SWord.First) & 0x1F; break;
+        case OP_QSHL: 
+        {
+            PVM->R[PVM_GET_RD(Opcode)].Word.First <<= PVM_GET_RS(Opcode);
+        } break;
+        case OP_QSHR: 
+        {
+            PVM->R[PVM_GET_RD(Opcode)].Word.First >>= PVM_GET_RS(Opcode);
+        } break;
+        case OP_QASR: 
+        {
+            PVM->R[PVM_GET_RD(Opcode)].SWord.First >>= PVM_GET_RS(Opcode);
+        } break;
         case OP_ADDQI:
         {
             PVM->R[PVM_GET_RD(Opcode)].Word.First += BIT_SEX32(PVM_GET_RS(Opcode), 3); 
@@ -498,6 +510,18 @@ do {\
         case OP_VSHL64: INTEGER_BINARY_OP(<<, Opcode, .DWord) & 0x3F; break;
         case OP_VSHR64: INTEGER_BINARY_OP(>>, Opcode, .DWord) & 0x3F; break;
         case OP_VASR64: INTEGER_BINARY_OP(>>, Opcode, .SDWord) & 0x3F; break;
+        case OP_QSHL64: 
+        {
+            PVM->R[PVM_GET_RD(Opcode)].DWord <<= PVM_GET_RS(Opcode);
+        } break;
+        case OP_QSHR64: 
+        {
+            PVM->R[PVM_GET_RD(Opcode)].DWord >>= PVM_GET_RS(Opcode);
+        } break;
+        case OP_QASR64: 
+        {
+            PVM->R[PVM_GET_RD(Opcode)].SDWord >>= PVM_GET_RS(Opcode);
+        } break;
 
         case OP_SEQ64: INTEGER_SET_IF(==, Opcode, .DWord); break;
         case OP_SNE64: INTEGER_SET_IF(!=, Opcode, .DWord); break;

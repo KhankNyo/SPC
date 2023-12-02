@@ -25,6 +25,9 @@ typedef enum PVMOp
     OP_ADDI,
     OP_ADDQI,
 
+    OP_QSHL,
+    OP_QSHR,
+    OP_QASR,
     OP_VSHL,
     OP_VSHR,
     OP_VASR,
@@ -168,6 +171,9 @@ typedef enum PVMOp
     OP_OR64,
     OP_XOR64,
 
+    OP_QSHL64,
+    OP_QSHR64,
+    OP_QASR64,
     OP_VSHL64,
     OP_VSHR64,
     OP_VASR64,

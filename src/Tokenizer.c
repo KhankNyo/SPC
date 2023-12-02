@@ -91,7 +91,6 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
     case '^': return MakeToken(Lexer, TOKEN_CARET);
     case '@': return MakeToken(Lexer, TOKEN_AT);
     case '$': return MakeToken(Lexer, TOKEN_DOLLAR);
-    case '%': return MakeToken(Lexer, TOKEN_PERCENTAGE);
     case '[': return MakeToken(Lexer, TOKEN_LEFT_BRACKET);
     case ']': return MakeToken(Lexer, TOKEN_RIGHT_BRACKET);
     case '(': return MakeToken(Lexer, TOKEN_LEFT_PAREN);
@@ -104,6 +103,12 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
         if (AdvanceIfEqual(Lexer, '='))
             return ErrorToken(Lexer, "This is Pascal, use '=' to check for equality.");
         else return MakeToken(Lexer, TOKEN_EQUAL);
+    } break;
+    case '%': 
+    {
+        if (AdvanceIfEqual(Lexer, '='))
+            return MakeToken(Lexer, TOKEN_PERCENT_EQUAL);
+        return MakeToken(Lexer, TOKEN_PERCENT);
     } break;
     case '!': 
     {
@@ -212,6 +217,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         /* symbols */
         "TOKEN_PLUS", "TOKEN_MINUS", "TOKEN_STAR", "TOKEN_SLASH",
         "TOKEN_PLUS_EQUAL", "TOKEN_MINUS_EQUAL", "TOKEN_STAR_EQUAL", "TOKEN_SLASH_EQUAL",
+        "TOKEN_PERCENT_EQUAL",
         "TOKEN_STAR_STAR",
         "TOKEN_BANG",
         "TOKEN_EQUAL", "TOKEN_LESS", "TOKEN_GREATER", "TOKEN_LESS_GREATER",
@@ -221,7 +227,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_COLON_EQUAL",
         "TOKEN_LEFT_BRACKET", "TOKEN_RIGHT_BRACKET", 
         "TOKEN_LEFT_PAREN", "TOKEN_RIGHT_PAREN",
-        "TOKEN_CARET", "TOKEN_AT", "TOKEN_DOLLAR", "TOKEN_HASHTAG", "TOKEN_AMPERSAND", "TOKEN_PERCENTAGE",
+        "TOKEN_CARET", "TOKEN_AT", "TOKEN_DOLLAR", "TOKEN_HASHTAG", "TOKEN_AMPERSAND", "TOKEN_PERCENT",
 
         "TOKEN_NUMBER_LITERAL", "TOKEN_INTEGER_LITERAL", 
         "TOKEN_STRING_LITERAL", 

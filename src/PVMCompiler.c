@@ -220,32 +220,32 @@ static U32 CompilerGetSizeOfType(PVMCompiler *Compiler, IntegralType Type)
 {
     switch (Type)
     {
-        case TYPE_INVALID:
-        case TYPE_COUNT:
-        case TYPE_FUNCTION:
-            return 0;
+    case TYPE_INVALID:
+    case TYPE_COUNT:
+    case TYPE_FUNCTION:
+        return 0;
 
-        case TYPE_I8:
-        case TYPE_U8:
-        case TYPE_BOOLEAN:
-            return 1;
+    case TYPE_I8:
+    case TYPE_U8:
+    case TYPE_BOOLEAN:
+        return 1;
 
-        case TYPE_I16:
-        case TYPE_U16:
-            return 2;
+    case TYPE_I16:
+    case TYPE_U16:
+        return 2;
 
-        case TYPE_I32:
-        case TYPE_U32:
-        case TYPE_F32:
-            return 4;
+    case TYPE_I32:
+    case TYPE_U32:
+    case TYPE_F32:
+        return 4;
 
-        case TYPE_I64:
-        case TYPE_U64:
-        case TYPE_F64:
-            return 8;
+    case TYPE_I64:
+    case TYPE_U64:
+    case TYPE_F64:
+        return 8;
 
-        case TYPE_POINTER:
-            return sizeof(void*);
+    case TYPE_POINTER:
+        return sizeof(void*);
     }
 
     PASCAL_UNREACHABLE("Handle case %s in CompilerGetSizeOfType", IntegralTypeToStr(Type));
@@ -401,21 +401,21 @@ static void CalmDownDog(PVMCompiler *Compiler)
         {
             switch (Compiler->Next.Type)
             {
-                case TOKEN_LABEL:
-                case TOKEN_CONST:
-                case TOKEN_TYPE:
-                case TOKEN_VAR:
-                case TOKEN_PROCEDURE:
-                case TOKEN_FUNCTION:
-                case TOKEN_BEGIN:
+            case TOKEN_LABEL:
+            case TOKEN_CONST:
+            case TOKEN_TYPE:
+            case TOKEN_VAR:
+            case TOKEN_PROCEDURE:
+            case TOKEN_FUNCTION:
+            case TOKEN_BEGIN:
 
-                case TOKEN_END:
-                case TOKEN_IF:
-                case TOKEN_FOR:
-                case TOKEN_WHILE:
-                    return;
+            case TOKEN_END:
+            case TOKEN_IF:
+            case TOKEN_FOR:
+            case TOKEN_WHILE:
+                return;
 
-                default: break;
+            default: break;
             }
         }
         ConsumeToken(Compiler);
@@ -431,17 +431,17 @@ static void CalmDownAtBlock(PVMCompiler *Compiler)
     {
         switch (Compiler->Next.Type)
         {
-            case TOKEN_LABEL:
-            case TOKEN_CONST:
-            case TOKEN_TYPE:
-            case TOKEN_VAR:
-            case TOKEN_PROCEDURE:
-            case TOKEN_FUNCTION:
-            case TOKEN_BEGIN:
-            case TOKEN_END:
-                return;
+        case TOKEN_LABEL:
+        case TOKEN_CONST:
+        case TOKEN_TYPE:
+        case TOKEN_VAR:
+        case TOKEN_PROCEDURE:
+        case TOKEN_FUNCTION:
+        case TOKEN_BEGIN:
+        case TOKEN_END:
+            return;
 
-            default: break;
+        default: break;
         }
         ConsumeToken(Compiler);
     }
@@ -937,7 +937,7 @@ static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName
 
     PASCAL_ASSERT(Compiler->Flags.CallConv == CALLCONV_MSX64, 
             "TODO: other calling convention"
-            );
+    );
 
 
     /* TODO: compiler should not be the one doing this */
@@ -1440,6 +1440,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
             Result.Type = Both;
         } 
     } break;
+    case TOKEN_PERCENT:
     case TOKEN_MOD:
     {
         if (IntegralTypeIsInteger(Both))
@@ -1553,6 +1554,7 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
     {
         PVMEmitDiv(EMITTER(), &Dst, &Src);
     } break;
+    case TOKEN_PERCENT:
     case TOKEN_MOD:
     {
         PVMEmitMod(EMITTER(), &Dst, &Src);
@@ -1988,7 +1990,7 @@ static void CompileIfStmt(PVMCompiler *Compiler)
 
 
 
-static void CompileCallStmt(PVMCompiler *Compiler, const Token *Name, PascalVar *IdenInfo)
+static void CompileCallStmt(PVMCompiler *Compiler, const Token Name, PascalVar *IdenInfo)
 {
     PASCAL_ASSERT(NULL != IdenInfo, "Unreachable, IdenInfo is NULL in %s", __func__);
     PASCAL_ASSERT(NULL != IdenInfo->Location, "Unreachable, Location is NULL in %s", __func__);
@@ -1997,36 +1999,69 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token *Name, PascalVar 
     );
 
     /* iden consumed */
-    CompilerInitDebugInfo(Compiler, Name);
+    CompilerInitDebugInfo(Compiler, &Name);
 
     /* call the subroutine */
     VarSubroutine *Callee = &IdenInfo->Location->As.Subroutine;
-    CompilerCallSubroutine(Compiler, Callee, Name, NULL);
+    CompilerCallSubroutine(Compiler, Callee, &Name, NULL);
 
-    CompilerEmitDebugInfo(Compiler, Name);
+    CompilerEmitDebugInfo(Compiler, &Name);
 }
 
 
-static void CompileAssignStmt(PVMCompiler *Compiler, PascalVar *IdenInfo)
+static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier, PascalVar *IdenInfo)
 {
-    /* iden consumed */
-    Token Identifier = Compiler->Curr;
+    if (NULL == IdenInfo)
+    {
+        return;
+    }
     CompilerInitDebugInfo(Compiler, &Identifier);
 
-
-    /* TODO: field access and array indexing */
-    ConsumeOrError(Compiler, TOKEN_COLON_EQUAL, "TODO: other assignment operator.");
-
-
-    if (NULL != IdenInfo)
+    VarLocation *Dst = IdenInfo->Location;
+    PASCAL_ASSERT(NULL != Dst, "Location must be valid");
+    PASCAL_ASSERT(IdenInfo->Type != TYPE_INVALID, "DeclVarblock should've handled this");
+    PASCAL_ASSERT(VAR_INVALID != Dst->LocationType, "??");
+    if (ConsumeIfNextIs(Compiler, TOKEN_COLON_EQUAL))
     {
-        PASCAL_ASSERT(NULL != IdenInfo->Location, "Location must be valid");
-        PASCAL_ASSERT(IdenInfo->Type != TYPE_INVALID, "DeclVarblock should've handled this");
-        PASCAL_ASSERT(VAR_INVALID != IdenInfo->Location->LocationType, "??");
-
-        CompileExprInto(Compiler, IdenInfo->Location);
+        CompileExprInto(Compiler, Dst);
     }
-
+    else 
+    {
+        Token Assignment = Compiler->Next;
+        ConsumeToken(Compiler);
+        /* TODO: make CompileRawExpr as a wrapper around this */
+        VarLocation Right = ParsePrecedence(Compiler, PREC_EXPR);
+        IntegralType Common = CoerceTypes(Compiler, &Assignment, Dst->Type, Right.Type);
+        if (TYPE_INVALID == Common)
+        {
+            ErrorAt(Compiler, &Assignment, "Cannot assign expression of type %s to %s", 
+                    IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst->Type)
+            );
+            goto Exit;
+        }
+        if (!ConvertTypeImplicitly(Compiler, Dst->Type, &Right))
+        {
+            ErrorAt(Compiler, &Assignment, "Cannot convert expression of type %s to %s", 
+                    IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst->Type)
+            );
+            goto Exit;
+        }
+        switch (Assignment.Type)
+        {
+        case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), Dst, &Right); break;
+        case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), Dst, &Right); break;
+        case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), Dst, &Right); break;
+        case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), Dst, &Right); break;
+        case TOKEN_PERCENT_EQUAL: PVMEmitMod(EMITTER(), Dst, &Right); break;
+        default: 
+        {
+            Error(Compiler, "Expected ':=' or an assignment operator.");
+        } break;
+        }
+Exit:
+        ConsumeToken(Compiler);
+        FreeExpr(Compiler, Right);
+    }
 
     CompilerEmitDebugInfo(Compiler, &Identifier);
 }
@@ -2038,13 +2073,13 @@ static void CompileIdenStmt(PVMCompiler *Compiler)
 
     PascalVar *IdentifierInfo = GetIdenInfo(Compiler, &Compiler->Curr,
             "Undefined identifier."
-            );
+    );
     if (NULL != IdentifierInfo && TYPE_FUNCTION == IdentifierInfo->Type)
     {
         Token Callee = Compiler->Curr;
         /* Pascal's weird return statement */
         if (IdentifierInfo->Len == Callee.Len && TokenEqualNoCase(IdentifierInfo->Str, Callee.Str, Callee.Len) 
-                && ConsumeIfNextIs(Compiler, TOKEN_COLON_EQUAL))
+        && ConsumeIfNextIs(Compiler, TOKEN_COLON_EQUAL))
         {
             PASCAL_UNREACHABLE("TODO: return by assigning to function name");
             Compiler->Emitter.ReturnValue.Type = IdentifierInfo->Location->As.Subroutine.ReturnType;
@@ -2052,12 +2087,23 @@ static void CompileIdenStmt(PVMCompiler *Compiler)
         }
         else
         {
-            CompileCallStmt(Compiler, &Callee, IdentifierInfo);
+            CompileCallStmt(Compiler, Callee, IdentifierInfo);
         }
     }
     else
     {
-        CompileAssignStmt(Compiler, IdentifierInfo);
+        Token Identifier = Compiler->Curr;
+        VarLocation Ptr = { .PointsAt = *IdentifierInfo };
+        while (NextTokenIs(Compiler, TOKEN_CARET))
+        {
+            if (NULL == IdentifierInfo->Location)
+            {
+                Error(Compiler, "Attempting to dereference an uninitialized pointer");
+            }
+            Ptr = *Ptr.PointsAt.Location;
+            ConsumeToken(Compiler);
+        }
+        CompileAssignStmt(Compiler, Identifier, &Ptr.PointsAt);
     }
 }
 
@@ -2067,72 +2113,72 @@ static void CompileStmt(PVMCompiler *Compiler)
 {
     switch (Compiler->Next.Type)
     {
-        case TOKEN_GOTO:
-            {
-                ConsumeToken(Compiler);
-                PASCAL_UNREACHABLE("TODO: goto");
-            } break;
-        case TOKEN_WITH:
-            {
-                ConsumeToken(Compiler);
-                PASCAL_UNREACHABLE("TODO: with");
-            } break;
-        case TOKEN_FOR:
-            {
-                ConsumeToken(Compiler);
-                CompileForStmt(Compiler);
-            } break;
-        case TOKEN_REPEAT:
-            {
-                ConsumeToken(Compiler);
-                CompileRepeatUntilStmt(Compiler);
-            } break;
-        case TOKEN_WHILE:
-            {
-                ConsumeToken(Compiler);
-                CompileWhileStmt(Compiler);
-            } break;
-        case TOKEN_CASE:
-            {
-                ConsumeToken(Compiler);
-                PASCAL_UNREACHABLE("TODO: case");
-            } break;
-        case TOKEN_IF:
-            {
-                ConsumeToken(Compiler);
-                CompileIfStmt(Compiler);
-            } break;
-        case TOKEN_BEGIN:
-            {
-                ConsumeToken(Compiler);
-                CompileBeginStmt(Compiler);
-            } break;
-        case TOKEN_EXIT:
-            {
-                ConsumeToken(Compiler);
-                CompileExitStmt(Compiler);
-            } break;
-        case TOKEN_SEMICOLON:
-            {
-                /* no statement */
-            } break;
-        default:
-            {
-                ConsumeToken(Compiler);
-                CompileIdenStmt(Compiler);
-            } break;
+    case TOKEN_GOTO:
+    {
+        ConsumeToken(Compiler);
+        PASCAL_UNREACHABLE("TODO: goto");
+    } break;
+    case TOKEN_WITH:
+    {
+        ConsumeToken(Compiler);
+        PASCAL_UNREACHABLE("TODO: with");
+    } break;
+    case TOKEN_FOR:
+    {
+        ConsumeToken(Compiler);
+        CompileForStmt(Compiler);
+    } break;
+    case TOKEN_REPEAT:
+    {
+        ConsumeToken(Compiler);
+        CompileRepeatUntilStmt(Compiler);
+    } break;
+    case TOKEN_WHILE:
+    {
+        ConsumeToken(Compiler);
+        CompileWhileStmt(Compiler);
+    } break;
+    case TOKEN_CASE:
+    {
+        ConsumeToken(Compiler);
+        PASCAL_UNREACHABLE("TODO: case");
+    } break;
+    case TOKEN_IF:
+    {
+        ConsumeToken(Compiler);
+        CompileIfStmt(Compiler);
+    } break;
+    case TOKEN_BEGIN:
+    {
+        ConsumeToken(Compiler);
+        CompileBeginStmt(Compiler);
+    } break;
+    case TOKEN_EXIT:
+    {
+        ConsumeToken(Compiler);
+        CompileExitStmt(Compiler);
+    } break;
+    case TOKEN_SEMICOLON:
+    {
+        /* no statement */
+    } break;
+    default:
+    {
+        ConsumeToken(Compiler);
+        CompileIdenStmt(Compiler);
+    } break;
             /* for good error message */
-        case TOKEN_ELSE:
-            {
-                if (TOKEN_SEMICOLON == Compiler->Curr.Type)
-                {
-                    ErrorAt(Compiler, &Compiler->Curr, "Is not allowed before 'else'.");
-                }
-                else
-                {
-                    Error(Compiler, "Unexpected token.");
-                }
-            } break;
+    case TOKEN_ELSE:
+    {
+        if (TOKEN_SEMICOLON == Compiler->Curr.Type)
+        {
+            ErrorAt(Compiler, &Compiler->Curr, "Is not allowed before 'else'.");
+        }
+        else
+        {
+            Error(Compiler, "Unexpected token.");
+            }
+    } break;
     }
 
     if (Compiler->Panic)
