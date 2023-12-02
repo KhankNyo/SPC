@@ -2059,7 +2059,6 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier, Pas
         } break;
         }
 Exit:
-        ConsumeToken(Compiler);
         FreeExpr(Compiler, Right);
     }
 
