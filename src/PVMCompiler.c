@@ -1931,10 +1931,6 @@ static void CompileForStmt(PVMCompiler *Compiler)
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected variable name.");
     PascalVar *Counter = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined variable.");
     PASCAL_ASSERT(NULL != Counter->Location, "%s", __func__);
-    /* TODO: better way to do this
-     *  This is a hack to make the for loop variable a register,
-     *  this won't work if the loop body take the addr of the counter variable
-     * */
     VarLocation Save = *Counter->Location;
     /* init expression */
     ConsumeOrError(Compiler, TOKEN_COLON_EQUAL, "Expected ':=' after variable name.");
@@ -2165,7 +2161,7 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
 
 Exit:
     FreeExpr(Compiler, Right);
-    FreeExpr(Compiler, Tmp);
+    //FreeExpr(Compiler, Tmp);
     CompilerEmitDebugInfo(Compiler, &Identifier);
 }
 
