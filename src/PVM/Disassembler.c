@@ -274,8 +274,9 @@ static void DisplayImmBytes(FILE *f, const ImmediateInfo Info)
         {
             fprintf(f, "\n%*s  ", sAddrPad, "");
         }
-        U8 High = Info.Imm >> (i * 16 + 8);
-        U8 Lo = (Info.Imm >> i*16) & 0xFF;
+        UInt BitIndex = 16*(Info.Count - i - 1);
+        U8 High = Info.Imm >> (BitIndex + 8);
+        U8 Lo = (Info.Imm >> BitIndex) & 0xFF;
         fprintf(f, "%02x %02x ", High, Lo);
     }
     fputc('\n', f);

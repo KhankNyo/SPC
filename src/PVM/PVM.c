@@ -212,10 +212,12 @@ do {\
 
     while (1)
     {
+#ifdef PVM_DEBUGGER
         if (PVM->SingleStepMode)
         {
             PVMDebugPause(PVM, Chunk, IP, SP().Ptr, FP().Ptr);
         }
+#endif /* PVM_DEBUGGER */
 
         UInt Opcode = *IP++;
         switch (PVM_GET_OP(Opcode))
@@ -590,7 +592,7 @@ void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
         {
             fprintf(f, "\n");
         }
-        fprintf(f, "[R%02d: %lld]", i, PVM->R[i].DWord);
+        fprintf(f, "[R%02d: %llx]", i, PVM->R[i].DWord);
     }
 
     fprintf(f, "\n===================== F%d REGISTERS ======================\n", (int)sizeof(PVM->F[0])*8);
@@ -604,10 +606,10 @@ void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
         fprintf(f, "[F%02d: %g|%g]", i, PVM->F[i].Double, PVM->F[i].Single);
     }
 
-    fprintf(f, "\n===================== STACK ======================\n");
+    fprintf(f, "\n===================== STACK|GLOBAL ======================\n");
     for (PVMPTR Sp = PVM->Stack.Start; Sp.DWord <= PVM->R[PVM_REG_SP].Ptr.DWord; Sp.DWord++)
     {
-        fprintf(f, "%8p: [0x%08llx]\n", Sp.Raw, *Sp.DWord);
+        fprintf(f, "S: %8p: [0x%08llx]\n", Sp.Raw, *Sp.DWord);
     }
     fputc('\n', f);
 }

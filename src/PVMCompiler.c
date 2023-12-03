@@ -859,7 +859,7 @@ static bool CompileAndDeclareVarList(PVMCompiler *Compiler, VarSubroutine *Funct
 
     /* pointer */
     bool IsPointer = ConsumeIfNextIs(Compiler, TOKEN_CARET);
-    if (!ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected type name  or '^' after ':'"))
+    if (!ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected type name after '%.*s'", Compiler->Curr.Len, Compiler->Curr.Str))
         return false;
 
 
@@ -946,7 +946,9 @@ static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName
     do {
         if (ArgCount < ExpectedArgCount)
         {
+            PASCAL_ASSERT(NULL != Subroutine->Args[ArgCount].Location, "%s", __func__);
             VarLocation Arg = PVMSetArgType(EMITTER(), ArgCount, Subroutine->Args[ArgCount].Location->Type);
+            Arg.PointsAt = Subroutine->Args[ArgCount].Location->PointsAt;
             CompileExprInto(Compiler, &Arg);
             PVMMarkArgAsOccupied(EMITTER(), &Arg);
         }
@@ -1077,7 +1079,7 @@ static VarLocation FactorAddrOf(PVMCompiler *Compiler)
      * TODO: array 
      */
     VarLocation Ptr = PVMAllocateRegister(EMITTER(), TYPE_POINTER);
-    PVMEmitLoadPtr(EMITTER(), &Ptr, Location);
+    PVMEmitLoadAddr(EMITTER(), &Ptr, Location);
     Ptr.PointsAt = *Variable;
     Ptr.PointsAt.Location = Location;
     return Ptr;
@@ -1121,6 +1123,56 @@ static VarLocation FactorLiteral(PVMCompiler *Compiler)
     return Location;
 }
 
+static VarLocation GetVariable(PVMCompiler *Compiler)
+{
+    /* identifier consumed */
+    Token Identifier = Compiler->Curr;
+    PascalVar *Variable = GetIdenInfo(Compiler, &Identifier, "Undefined variable.");
+    if (NULL == Variable)
+        goto Error;
+
+    VarLocation *Location = Variable->Location;
+    PASCAL_ASSERT(NULL != Location, "Invalid location in %s", __func__);
+    PASCAL_ASSERT(Location->Type == Variable->Type, "%s", __func__);
+
+
+    if (ConsumeIfNextIs(Compiler, TOKEN_CARET))
+    {
+        PASCAL_ASSERT(!ConsumeIfNextIs(Compiler, TOKEN_CARET), "TODO: double deref.");
+        Token Caret = Compiler->Curr;
+        if (TYPE_POINTER != Location->Type)
+        {
+            ErrorAt(Compiler, &Caret, "%s is not dereferenceable.", 
+                    IntegralTypeToStr(Location->Type)
+            );
+            goto Error;
+        }
+        VarLocation Ptr = PVMAllocateRegister(EMITTER(), Location->Type);
+        PVMEmitMov(EMITTER(), &Ptr, Location);
+        Ptr.PointsAt = Location->PointsAt;
+        return Ptr;
+    }
+    if (TYPE_FUNCTION == Location->Type)
+    {
+        VarSubroutine *Callee = &Location->As.Subroutine;
+        if (!Callee->HasReturnType)
+        {
+            ErrorAt(Compiler, &Identifier, "Procedure does not have a return value.");
+            goto Error;
+        }
+
+        /* setup return reg */
+        VarLocation ReturnValue = PVMAllocateRegister(EMITTER(), Callee->ReturnType);
+        CompilerCallSubroutine(Compiler, Callee, &Identifier, &ReturnValue);
+        return ReturnValue;
+    }
+    else
+    {
+        return *Location;
+    }
+Error:
+    return (VarLocation) { 0 };
+}
 
 static VarLocation FactorVariable(PVMCompiler *Compiler)
 {
@@ -1132,23 +1184,22 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
 
     VarLocation *Location = Variable->Location;
     PASCAL_ASSERT(NULL != Location, "Invalid location in %s", __func__);
+    PASCAL_ASSERT(Location->Type == Variable->Type, "%s", __func__);
+
 
     if (ConsumeIfNextIs(Compiler, TOKEN_CARET))
     {
+        PASCAL_ASSERT(!ConsumeIfNextIs(Compiler, TOKEN_CARET), "TODO: double deref.");
         Token Caret = Compiler->Curr;
         if (TYPE_POINTER != Location->Type)
         {
-            ErrorAt(Compiler, &Caret, "Cannot dereference something that is not a pointer.");
+            ErrorAt(Compiler, &Caret, "%s is not dereferenceable.", 
+                    IntegralTypeToStr(Location->Type)
+            );
             goto Error;
         }
-        if (NULL == Location->PointsAt.Location)
-        {
-            ErrorAt(Compiler, &Caret, "Cannot dereference an uninitialized pointer.");
-            goto Error;
-        }
-        VarLocation *Deref = Location->PointsAt.Location;
-        VarLocation Register = PVMAllocateRegister(EMITTER(), Deref->Type);
-        PVMEmitMov(EMITTER(), &Register, Deref);
+        VarLocation Register = PVMAllocateRegister(EMITTER(), Location->PointsAt.Type);
+        PVMEmitDerefPtr(EMITTER(), &Register, Location);
         return Register;
     }
     if (TYPE_FUNCTION == Location->Type)
@@ -1168,6 +1219,8 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
     else
     {
         VarLocation Register = PVMAllocateRegister(EMITTER(), Location->Type);
+        if (TYPE_POINTER == Location->Type)
+            Register.PointsAt = Location->PointsAt;
         PVMEmitMov(EMITTER(), &Register, Location);
         return Register;
     }
@@ -1736,7 +1789,13 @@ static void CompileExprInto(PVMCompiler *Compiler, VarLocation *Location)
 
     if (TYPE_POINTER == Location->Type && TYPE_POINTER == Expr.Type)
     {
-        Location->PointsAt = Expr.PointsAt;
+        if (Location->PointsAt.Type != Expr.PointsAt.Type)
+        {
+            Error(Compiler, "Cannot assign %s pointer to %s pointer.", 
+                    IntegralTypeToStr(Expr.PointsAt.Type),
+                    IntegralTypeToStr(Location->PointsAt.Type)
+            );
+        }
     }
     PVMEmitMov(EMITTER(), Location, &Expr);
     FreeExpr(Compiler, Expr);
@@ -2009,28 +2068,69 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token Name, PascalVar *
 }
 
 
-static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier, PascalVar *IdenInfo)
+static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
 {
-    if (NULL == IdenInfo)
-    {
-        return;
-    }
+    /* iden consumed */
     CompilerInitDebugInfo(Compiler, &Identifier);
 
-    VarLocation *Dst = IdenInfo->Location;
-    PASCAL_ASSERT(NULL != Dst, "Location must be valid");
-    PASCAL_ASSERT(IdenInfo->Type != TYPE_INVALID, "DeclVarblock should've handled this");
-    PASCAL_ASSERT(VAR_INVALID != Dst->LocationType, "??");
-    if (ConsumeIfNextIs(Compiler, TOKEN_COLON_EQUAL))
+    VarLocation Tmp = GetVariable(Compiler);
+    VarLocation *Dst = &Tmp;
+    PASCAL_ASSERT(VAR_INVALID != Dst->LocationType, "%s", __func__);
+
+    /* TODO: this is a hack to be able to assign variable to a dereferenced pointer */
+    /* this will fail if the left side is being deref multiple times */
+    bool Deref = TOKEN_CARET == Compiler->Curr.Type;
+
+    Token Assignment = Compiler->Next;
+    ConsumeToken(Compiler); /* assignment type */
+
+    /* TODO: make CompileRawExpr as a wrapper around this */
+    VarLocation Right = ParsePrecedence(Compiler, PREC_EXPR);
+    if (Deref)
     {
-        CompileExprInto(Compiler, Dst);
+        IntegralType Common = CoerceTypes(Compiler, &Assignment, Dst->PointsAt.Type, Right.Type);
+        if (TYPE_INVALID == Common)
+        {
+            ErrorAt(Compiler, &Assignment, "Cannot assign expression of type %s to %s", 
+                    IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst->Type)
+            );
+            goto Exit;
+        }
+        if (!ConvertTypeImplicitly(Compiler, Dst->PointsAt.Type, &Right))
+        {
+            ErrorAt(Compiler, &Assignment, "Cannot convert expression of type %s to %s", 
+                    IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst->Type)
+            );
+            goto Exit;
+        }
+
+
+        if (TOKEN_COLON_EQUAL == Assignment.Type)
+        {
+            PVMEmitStoreToPtr(EMITTER(), Dst, &Right);
+        }
+        else
+        {
+            VarLocation Left = PVMAllocateRegister(EMITTER(), Dst->PointsAt.Type);
+            PVMEmitDerefPtr(EMITTER(), &Left, Dst);
+            switch (Assignment.Type)
+            {
+            case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), &Left, &Right); break;
+            case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), &Left, &Right); break;
+            case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), &Left, &Right); break;
+            case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), &Left, &Right); break;
+            case TOKEN_PERCENT_EQUAL: PVMEmitMod(EMITTER(), &Left, &Right); break;
+            default: 
+            {
+                ErrorAt(Compiler, &Assignment, "Expected ':=' or other assignment operator.");
+            } break;
+            }
+            PVMEmitStoreToPtr(EMITTER(), Dst, &Left);
+            PVMFreeRegister(EMITTER(), Left.As.Register);
+        }
     }
-    else 
+    else
     {
-        Token Assignment = Compiler->Next;
-        ConsumeToken(Compiler);
-        /* TODO: make CompileRawExpr as a wrapper around this */
-        VarLocation Right = ParsePrecedence(Compiler, PREC_EXPR);
         IntegralType Common = CoerceTypes(Compiler, &Assignment, Dst->Type, Right.Type);
         if (TYPE_INVALID == Common)
         {
@@ -2046,8 +2146,10 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier, Pas
             );
             goto Exit;
         }
+
         switch (Assignment.Type)
         {
+        case TOKEN_COLON_EQUAL: PVMEmitMov(EMITTER(), Dst, &Right); break;
         case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), Dst, &Right); break;
         case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), Dst, &Right); break;
         case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), Dst, &Right); break;
@@ -2055,13 +2157,15 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier, Pas
         case TOKEN_PERCENT_EQUAL: PVMEmitMod(EMITTER(), Dst, &Right); break;
         default: 
         {
-            Error(Compiler, "Expected ':=' or an assignment operator.");
+            ErrorAt(Compiler, &Assignment, "Expected ':=' or other assignment operator.");
         } break;
         }
-Exit:
-        FreeExpr(Compiler, Right);
     }
+    
 
+Exit:
+    FreeExpr(Compiler, Right);
+    FreeExpr(Compiler, Tmp);
     CompilerEmitDebugInfo(Compiler, &Identifier);
 }
 
@@ -2092,17 +2196,7 @@ static void CompileIdenStmt(PVMCompiler *Compiler)
     else
     {
         Token Identifier = Compiler->Curr;
-        VarLocation Ptr = { .PointsAt = *IdentifierInfo };
-        while (NextTokenIs(Compiler, TOKEN_CARET))
-        {
-            if (NULL == IdentifierInfo->Location)
-            {
-                Error(Compiler, "Attempting to dereference an uninitialized pointer");
-            }
-            Ptr = *Ptr.PointsAt.Location;
-            ConsumeToken(Compiler);
-        }
-        CompileAssignStmt(Compiler, Identifier, &Ptr.PointsAt);
+        CompileAssignStmt(Compiler, Identifier);
     }
 }
 
@@ -2176,7 +2270,7 @@ static void CompileStmt(PVMCompiler *Compiler)
         else
         {
             Error(Compiler, "Unexpected token.");
-            }
+        }
     } break;
     }
 
@@ -2240,10 +2334,11 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     {
         VarLocation *Var = CompilerAllocateVarLocation(Compiler);
         Var->LocationType = VAR_SUBROUTINE;
+        Var->Type = TYPE_FUNCTION;
         Var->As.Subroutine = (VarSubroutine) {
             .HasReturnType = TOKEN_FUNCTION == Keyword.Type,
-                .Location = Location,
-                .Defined = false,
+            .Location = Location,
+            .Defined = false,
         };
         Subroutine = &Var->As.Subroutine;
 
@@ -2354,44 +2449,44 @@ static bool CompileHeadlessBlock(PVMCompiler *Compiler)
     {
         switch (Compiler->Next.Type)
         {
-            case TOKEN_BEGIN: return true;
-            case TOKEN_FUNCTION:
-                              {
-                                  ConsumeToken(Compiler);
-                                  CompileSubroutineBlock(Compiler, "function");
-                              } break;
-            case TOKEN_PROCEDURE:
-                              {
-                                  ConsumeToken(Compiler);
-                                  CompileSubroutineBlock(Compiler, "procedure");
-                              } break;
-            case TOKEN_VAR:
-                              {
-                                  ConsumeToken(Compiler);
-                                  CompileVarBlock(Compiler);
-                              } break;
-            case TOKEN_TYPE:
-                              {
-                                  ConsumeToken(Compiler);
-                                  PASCAL_UNREACHABLE("TODO: type");
-                              } break;
-            case TOKEN_CONST:
-                              {
-                                  ConsumeToken(Compiler);
-                                  PASCAL_UNREACHABLE("TODO: const");
-                              } break;
-            case TOKEN_LABEL:
-                              {
-                                  ConsumeToken(Compiler);
-                                  PASCAL_UNREACHABLE("TODO: label");
-                              } break;
-            default: 
-                              {
-                                  Error(Compiler, 
-                                          "Expected 'function', 'procedure', "
-                                          "'var', 'type', 'const', or 'label' before a block."
-                                       );
-                              } break;
+        case TOKEN_BEGIN: return true;
+        case TOKEN_FUNCTION:
+        {
+            ConsumeToken(Compiler);
+            CompileSubroutineBlock(Compiler, "function");
+        } break;
+        case TOKEN_PROCEDURE:
+        {
+            ConsumeToken(Compiler);
+            CompileSubroutineBlock(Compiler, "procedure");
+        } break;
+        case TOKEN_VAR:
+        {
+            ConsumeToken(Compiler);
+            CompileVarBlock(Compiler);
+        } break;
+        case TOKEN_TYPE:
+        {
+            ConsumeToken(Compiler);
+            PASCAL_UNREACHABLE("TODO: type");
+        } break;
+        case TOKEN_CONST:
+        {
+            ConsumeToken(Compiler);
+            PASCAL_UNREACHABLE("TODO: const");
+        } break;
+        case TOKEN_LABEL:
+        {
+            ConsumeToken(Compiler);
+            PASCAL_UNREACHABLE("TODO: label");
+        } break;
+        default: 
+        {
+            Error(Compiler, 
+                  "Expected 'function', 'procedure', "
+                  "'var', 'type', 'const', or 'label' before a block."
+            );
+        } break;
         }
 
         if (Compiler->Panic)
