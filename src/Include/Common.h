@@ -66,12 +66,14 @@ typedef long double LargeType;
 #    define FALLTHROUGH __attribute__((__fallthrough__))
 #  elif __has_attribute(fallthrough)
 #    define FALLTHROUGH __attribute__((fallthrough))
-#  else
-#    define FALLTHROUGH do {} while (0) /* fallthrough */
 #  endif /* __has_attribute */
 #elif defined(_MSC_VER)
 #  define FALLTHROUGH __fallthrough
 #endif /* _MSC_VER */
+
+#ifndef FALLTHROUGH 
+#  define FALLTHROUGH /* fallthrough */
+#endif /* FALLTHROUGH */
 
 
 #if defined(__LITTLE_ENDIAN__)

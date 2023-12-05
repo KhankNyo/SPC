@@ -51,6 +51,10 @@ typedef enum PVMOp
     OP_PSHH,
     OP_POPL,
     OP_POPH,
+    OP_FPSHL,
+    OP_FPSHH,
+    OP_FPOPL,
+    OP_FPOPH,
 
     
     OP_FADD,

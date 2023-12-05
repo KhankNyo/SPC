@@ -399,6 +399,11 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_PSHH: DisasmReglist(f, "pshh", Opcode, true); break;
     case OP_POPL: DisasmReglist(f, "popl", Opcode, false); break;
     case OP_POPH: DisasmReglist(f, "pshh", Opcode, true); break;
+    case OP_FPSHL: DisasmReglist(f, "fpshl", Opcode, false); break;
+    case OP_FPSHH: DisasmReglist(f, "fpshh", Opcode, true); break;
+    case OP_FPOPL: DisasmReglist(f, "fpopl", Opcode, false); break;
+    case OP_FPOPH: DisasmReglist(f, "fpshh", Opcode, true); break;
+
 
     case OP_LD32: return DisasmMem(f, "ld32", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);
     case OP_LD64: return DisasmMem(f, "ld64", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);

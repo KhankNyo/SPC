@@ -1514,8 +1514,8 @@ do {\
     }
     else if (TYPE_F32 == Src->Type || TYPE_F32 == Dst->Type)
     {
-        TransferRegister(Emitter, &Rd.As.Register, TYPE_F64, Rd.As.Register, Dst->Type);
-        TransferRegister(Emitter, &Rs.As.Register, TYPE_F64, Rs.As.Register, Src->Type);
+        TransferRegister(Emitter, &Rd.As.Register, TYPE_F32, Rd.As.Register, Dst->Type);
+        TransferRegister(Emitter, &Rs.As.Register, TYPE_F32, Rs.As.Register, Src->Type);
         FSET( );
         VarLocation Condition = PVMAllocateRegister(Emitter, TYPE_BOOLEAN);
         WriteOp16(Emitter, PVM_OP(GETFCC, Condition.As.Register.ID, 0));
@@ -1589,8 +1589,13 @@ VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgT
 {
     if (ArgNumber < PVM_ARGREG_COUNT)
     {
-        Emitter->ArgReg[ArgNumber].Type = ArgType;
-        return Emitter->ArgReg[ArgNumber];
+        VarLocation Arg = Emitter->ArgReg[ArgNumber];
+        Arg.Type = ArgType;
+        if (IntegralTypeIsFloat(ArgType))
+        {
+            Arg.As.Register.ID = ArgNumber + PVM_REG_COUNT;
+        }
+        return Arg;
     }
 
     /* TODO: pascal calling convention */
@@ -1609,8 +1614,6 @@ VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgT
 }
 
 
-
-
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg)
 {
     if (VAR_REG == Arg->LocationType)
@@ -1618,6 +1621,19 @@ void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg)
         PVMMarkRegisterAsAllocated(Emitter, Arg->As.Register.ID);
     }
 }
+
+
+VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType)
+{
+    VarLocation ReturnValue = Emitter->ReturnValue;
+    if (IntegralTypeIsFloat(ReturnType))
+    {
+        ReturnValue.As.Register.ID = Emitter->ReturnValue.As.Register.ID + PVM_REG_COUNT;
+    }
+    return Emitter->ReturnValue;
+}
+
+
 
 
 
@@ -1676,13 +1692,22 @@ VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size)
 void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 {
     U16 SaveReglist = Emitter->Reglist & ~(((U16)1 << ReturnRegID) | EMPTY_REGLIST);
+
     if (SaveReglist & 0xFF)
     {
         WriteOp16(Emitter, PVM_REGLIST(PSHL, SaveReglist & 0xFF));
     }
-    if (SaveReglist >> 8)
+    else if ((SaveReglist >> 8) & 0xFF)
     {
         WriteOp16(Emitter, PVM_REGLIST(PSHH, SaveReglist >> 8));
+    }
+    else if ((SaveReglist >> 16) & 0xFF)
+    {
+        WriteOp16(Emitter, PVM_REGLIST(FPSHL, SaveReglist >> 16));
+    }
+    else if ((SaveReglist >> 24) & 0xFF)
+    {
+        WriteOp16(Emitter, PVM_REGLIST(FPSHH, SaveReglist >> 26));
     }
 
 
@@ -1711,9 +1736,17 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
     {
         WriteOp16(Emitter, PVM_REGLIST(POPH, Restorelist >> 8));
     }
-    if (Restorelist & 0xFF)
+    else if (Restorelist & 0xFF)
     {
         WriteOp16(Emitter, PVM_REGLIST(POPL, Restorelist & 0xFF));
+    }
+    else if ((Restorelist >> 24) & 0xFF) 
+    {
+        WriteOp16(Emitter, PVM_REGLIST(FPOPL, Restorelist >> 24));
+    }
+    else if ((Restorelist >> 16) & 0xFF)
+    {
+        WriteOp16(Emitter, PVM_REGLIST(FPOPL, Restorelist >> 16));
     }
     Emitter->Reglist = Restorelist | EMPTY_REGLIST;
     PVMMarkRegisterAsAllocated(Emitter, ReturnRegID);

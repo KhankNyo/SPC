@@ -110,26 +110,26 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
 #define FLOAT_SET_IF(Operator, Opc, RegType)\
     PVM->FloatCondition = PVM->F[PVM_GET_RD(Opc)]RegType Operator PVM->F[PVM_GET_RS(Opc)]RegType
 
-#define PUSH_MULTIPLE(Base, Opc) do{\
+#define PUSH_MULTIPLE(RegType, Base, Opc) do{\
     UInt RegList = PVM_GET_REGLIST(Opc);\
     UInt Base_ = Base;\
     UInt i = Base_;\
     while (RegList && i < Base_ + PVM_REG_COUNT/2) {\
         if (RegList & 1) {\
-            *(++SP().Ptr.DWord) = PVM->R[i].DWord;\
+            *(++SP().Ptr.DWord) = PVM->RegType[i].DWord;\
         }\
         i++;\
         RegList >>= 1;\
     }\
 } while (0)
 
-#define POP_MULTIPLE(Base, Opc) do{\
+#define POP_MULTIPLE(RegType, Base, Opc) do{\
     UInt RegList = PVM_GET_REGLIST(Opc);\
     UInt Base_ = Base;\
     UInt i = Base_;\
     while (RegList && i < Base_ + PVM_REG_COUNT/2) {\
         if (RegList & 0x80) {\
-            PVM->R[(Base + (PVM_REG_COUNT/2)-1) - i].DWord = *(SP().Ptr.DWord--);\
+            PVM->RegType[(Base + (PVM_REG_COUNT/2)-1) - i].DWord = *(SP().Ptr.DWord--);\
         }\
         i++;\
         RegList = (RegList << 1) & 0xFF;\
@@ -343,10 +343,14 @@ do {\
         } break;
 
 
-        case OP_PSHL: PUSH_MULTIPLE(0, Opcode); break;
-        case OP_POPL: POP_MULTIPLE(0, Opcode); break;
-        case OP_PSHH: PUSH_MULTIPLE(8, Opcode); break;
-        case OP_POPH: POP_MULTIPLE(8, Opcode); break;
+        case OP_PSHL: PUSH_MULTIPLE(R, 0, Opcode); break;
+        case OP_POPL: POP_MULTIPLE(R, 0, Opcode); break;
+        case OP_PSHH: PUSH_MULTIPLE(R, 8, Opcode); break;
+        case OP_POPH: POP_MULTIPLE(R, 8, Opcode); break;
+        case OP_FPSHL: PUSH_MULTIPLE(F, 0, Opcode); break;
+        case OP_FPOPL: POP_MULTIPLE(F, 0, Opcode); break;
+        case OP_FPSHH: PUSH_MULTIPLE(F, 8, Opcode); break;
+        case OP_FPOPH: POP_MULTIPLE(F, 8, Opcode); break;
 
 
         case OP_FADD: FLOAT_BINARY_OP(+, Opcode, .Single); break;

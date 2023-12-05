@@ -111,6 +111,7 @@ VarLocation PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *D
 VarLocation PVMSetParamType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ParamType);
 VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgType);
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg);
+VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType);
 
 
 /* stack instructions */

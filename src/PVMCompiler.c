@@ -955,9 +955,12 @@ static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName
     do {
         if (ArgCount < ExpectedArgCount)
         {
-            PASCAL_ASSERT(NULL != Subroutine->Args[ArgCount].Location, "%s", __func__);
-            VarLocation Arg = PVMSetArgType(EMITTER(), ArgCount, Subroutine->Args[ArgCount].Location->Type);
-            Arg.PointsAt = Subroutine->Args[ArgCount].Location->PointsAt;
+            const VarLocation *CurrentArg = Subroutine->Args[ArgCount].Location;
+            PASCAL_ASSERT(NULL != CurrentArg, "%s", __func__);
+
+            VarLocation Arg = PVMSetArgType(EMITTER(), ArgCount, CurrentArg->Type);
+            Arg.PointsAt = CurrentArg->PointsAt;
+
             CompileExprInto(Compiler, NULL, &Arg);
             PVMMarkArgAsOccupied(EMITTER(), &Arg);
         }
@@ -995,8 +998,8 @@ static void CompilerCallSubroutine(PVMCompiler *Compiler, VarSubroutine *Callee,
         CallSite = PVMEmitCall(EMITTER(), Callee);
 
         /* carefully move return reg into the return location */
-        Compiler->Emitter.ReturnValue.Type = Callee->ReturnType;
-        PVMEmitMov(EMITTER(), ReturnValue, &EMITTER()->ReturnValue);
+        VarLocation Tmp = PVMSetReturnType(EMITTER(), ReturnValue->Type);
+        PVMEmitMov(EMITTER(), ReturnValue, &Tmp);
         PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg);
     }
     /* calling a procedure, or function without caring about its return value */
@@ -1008,11 +1011,11 @@ static void CompilerCallSubroutine(PVMCompiler *Compiler, VarSubroutine *Callee,
         PVMEmitUnsaveCallerRegs(EMITTER(), NO_RETURN_REG);
     }
 
+    /* deallocate stack args */
     if (Callee->StackArgSize) 
     {
         PVMAllocateStack(EMITTER(), -Callee->StackArgSize);
     }
-
     if (!Callee->Defined)
     {
         SubroutineDataPushRef(Compiler->GlobalAlloc, Callee, CallSite);
@@ -1865,7 +1868,8 @@ static void CompileExitStmt(PVMCompiler *Compiler)
             }
 
             EMITTER()->ReturnValue.Type = Compiler->Subroutine[Compiler->Scope - 1].Current->ReturnType;
-            CompileExprInto(Compiler, &Keyword, &EMITTER()->ReturnValue);
+            VarLocation ReturnValue = PVMSetReturnType(EMITTER(), Compiler->Subroutine[Compiler->Scope - 1].Current->ReturnType);
+            CompileExprInto(Compiler, &Keyword, &ReturnValue);
         }
         else if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
         {
