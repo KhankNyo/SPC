@@ -65,7 +65,7 @@ typedef struct PVMCompiler
 /* and allocates a register for it, use FreeExpr to free the register */
 static VarLocation CompileExpr(PVMCompiler *Compiler);
 static void FreeExpr(PVMCompiler *Compiler, VarLocation Expr);
-static void CompileExprInto(PVMCompiler *Compiler, VarLocation *Location);
+static void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLocation *Location);
 
 
 static IntegralType sCoercionRules[TYPE_COUNT][TYPE_COUNT] = {
@@ -417,6 +417,15 @@ static void CalmDownDog(PVMCompiler *Compiler)
 
             default: break;
             }
+        }
+        else switch (Compiler->Next.Type)
+        {
+        case TOKEN_END:
+        case TOKEN_IF:
+        case TOKEN_FOR:
+        case TOKEN_WHILE:
+            return;
+        default: break;
         }
         ConsumeToken(Compiler);
     }
@@ -949,7 +958,7 @@ static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName
             PASCAL_ASSERT(NULL != Subroutine->Args[ArgCount].Location, "%s", __func__);
             VarLocation Arg = PVMSetArgType(EMITTER(), ArgCount, Subroutine->Args[ArgCount].Location->Type);
             Arg.PointsAt = Subroutine->Args[ArgCount].Location->PointsAt;
-            CompileExprInto(Compiler, &Arg);
+            CompileExprInto(Compiler, NULL, &Arg);
             PVMMarkArgAsOccupied(EMITTER(), &Arg);
         }
         else
@@ -968,7 +977,7 @@ CheckArgs:
     {
         ErrorAt(Compiler, FunctionName, 
                 "Expected %d arguments but got %d instead.", Subroutine->ArgCount, ArgCount
-               );
+        );
     }
 }
 
@@ -1237,7 +1246,8 @@ static VarLocation FactorGrouping(PVMCompiler *Compiler)
 }
 
 
-static VarLocation NegateLiteral(PVMCompiler *Compiler, const Token *OpToken, VarLiteral Literal, IntegralType LiteralType)
+static VarLocation NegateLiteral(PVMCompiler *Compiler, 
+        const Token *OpToken, VarLiteral Literal, IntegralType LiteralType)
 {
     VarLocation Location = {
         .LocationType = VAR_LIT,
@@ -1264,7 +1274,8 @@ static VarLocation NegateLiteral(PVMCompiler *Compiler, const Token *OpToken, Va
     return Location;
 }
 
-static VarLocation NotLiteral(PVMCompiler *Compiler, const Token *OpToken, VarLiteral Literal, IntegralType LiteralType)
+static VarLocation NotLiteral(PVMCompiler *Compiler, 
+        const Token *OpToken, VarLiteral Literal, IntegralType LiteralType)
 {
     VarLocation Location = {
         .LocationType = VAR_LIT,
@@ -1775,7 +1786,7 @@ static VarLocation CompileExpr(PVMCompiler *Compiler)
     return Place;
 }
 
-static void CompileExprInto(PVMCompiler *Compiler, VarLocation *Location)
+static void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLocation *Location)
 {
     VarLocation Expr = ParsePrecedence(Compiler, PREC_EXPR);
     if (Compiler->Error)
@@ -1791,7 +1802,11 @@ static void CompileExprInto(PVMCompiler *Compiler, VarLocation *Location)
     {
         if (Location->PointsAt.Type != Expr.PointsAt.Type)
         {
-            Error(Compiler, "Cannot assign %s pointer to %s pointer.", 
+            if (NULL == OpToken)
+            {
+                OpToken = &Compiler->Curr;
+            }
+            ErrorAt(Compiler, OpToken, "Cannot assign %s pointer to %s pointer.", 
                     IntegralTypeToStr(Expr.PointsAt.Type),
                     IntegralTypeToStr(Location->PointsAt.Type)
             );
@@ -1838,7 +1853,7 @@ static void CompileExitStmt(PVMCompiler *Compiler)
                 goto Done;
 
             EMITTER()->ReturnValue.Type = TYPE_I32;
-            CompileExprInto(Compiler, &EMITTER()->ReturnValue);
+            CompileExprInto(Compiler, &Keyword, &EMITTER()->ReturnValue);
         }
         else if (Compiler->Subroutine[Compiler->Scope - 1].Current->HasReturnType)
         {
@@ -1850,7 +1865,7 @@ static void CompileExitStmt(PVMCompiler *Compiler)
             }
 
             EMITTER()->ReturnValue.Type = Compiler->Subroutine[Compiler->Scope - 1].Current->ReturnType;
-            CompileExprInto(Compiler, &EMITTER()->ReturnValue);
+            CompileExprInto(Compiler, &Keyword, &EMITTER()->ReturnValue);
         }
         else if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
         {
@@ -1931,11 +1946,10 @@ static void CompileForStmt(PVMCompiler *Compiler)
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected variable name.");
     PascalVar *Counter = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined variable.");
     PASCAL_ASSERT(NULL != Counter->Location, "%s", __func__);
-    VarLocation Save = *Counter->Location;
     /* init expression */
     ConsumeOrError(Compiler, TOKEN_COLON_EQUAL, "Expected ':=' after variable name.");
-    *Counter->Location = PVMAllocateRegister(EMITTER(), Save.Type);
-    CompileExprInto(Compiler, Counter->Location);
+    Token Assignment = Compiler->Curr;
+    CompileExprInto(Compiler, &Assignment, Counter->Location);
 
 
     /* for loop inc/dec */
@@ -1966,11 +1980,6 @@ static void CompileForStmt(PVMCompiler *Compiler)
     PVMEmitAddImm(EMITTER(), Counter->Location, Inc);
     PVMEmitBranch(EMITTER(), LoopHead);
     PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_CONDITIONAL);
-
-
-    /* TODO: unhack this */
-    FreeExpr(Compiler, *Counter->Location);
-    *Counter->Location = Save;
 }
 
 
@@ -2142,6 +2151,17 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
             );
             goto Exit;
         }
+        if (TYPE_POINTER == Dst->Type && TYPE_POINTER == Right.Type)
+        {
+            if (Dst->PointsAt.Type != Right.PointsAt.Type)
+            {
+                ErrorAt(Compiler, &Assignment, "Cannot assign %s pointer to %s pointer.", 
+                        IntegralTypeToStr(Right.PointsAt.Type),
+                        IntegralTypeToStr(Dst->PointsAt.Type)
+                );
+                goto Exit;
+            }
+        }
 
         switch (Assignment.Type)
         {
@@ -2182,7 +2202,7 @@ static void CompileIdenStmt(PVMCompiler *Compiler)
         {
             PASCAL_UNREACHABLE("TODO: return by assigning to function name");
             Compiler->Emitter.ReturnValue.Type = IdentifierInfo->Location->As.Subroutine.ReturnType;
-            CompileExprInto(Compiler, &Compiler->Emitter.ReturnValue);
+            CompileExprInto(Compiler, NULL, &Compiler->Emitter.ReturnValue);
         }
         else
         {

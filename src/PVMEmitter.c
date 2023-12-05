@@ -453,7 +453,8 @@ static void DerefIntoIntReg(PVMEmitter *Emitter,
 #undef LOAD_OP
 }
 
-static void DerefPtrIntoReg(PVMEmitter *Emitter, VarRegister *Dst, IntegralType DstType, VarRegister Ptr, I32 Offset)
+static void DerefPtrIntoReg(PVMEmitter *Emitter, 
+        VarRegister *Dst, IntegralType DstType, VarRegister Ptr, I32 Offset)
 {
     if (IntegralTypeIsFloat(DstType)) 
     {
@@ -473,7 +474,8 @@ static void DerefPtrIntoReg(PVMEmitter *Emitter, VarRegister *Dst, IntegralType 
 
 
 
-static void DerefIntoReg(PVMEmitter *Emitter, VarRegister *Dst, IntegralType DstType, VarMemory Src, IntegralType SrcType)
+static void DerefIntoReg(PVMEmitter *Emitter, 
+        VarRegister *Dst, IntegralType DstType, VarMemory Src, IntegralType SrcType)
 {
     VarRegister Base = Emitter->Reg.FP.As.Register;
     if (Src.IsGlobal)
@@ -524,14 +526,14 @@ static bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, const Va
         {
             ChunkWriteMovImm(PVMCurrentChunk(Emitter), 
                     OutTarget->As.Register.ID, 
-                    Tmp.As.Literal.Int, Tmp.Type
+                    Tmp.As.Literal.Int
             );
         }
         else if (Tmp.Type == TYPE_BOOLEAN)
         {
             ChunkWriteMovImm(PVMCurrentChunk(Emitter), 
                     OutTarget->As.Register.ID, 
-                    Tmp.As.Literal.Bool, TYPE_U8
+                    Tmp.As.Literal.Bool
             );
         }
         else if (TYPE_F64 == Tmp.Type)
@@ -1182,11 +1184,11 @@ void PVMEmitAdd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
         }
         else if (TYPE_I64 == Rd.Type || TYPE_U64 == Rd.Type)
         {
-            WriteOp16(Emitter, PVM_OP(ADD, Rd.As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(ADD64, Rd.As.Register.ID, Rs.As.Register.ID));
         }
         else
         {
-            WriteOp16(Emitter, PVM_OP(ADD64, Rd.As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(ADD, Rd.As.Register.ID, Rs.As.Register.ID));
         }
     }
 
@@ -1225,11 +1227,11 @@ void PVMEmitSub(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
         }
         else if (TYPE_I64 == Rd.Type || TYPE_U64 == Rd.Type)
         {
-            WriteOp16(Emitter, PVM_OP(SUB, Rd.As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(SUB64, Rd.As.Register.ID, Rs.As.Register.ID));
         }
         else
         {
-            WriteOp16(Emitter, PVM_OP(SUB64, Rd.As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(SUB, Rd.As.Register.ID, Rs.As.Register.ID));
         }
     }
 

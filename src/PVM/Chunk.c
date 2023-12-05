@@ -77,7 +77,7 @@ U32 ChunkWriteCode(PVMChunk *Chunk, U16 Opcode)
     return Chunk->Count++;
 }
 
-U32 ChunkWriteMovImm(PVMChunk *Chunk, UInt Reg, U64 Imm, IntegralType DstType)
+U32 ChunkWriteMovImm(PVMChunk *Chunk, UInt Reg, U64 Imm)
 {
     U32 Addr = 0;
     int Count = 0;
@@ -85,59 +85,41 @@ U32 ChunkWriteMovImm(PVMChunk *Chunk, UInt Reg, U64 Imm, IntegralType DstType)
     {
         Addr = ChunkWriteCode(Chunk, PVM_OP(MOVQI, Reg, Imm));
     }
-    else switch (DstType)
-    {
-    case TYPE_I8:
-    case TYPE_U8:
-    case TYPE_I16:
+    else if (IN_I16(Imm))
     {
         Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, I16));
         Count = 1;
-    } break;
-    case TYPE_U16:
+    }
+    else if (IN_U16(Imm))
     {
         Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U16));
         Count = 1;
-    } break;
-    case TYPE_I32:
+    }
+    else if (IN_I32(Imm))
     {
         Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, I32));
         Count = 2;
-    } break;
-    case TYPE_U32:
+    }
+    else if (IN_U32(Imm))
     {
         Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U32));
         Count = 2;
-    } break;
-
-    case TYPE_I64:
-    case TYPE_U64:
-    {
-        if (IN_I48(Imm))
-        {
-            Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, I48));
-            Count = 3;
-        }
-        else if (IN_U48(Imm))
-        {
-            Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U48));
-            Count = 3;
-        }
-        else 
-        {
-            Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U64));
-            Count = 4;
-        }
-    } break;
-    case TYPE_F64:
-    case TYPE_F32:
-    default:
-    {
-        PASCAL_UNREACHABLE("ChunkWriteMovImm: Unreachable");
-    } break;
-
     }
-
+    else if (IN_I48(Imm))
+    {
+        Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, I48));
+        Count = 3;
+    }
+    else if (IN_U48(Imm))
+    {
+        Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U48));
+        Count = 3;
+    }
+    else 
+    {
+        Addr = ChunkWriteCode(Chunk, PVM_MOVI(Reg, U64));
+        Count = 4;
+    }
 
     for (int i = 0; i < Count; i++)
     {
