@@ -5,20 +5,19 @@
 #include "Common.h"
 
 
-#define PSTR_MAX_LEN 256
+#define PSTR_MAX_LEN 255
 
 typedef struct PascalStr 
 {
     union {
         struct {
-            U8 Len;
             U8 Text[PSTR_MAX_LEN];
+            U8 LenLeft;
         };
         U8 Data[PSTR_MAX_LEN + 1];
     };
 } PascalStr;
 
-PASCAL_STATIC_ASSERT(offsetof(PascalStr, Len) == 0, "Pascal string");
 
 
 
@@ -27,7 +26,7 @@ static inline bool PStrIsDyn(const PascalStr *PStr) { UNUSED(PStr, PStr); return
 static inline U8 *PStrGetPtr(PascalStr *PStr) { return PStr->Text; }
 static inline const U8 *PStrGetConstPtr(const PascalStr *PStr) { return PStr->Text; }
 
-static inline USize PStrGetLen(const PascalStr *PStr) { return PStr->Len; }
+static inline USize PStrGetLen(const PascalStr *PStr) { return PSTR_MAX_LEN - PStr->LenLeft; }
 static inline USize PStrGetCap(const PascalStr *PStr) { UNUSED(PStr, PStr); return PSTR_MAX_LEN; }
 static inline void PStrReserve(PascalStr *PStr, USize NewCapacity) { UNUSED(PStr, NewCapacity); }
 USize PStrAddToLen(PascalStr *PStr, ISize Extra);
@@ -48,6 +47,10 @@ bool PStrIsLess(const PascalStr *s1, const PascalStr *s2);
 
 U8 PStrAppendChr(PascalStr *PStr, U8 Chr);
 USize PStrAppendStr(PascalStr *PStr, const U8 *Str, USize Len);
+static inline USize PStrConcat(PascalStr *Dst, const PascalStr *Src) 
+{ 
+    return PStrAppendStr(Dst, PStrGetConstPtr(Src), PStrGetLen(Src)); 
+}
 
 
 #endif /* PASCAL_STRING_H */

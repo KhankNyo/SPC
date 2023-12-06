@@ -7,6 +7,7 @@
 #include "PVM/PVM.h"
 #include "PVM/Disassembler.h"
 #include "PVM/Debugger.h"
+#include "PascalString.h"
 
 
 PascalVM PVMInit(U32 StackSize, UInt RetStackSize)
@@ -240,6 +241,12 @@ do {\
             }
         } break;
 
+        case OP_SADD: 
+        {
+            PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
+            PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
+            PStrConcat(Dst, Src);
+        } break;
         case OP_ADD: INTEGER_BINARY_OP(+, Opcode, .Word.First); break;
         case OP_SUB: INTEGER_BINARY_OP(-, Opcode, .Word.First); break;
         case OP_MUL: INTEGER_BINARY_OP(*, Opcode, .Word.First); break;
@@ -302,6 +309,28 @@ do {\
         } break;
 
 
+        case OP_STRLT:
+        {
+            PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
+            PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
+            PVM->R[PVM_GET_RD(Opcode)].Ptr.UInt = PStrIsLess(Dst, Src);
+        } break;
+        case OP_STRGT:
+        {
+            PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
+            PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
+            PVM->R[PVM_GET_RD(Opcode)].Ptr.UInt = PStrIsLess(Src, Dst);
+        } break;
+        case OP_STREQU:
+        {
+            PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
+            PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
+            PVM->R[PVM_GET_RD(Opcode)].Ptr.UInt = PStrEqu(Dst, Src);
+        } break;
+        case OP_SETEZ: 
+        {
+            PVM->R[PVM_GET_RD(Opcode)].Word.First = 0 == PVM->R[PVM_GET_RS(Opcode)].Word.First;
+        } break;
         case OP_SEQ: INTEGER_SET_IF(==, Opcode, .Word.First); break;
         case OP_SNE: INTEGER_SET_IF(!=, Opcode, .Word.First); break;
         case OP_SLT: INTEGER_SET_IF(<, Opcode, .Word.First); break;
@@ -312,6 +341,7 @@ do {\
         case OP_SGE: INTEGER_SET_IF(>=, Opcode, .Word.First); break;
         case OP_ISLE: INTEGER_SET_IF(<=, Opcode, .SWord.First); break;
         case OP_ISGE: INTEGER_SET_IF(>=, Opcode, .SWord.First); break;
+
 
         case OP_BR:
         {
@@ -529,6 +559,10 @@ do {\
             PVM->R[PVM_GET_RD(Opcode)].SDWord >>= PVM_GET_RS(Opcode);
         } break;
 
+        case OP_SETEZ64: 
+        {
+            PVM->R[PVM_GET_RD(Opcode)].DWord = 0 == PVM->R[PVM_GET_RS(Opcode)].DWord;
+        } break;
         case OP_SEQ64: INTEGER_SET_IF(==, Opcode, .DWord); break;
         case OP_SNE64: INTEGER_SET_IF(!=, Opcode, .DWord); break;
         case OP_SLT64: INTEGER_SET_IF(<, Opcode, .DWord); break;

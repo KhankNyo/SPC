@@ -8,14 +8,14 @@
 
 USize PStrAddToLen(PascalStr *PStr, ISize Extra)
 {
-    USize OldLen = PStr->Len;
-    if (PStr->Len + Extra > PSTR_MAX_LEN)
+    USize OldLen = PStrGetLen(PStr);
+    if (OldLen + Extra > PSTR_MAX_LEN)
     {
-        PStr->Len = PSTR_MAX_LEN - 1;
+        PStr->LenLeft = 0;
     }
     else
     {
-        PStr->Len += Extra;
+        PStr->LenLeft = PSTR_MAX_LEN - OldLen - Extra;
     }
     return OldLen;
 }
@@ -25,8 +25,8 @@ USize PStrAddToLen(PascalStr *PStr, ISize Extra)
 
 PascalStr PStrInitReserved(USize Len, USize Extra)
 {
-    UNUSED(Extra, Extra);
-    PascalStr PStr = { .Len = Len };
+    UNUSED(Len, Extra);
+    PascalStr PStr = { .LenLeft = PSTR_MAX_LEN };
     return PStr;
 }
 
@@ -71,12 +71,10 @@ void PStrDeinit(PascalStr *PStr)
 
 bool PStrEqu(const PascalStr *s1, const PascalStr *s2)
 {
-    USize Len = PStrGetLen(s1);
-    return Len == PStrGetLen(s2) 
-        && 0 == strncmp(
-                (const char *)PStrGetConstPtr(s1), 
-                (const char *)PStrGetConstPtr(s2), 
-            Len);
+    UInt Len = PStrGetLen(s1);
+    if (Len != PStrGetLen(s2))
+        return false;
+    return 0 == memcmp(PStrGetConstPtr(s1), PStrGetConstPtr(s2), Len);
 }
 
 bool PStrIsLess(const PascalStr *s1, const PascalStr *s2)

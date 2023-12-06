@@ -355,6 +355,7 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     {
         return DisasmSysOp(f, Chunk, Addr, Opcode);
     } break;
+    case OP_SADD: DisasmRdRs(f, "sadd", sIntReg, Opcode); break;
     case OP_ADD: DisasmRdRs(f, "add", sIntReg, Opcode); break;
     case OP_SUB: DisasmRdRs(f, "sub", sIntReg, Opcode); break;
     case OP_MUL: DisasmRdRs(f, "mul", sIntReg, Opcode); break;
@@ -383,6 +384,9 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_BSR: return DisasmBr(f, "bsr", Opcode, Chunk, Addr);
 
 
+    case OP_STRLT: DisasmRdRs(f, "strlt", sIntReg, Opcode); break;
+    case OP_STRGT: DisasmRdRs(f, "strgt", sIntReg, Opcode); break;
+    case OP_STREQU:  DisasmRdRs(f, "strequ", sIntReg, Opcode); break;
     case OP_SEQ: DisasmRdRs(f, "seq", sIntReg, Opcode); break;
     case OP_SNE: DisasmRdRs(f, "sne", sIntReg, Opcode); break;
     case OP_SLT: DisasmRdRs(f, "slt", sIntReg, Opcode); break;
@@ -393,6 +397,7 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_SGE: DisasmRdRs(f, "sge", sIntReg, Opcode); break;
     case OP_ISLE: DisasmRdRs(f, "isle", sIntReg, Opcode); break;
     case OP_ISGE: DisasmRdRs(f, "isge", sIntReg, Opcode); break;
+    case OP_SETEZ: DisasmRdRs(f, "setez", sIntReg, Opcode); break;
 
 
     case OP_PSHL: DisasmReglist(f, "pshl", Opcode, false); break;
@@ -540,6 +545,7 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_SGE64: DisasmRdRs(f, "sge64", sIntReg, Opcode); break;
     case OP_ISLE64: DisasmRdRs(f, "isle64", sIntReg, Opcode); break;
     case OP_ISGE64: DisasmRdRs(f, "isge64", sIntReg, Opcode); break;
+    case OP_SETEZ64: DisasmRdRs(f, "setez64", sIntReg, Opcode); break;
     }
     return Addr + 1;
 }

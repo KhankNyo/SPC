@@ -517,18 +517,6 @@ static void EndScope(PVMCompiler *Compiler)
 
 
 
-static PascalVar *DefineIdentifier(PVMCompiler *Compiler, 
-        const Token *Identifier, IntegralType Type, VarLocation *Location)
-{
-    return VartabSet(CurrentScope(Compiler), Identifier->Str, Identifier->Len, Type, Location);
-}
-
-static PascalVar *DefineGlobal(PVMCompiler *Compiler,
-        const Token *Identifier, IntegralType Type, VarLocation *Location)
-{
-    return VartabSet(Compiler->Global, Identifier->Str, Identifier->Len, Type, Location);
-}
-
 static PascalVar *FindIdentifier(PVMCompiler *Compiler, const Token *Identifier)
 {
     U32 Hash = VartabHashStr(Identifier->Str, Identifier->Len);
@@ -539,15 +527,61 @@ static PascalVar *FindIdentifier(PVMCompiler *Compiler, const Token *Identifier)
     {
         Info = VartabFindWithHash(Compiler->Locals[i], 
                 Identifier->Str, Identifier->Len, Hash
-                );
+        );
         if (NULL != Info)
             return Info;
     }
     Info = VartabFindWithHash(Compiler->Global,
             Identifier->Str, Identifier->Len, Hash
-            );
+    );
     return Info;
 }
+
+
+static PascalVar *DefineAtScope(PVMCompiler *Compiler, PascalVartab *Scope,
+        const Token *Identifier, IntegralType Type, VarLocation *Location)
+{
+    PascalVar *AlreadyDefined = VartabFindWithHash(Scope, 
+            Identifier->Str, Identifier->Len, 
+            VartabHashStr(Identifier->Str, Identifier->Len)
+    );
+    if (AlreadyDefined)
+    {
+        if (0 == AlreadyDefined->Line)
+        {
+            ErrorAt(Compiler, Identifier, "'%.*s' is a predefined identifier in this scope.",
+                    Identifier->Len, Identifier->Str
+            );
+        }
+        else
+        {
+            ErrorAt(Compiler, Identifier, "'%.*s' is already defined on line %d in this scope.", 
+                    Identifier->Len, Identifier->Str,
+                    AlreadyDefined->Line
+            );
+        }
+
+        return AlreadyDefined;
+    }
+    return VartabSet(Scope, 
+            Identifier->Str, Identifier->Len, Identifier->Line, 
+            Type, Location
+    );
+}
+
+static PascalVar *DefineIdentifier(PVMCompiler *Compiler, 
+        const Token *Identifier, IntegralType Type, VarLocation *Location)
+{
+    return DefineAtScope(Compiler, CurrentScope(Compiler), Identifier, Type, Location);
+}
+
+static PascalVar *DefineGlobal(PVMCompiler *Compiler,
+        const Token *Identifier, IntegralType Type, VarLocation *Location)
+{
+    return DefineAtScope(Compiler, Compiler->Global, Identifier, Type, Location);
+}
+
+
 
 /* reports error if identifier is not found */
 static PascalVar *GetIdenInfo(PVMCompiler *Compiler, const Token *Identifier, const char *ErrFmt, ...)
@@ -578,11 +612,15 @@ static IntegralType CoerceTypes(PVMCompiler *Compiler, const Token *Op, Integral
 InvalidTypeCombo:
     if (NULL == Op)
     {
-        Error(Compiler, "Invalid combination of %s and %s.");
+        Error(Compiler, "Invalid combination of %s and %s.", 
+                IntegralTypeToStr(Left), IntegralTypeToStr(Right)
+        );
     }
     else
     {
-        ErrorAt(Compiler, Op, "Invalid combination of %s and %s");
+        ErrorAt(Compiler, Op, "Invalid combination of %s and %s",
+                IntegralTypeToStr(Left), IntegralTypeToStr(Right)
+        );
     }
     return TYPE_INVALID;
 }
@@ -1607,15 +1645,7 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
     {
     case TOKEN_PLUS: 
     {
-        if (TYPE_STRING == Dst.Type)
-        {
-            PASCAL_ASSERT(TYPE_STRING == Src.Type, "%s", __func__);
-
-        }
-        else
-        {
-            PVMEmitAdd(EMITTER(), &Dst, &Src);
-        }
+        PVMEmitAdd(EMITTER(), &Dst, &Src);
     } break;
     case TOKEN_MINUS:
     {
@@ -1656,10 +1686,17 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
     case TOKEN_LESS_GREATER:
     case TOKEN_EQUAL:
     {
-        Dst = PVMEmitSetCC(EMITTER(), OpToken->Type, &Dst, &Src);
+        VarLocation Condition = PVMEmitSetCC(EMITTER(), OpToken->Type, &Dst, &Src);
+        if (Condition.LocationType == VAR_REG && Dst.LocationType == VAR_REG
+        && Condition.As.Register.ID != Dst.As.Register.ID)
+        {
+            FreeExpr(Compiler, Dst);
+        }
+        FreeExpr(Compiler, Src);
+        return Condition;
     } break;
 
-        /* TODO: lazy/bool eval */
+    /* TODO: lazy/bool eval */
     case TOKEN_AND:
     {
         PVMEmitAnd(EMITTER(), &Dst, &Src);

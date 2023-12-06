@@ -8,6 +8,7 @@ typedef enum PVMOp
 {
     OP_SYS,
 
+    OP_SADD,
     OP_ADD,
     OP_SUB,
     OP_MUL,
@@ -32,6 +33,9 @@ typedef enum PVMOp
     OP_VSHR,
     OP_VASR,
 
+    OP_STRLT,
+    OP_STRGT,
+    OP_STREQU,
     OP_SEQ,
     OP_SNE,
     OP_SGT,
@@ -42,6 +46,7 @@ typedef enum PVMOp
     OP_ISLT,
     OP_ISGE,
     OP_ISLE,
+    OP_SETEZ,
 
     OP_BEZ,
     OP_BR,
@@ -193,6 +198,7 @@ typedef enum PVMOp
     OP_ISGT64,
     OP_ISLE64,
     OP_ISGE64,
+    OP_SETEZ64,
 } PVMOp;
 
 typedef enum PVMSysOp

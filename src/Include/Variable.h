@@ -14,6 +14,7 @@ typedef struct PascalVar
 {
     const U8 *Str;
     UInt Len;
+    U32 Line;
     U32 Hash;
 
     IntegralType Type;
