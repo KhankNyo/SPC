@@ -1610,9 +1610,12 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
         if (TYPE_STRING == Dst.Type)
         {
             PASCAL_ASSERT(TYPE_STRING == Src.Type, "%s", __func__);
-            PASCAL_UNREACHABLE("TODO: string concat");
+
         }
-        PVMEmitAdd(EMITTER(), &Dst, &Src);
+        else
+        {
+            PVMEmitAdd(EMITTER(), &Dst, &Src);
+        }
     } break;
     case TOKEN_MINUS:
     {

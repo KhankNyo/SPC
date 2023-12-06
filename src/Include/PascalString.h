@@ -5,44 +5,32 @@
 #include "Common.h"
 
 
-typedef struct PascalDynStr 
-{
-    U8 *Str;
-    USize Cap;
-    USize Len;
-} PascalDynStr;
-
-#define PSTR_MAX_LOCAL_LEN (sizeof(PascalDynStr) - 1)
-#define PSTR_DYN_ISDYNBIT ((USize)1 << (sizeof(USize)*8 - 1))
-#define PSTR_LOC_ISDYNBIT (0x80)
-typedef struct PascalLocStr 
-{
-    U8 Str[PSTR_MAX_LOCAL_LEN];
-    U8 LenLeft;
-} PascalLocStr;
-
+#define PSTR_MAX_LEN 256
 
 typedef struct PascalStr 
 {
     union {
-        PascalDynStr Dyn;
-        PascalLocStr Loc;
+        struct {
+            U8 Len;
+            U8 Text[PSTR_MAX_LEN];
+        };
+        U8 Data[PSTR_MAX_LEN + 1];
     };
 } PascalStr;
 
-PASCAL_STATIC_ASSERT(sizeof(PascalDynStr) == sizeof(PascalLocStr), "Incompatible sizes");
+PASCAL_STATIC_ASSERT(offsetof(PascalStr, Len) == 0, "Pascal string");
 
 
 
-bool PStrIsDyn(const PascalStr *PStr);
+static inline bool PStrIsDyn(const PascalStr *PStr) { UNUSED(PStr, PStr); return false; }
 
-U8 *PStrGetPtr(PascalStr *PStr);
-const U8 *PStrGetConstPtr(const PascalStr *PStr);
+static inline U8 *PStrGetPtr(PascalStr *PStr) { return PStr->Text; }
+static inline const U8 *PStrGetConstPtr(const PascalStr *PStr) { return PStr->Text; }
 
-USize PStrGetLen(const PascalStr *PStr);
-USize PStrGetCap(const PascalStr *PStr);
+static inline USize PStrGetLen(const PascalStr *PStr) { return PStr->Len; }
+static inline USize PStrGetCap(const PascalStr *PStr) { UNUSED(PStr, PStr); return PSTR_MAX_LEN; }
+static inline void PStrReserve(PascalStr *PStr, USize NewCapacity) { UNUSED(PStr, NewCapacity); }
 USize PStrAddToLen(PascalStr *PStr, ISize Extra);
-USize PStrReserve(PascalStr *PStr, USize NewCapacity);
 
 
 PascalStr PStrInitReserved(USize Len, USize Extra);
