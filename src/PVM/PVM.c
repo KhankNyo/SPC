@@ -415,7 +415,12 @@ do {\
         case OP_GETFCC: PVM->R[PVM_GET_RD(Opcode)].Word.First = PVM->FloatCondition; break;
 
 
-
+        case OP_SCPY:
+        {
+            PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
+            const PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
+            PStrCopyInto(Dst, Src);
+        } break;
         case OP_MOV32:       MOVE_INTEGER(Opcode, .Word.First, .Word.First); break;
         case OP_MOVZEX32_8:  MOVE_INTEGER(Opcode, .Word.First, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
         case OP_MOVZEX32_16: MOVE_INTEGER(Opocde, .Word.First, .Half.First); break;

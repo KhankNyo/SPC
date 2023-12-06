@@ -6,6 +6,17 @@
 
 
 
+
+void PStrSetLen(PascalStr *PStr, USize Len)
+{
+    if (Len > PSTR_MAX_LEN)
+    {
+        PStr->LenLeft = PSTR_MAX_LEN;
+        return;
+    }
+    PStr->LenLeft = PSTR_MAX_LEN - Len;
+}
+
 USize PStrAddToLen(PascalStr *PStr, ISize Extra)
 {
     USize OldLen = PStrGetLen(PStr);

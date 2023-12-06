@@ -3,6 +3,7 @@
 
 
 #include "Common.h"
+#include <string.h>
 
 
 #define PSTR_MAX_LEN 255
@@ -29,6 +30,7 @@ static inline const U8 *PStrGetConstPtr(const PascalStr *PStr) { return PStr->Te
 static inline USize PStrGetLen(const PascalStr *PStr) { return PSTR_MAX_LEN - PStr->LenLeft; }
 static inline USize PStrGetCap(const PascalStr *PStr) { UNUSED(PStr, PStr); return PSTR_MAX_LEN; }
 static inline void PStrReserve(PascalStr *PStr, USize NewCapacity) { UNUSED(PStr, NewCapacity); }
+void PStrSetLen(PascalStr *PStr, USize Len);
 USize PStrAddToLen(PascalStr *PStr, ISize Extra);
 
 
@@ -50,6 +52,12 @@ USize PStrAppendStr(PascalStr *PStr, const U8 *Str, USize Len);
 static inline USize PStrConcat(PascalStr *Dst, const PascalStr *Src) 
 { 
     return PStrAppendStr(Dst, PStrGetConstPtr(Src), PStrGetLen(Src)); 
+}
+static inline void PStrCopyInto(PascalStr *Dst, const PascalStr *Src)
+{
+    USize Len = PStrGetLen(Src);
+    memcpy(PStrGetPtr(Dst), PStrGetConstPtr(Src), Len);
+    PStrSetLen(Dst, Len);
 }
 
 
