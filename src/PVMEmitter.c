@@ -10,11 +10,13 @@
 #define EMPTY_REGLIST 0xE000
 
 #if UINTPTR_MAX == UINT32_MAX
-#  define CASE_PTR32(Colon) case TYPE_POINTER Colon
+#  define CASE_PTR32(Colon) case TYPE_POINTER Colon\
+                            case TYPE_STRING Colon
 #  define CASE_PTR64(Colon)
 #else
 #  define CASE_PTR32(Colon)
-#  define CASE_PTR64(Colon) case TYPE_POINTER Colon
+#  define CASE_PTR64(Colon) case TYPE_POINTER Colon\
+                            case TYPE_STRING Colon
 #endif
 
 
@@ -233,7 +235,7 @@ Unreachable:
     {
         switch (SrcType) 
         {
-        case TYPE_F32: WriteOp16(Emitter, PVM_OP(FMOV, Dst->ID, Src.ID)); break;
+        case TYPE_F32: if (Dst->ID != Src.ID) WriteOp16(Emitter, PVM_OP(FMOV, Dst->ID, Src.ID)); break;
         case TYPE_F64: WriteOp16(Emitter, PVM_OP(F64TOF32, Dst->ID, Src.ID)); break;
         case TYPE_U8:
         case TYPE_U16:
@@ -267,7 +269,7 @@ Unreachable:
         switch (SrcType) 
         {
         case TYPE_F32: WriteOp16(Emitter, PVM_OP(F32TOF64, Dst->ID, Src.ID)); break;
-        case TYPE_F64: WriteOp16(Emitter, PVM_OP(FMOV64, Dst->ID, Src.ID)); break;
+        case TYPE_F64: if (Dst->ID != Src.ID) WriteOp16(Emitter, PVM_OP(FMOV64, Dst->ID, Src.ID)); break;
         case TYPE_U8:
         case TYPE_U16:
         case TYPE_U32:
@@ -1630,7 +1632,9 @@ VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType)
     {
         ReturnValue.As.Register.ID = Emitter->ReturnValue.As.Register.ID + PVM_REG_COUNT;
     }
-    return Emitter->ReturnValue;
+    ReturnValue.Type = ReturnType;
+    PASCAL_ASSERT(ReturnValue.LocationType == VAR_REG, "??");
+    return ReturnValue;
 }
 
 
