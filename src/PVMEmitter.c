@@ -120,7 +120,7 @@ static void PVMMarkRegisterAsFreed(PVMEmitter *Emitter, UInt Reg)
     Emitter->Reglist &= ~((U32)1 << Reg);
 }
 
-static void PVMEmitPush(PVMEmitter *Emitter, UInt Reg)
+static void PVMEmitPushReg(PVMEmitter *Emitter, UInt Reg)
 {
     if (Reg < PVM_REG_COUNT / 2)
     {
@@ -704,7 +704,7 @@ VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type)
     /* spill register */
     UInt Reg = Emitter->SpilledRegCount % PVM_REG_COUNT;
     Emitter->SpilledRegCount++;
-    PVMEmitPush(Emitter, Reg);
+    PVMEmitPushReg(Emitter, Reg);
 
     return (VarLocation) {
         .LocationType = VAR_REG,
@@ -1705,6 +1705,18 @@ VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType)
 }
 
 
+void PVMEmitPush(PVMEmitter *Emitter, const VarLocation *Location)
+{
+    VarLocation Reg;
+    bool Owning = PVMEmitIntoReg(Emitter, &Reg, Location);
+    PVMEmitPushReg(Emitter, Reg.As.Register.ID);
+    if (Owning)
+    {
+        PVMFreeRegister(Emitter, Reg.As.Register);
+    }
+}
+
+
 
 
 
@@ -1793,6 +1805,8 @@ void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 
 U32 PVMEmitCall(PVMEmitter *Emitter, const VarSubroutine *Callee)
 {
+    PASCAL_ASSERT(NULL != Callee, "%s", __func__);
+
     U32 CurrentLocation = PVMCurrentChunk(Emitter)->Count;
     U32 Location = Callee->Location - CurrentLocation - PVM_BRANCH_INS_SIZE;
     WriteOp32(Emitter, PVM_BSR(Location >> 16), Location & 0xFFFF);
@@ -1825,6 +1839,7 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 
 
 
+
 /* exit/return */
 void PVMEmitExit(PVMEmitter *Emitter)
 {
@@ -1832,6 +1847,12 @@ void PVMEmitExit(PVMEmitter *Emitter)
 }
 
 
+
+/* system calls */
+void PVMEmitWrite(PVMEmitter *Emitter)
+{
+    WriteOp16(Emitter, PVM_SYS(WRITE));
+}
 
 
 

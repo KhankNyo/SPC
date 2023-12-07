@@ -201,9 +201,12 @@ typedef enum PVMOp
     OP_SETEZ64,
 } PVMOp;
 
+/* sys ops uses Pascal calling convention, 
+ * including callee cleanup */
 typedef enum PVMSysOp
 {
     OP_SYS_EXIT,
+    OP_SYS_WRITE,
 } PVMSysOp;
 
 typedef enum PVMImmType 

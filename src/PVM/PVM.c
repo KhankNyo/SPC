@@ -238,6 +238,25 @@ do {\
                 FP().Ptr = PVM->RetStack.Val->FP;
                 PVM->RetStack.SizeLeft++;
             } break;
+            case OP_SYS_WRITE:
+            {
+                U32 ArgCount = PVM->R[0].Word.First;
+                PascalStr **Ptr = SP().Ptr.Raw;
+                Ptr--;
+                for (U32 i = 0; i < ArgCount; i++)
+                {
+                    PASCAL_ASSERT(NULL != *Ptr, "Unreachable");
+                    const PascalStr *PStr = *Ptr;
+                    fprintf(stdout, "%.*s", 
+                            (int)PStrGetLen(PStr), PStrGetConstPtr(PStr)
+                    );
+                    Ptr--;
+                    PASCAL_ASSERT((void*)Ptr > FP().Ptr.Raw, "Unreachable");
+                }
+                /* callee does the cleanup */
+                /* TODO: this is outrageously unsafe */
+                SP().Ptr.Raw = Ptr;
+            } break;
             }
         } break;
 

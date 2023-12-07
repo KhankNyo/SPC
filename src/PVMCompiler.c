@@ -1888,6 +1888,49 @@ static void CompileStmt(PVMCompiler *Compiler);
 
 
 
+
+static void CompileWriteStmt(PVMCompiler *Compiler, bool NewLine)
+{
+    /* 'write(ln)' consumed */
+    Token Keyword = Compiler->Curr;
+    CompilerInitDebugInfo(Compiler, &Keyword);
+    U32 ArgCount = 0;
+
+    /* arguments */
+    if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+    {
+        if (!ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
+        {
+            do {
+                VarLocation Arg = CompileExpr(Compiler);
+                PVMEmitPush(EMITTER(), &Arg);
+                FreeExpr(Compiler, Arg);
+
+                ArgCount++;
+            } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
+            ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after argument list.");
+        }
+    }
+
+    if (NewLine)
+    {
+        PASCAL_UNREACHABLE("TODO: writeln");
+    }
+
+    /* argcount */
+    VarLocation Argc = {
+        .Type = TypeOfIntLit(ArgCount),
+        .LocationType = VAR_LIT,
+        .As.Literal.Int = ArgCount,
+    };
+    VarLocation ArgCountReg = PVMSetArgType(EMITTER(), 0, Argc.Type);
+    PVMEmitMov(EMITTER(), &ArgCountReg, &Argc);
+    PVMEmitWrite(EMITTER());
+    
+    CompilerEmitDebugInfo(Compiler, &Keyword);
+}
+
+
 static void CompileExitStmt(PVMCompiler *Compiler)
 {
     /* 'exit' consumed */
@@ -2320,6 +2363,16 @@ static void CompileStmt(PVMCompiler *Compiler)
     {
         ConsumeToken(Compiler);
         CompileExitStmt(Compiler);
+    } break;
+    case TOKEN_WRITELN:
+    {
+        ConsumeToken(Compiler);
+        CompileWriteStmt(Compiler, true);
+    } break;
+    case TOKEN_WRITE:
+    {
+        ConsumeToken(Compiler);
+        CompileWriteStmt(Compiler, false);
     } break;
     case TOKEN_SEMICOLON:
     {

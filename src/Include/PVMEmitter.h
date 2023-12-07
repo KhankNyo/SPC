@@ -112,6 +112,7 @@ VarLocation PVMSetParamType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType Pa
 VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgType);
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg);
 VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType);
+void PVMEmitPush(PVMEmitter *Emitter, const VarLocation *Location);
 
 
 /* stack instructions */
@@ -136,6 +137,10 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
 
 /* exit/return */
 void PVMEmitExit(PVMEmitter *Emitter);
+
+
+/* system calls */
+void PVMEmitWrite(PVMEmitter *Emitter);
 
 
 #endif /* PASCAL_VM2_EMITTER_H */
