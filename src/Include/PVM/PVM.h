@@ -34,6 +34,7 @@ typedef struct PascalVM
     } RetStack;
 
     bool SingleStepMode;
+    FILE *LogFile;
     struct {
         int Line;
         U32 PC;

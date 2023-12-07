@@ -1,4 +1,5 @@
 
+#include <stdarg.h>
 #include "PVM/Isa.h"
 #include "PVMEmitter.h"
 
@@ -786,6 +787,7 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
         DerefIntoReg(Emitter, &Dst->As.Register, Dst->Type, Src->As.Memory, Src->Type);
         return;
     }
+    /* TODO: mov imm straight into reg */
 
 
     /* make sure src is in reg */
@@ -1705,15 +1707,24 @@ VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType)
 }
 
 
-void PVMEmitPush(PVMEmitter *Emitter, const VarLocation *Location)
+void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...)
 {
-    VarLocation Reg;
-    bool Owning = PVMEmitIntoReg(Emitter, &Reg, Location);
-    PVMEmitPushReg(Emitter, Reg.As.Register.ID);
-    if (Owning)
+    va_list Args;
+    va_start(Args, Count);
+    for (int i = 0; i < Count; i++)
     {
-        PVMFreeRegister(Emitter, Reg.As.Register);
+        VarLocation Reg;
+        VarLocation *Location = va_arg(Args, VarLocation *);
+        bool Owning = PVMEmitIntoReg(Emitter, &Reg, Location);
+
+        PVMEmitPushReg(Emitter, Reg.As.Register.ID);
+
+        if (Owning)
+        {
+            PVMFreeRegister(Emitter, Reg.As.Register);
+        }
     }
+    va_end(Args);
 }
 
 

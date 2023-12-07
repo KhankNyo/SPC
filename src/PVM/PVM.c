@@ -1,6 +1,7 @@
 
 #include <time.h>
 #include <stdarg.h>
+#include <inttypes.h>
 
 #include "Memory.h"
 #include "Common.h"
@@ -20,6 +21,7 @@ PascalVM PVMInit(U32 StackSize, UInt RetStackSize)
         .RetStack.Start = MemAllocateArray(PVM.RetStack.Start[0], RetStackSize),
         .RetStack.SizeLeft = RetStackSize,
 
+        .LogFile = stderr,
         .Error = { 0 }, 
         .SingleStepMode = false,
     };
@@ -36,21 +38,94 @@ void PVMDeinit(PascalVM *PVM)
 }
 
 
-static void RuntimeError(PascalVM *PVM, const char *Fmt, ...)
+static void RuntimeError(const PascalVM *PVM, const char *Fmt, ...)
 {
     va_list Args;
     va_start(Args, Fmt);
-    fprintf(stdout, "Runtime Error: [line %d]:\n\t", PVM->Error.Line);
-    fprintf(stdout, Fmt, Args);
+    if (NULL == PVM->LogFile)
+    {
+        fprintf(PVM->LogFile, "Runtime Error: [line %d]:\n\t", PVM->Error.Line);
+        fprintf(PVM->LogFile, Fmt, Args);
+    }
     va_end(Args);
+}
+
+static const PascalStr *RuntimeTypeToStr(IntegralType Type, PVMGPR Data)
+{
+#define INTEGER_TO_STR(Fmt, RegType) do {\
+    char *Str = (char *)PStrGetPtr(&Tmp);\
+    int Len = snprintf(Str, PSTR_MAX_LEN, Fmt, Data RegType);\
+    PStrSetLen(&Tmp, Len);\
+} while (0)
+
+    static PascalStr Tmp;
+    PStrSetLen(&Tmp, 0);
+
+    switch (Type)
+    {
+    case TYPE_STRING: return Data.Ptr.Raw;
+
+    case TYPE_I8:  INTEGER_TO_STR("%"PRIi8, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
+    case TYPE_I16: INTEGER_TO_STR("%"PRIi16, .SHalf.First); break;
+    case TYPE_I32: INTEGER_TO_STR("%"PRIi32, .SWord.First); break;
+    case TYPE_I64: INTEGER_TO_STR("%"PRIi64, .SDWord); break;
+
+    case TYPE_U8:  INTEGER_TO_STR("%"PRIu8, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
+    case TYPE_U16: INTEGER_TO_STR("%"PRIu16, .Half.First); break;
+    case TYPE_U32: INTEGER_TO_STR("%"PRIu32, .Word.First); break;
+    case TYPE_U64: INTEGER_TO_STR("%"PRIu64, .DWord); break;
+
+    case TYPE_BOOLEAN:
+    {
+        if (Data.Word.First)
+        {
+            Tmp = PStrCopy((const U8*)"TRUE", sizeof("TRUE") - 1);
+        }
+        else
+        {
+            Tmp = PStrCopy((const U8*)"FALSE", sizeof("FALSE") - 1);
+        }
+    } break;
+    case TYPE_POINTER:
+    {
+    } break;
+    case TYPE_F64:
+    { 
+        char *Str = (char *)PStrGetPtr(&Tmp);
+        F64 f64;
+        memcpy(&f64, &Data, sizeof f64);
+        int Len = snprintf(Str, PSTR_MAX_LEN, "%f", f64);
+        PStrSetLen(&Tmp, Len);
+    } break;
+    case TYPE_F32:
+    {
+        char *Str = (char *)PStrGetPtr(&Tmp);
+        F32 f32;
+        memcpy(&f32, &Data, sizeof f32);
+        int Len = snprintf(Str, PSTR_MAX_LEN, "%f", f32);
+        PStrSetLen(&Tmp, Len);
+    } break;
+
+    case TYPE_FUNCTION:
+    case TYPE_COUNT:
+    case TYPE_INVALID:
+    {
+        PASCAL_UNREACHABLE("Invalid type in %s", __func__);
+    } break;
+
+    }
+
+    return &Tmp;
+
+#undef INTEGER_TO_STR
 }
 
 
 bool PVMRun(PascalVM *PVM, PVMChunk *Chunk)
 {
 #ifdef DEBUG
-    PVMDisasm(stdout, Chunk, "Compiled Code");
-    fprintf(stdout, "Press Enter to execute...\n");
+    PVMDisasm(PVM->LogFile, Chunk, "Compiled Code");
+    fprintf(PVM->LogFile, "Press Enter to execute...\n");
     getc(stdin);
 #endif /* DEBUG */
 
@@ -60,31 +135,34 @@ bool PVMRun(PascalVM *PVM, PVMChunk *Chunk)
     double End = clock();
 
 #ifdef DEBUG
-    PVMDumpState(stdout, PVM, 4);
+    PVMDumpState(PVM->LogFile, PVM, 4);
 #endif /* DEBUG */
 
 
-    switch (Ret)
+    if (NULL != PVM->LogFile)
     {
-    case PVM_NO_ERROR:
-    {
-        fprintf(stdout, "Finished execution.\n"
-                "Time elapsed: %f ms\n", (End - Start) * 1000 / CLOCKS_PER_SEC
-        );
-        NoError = true;
-    } break;
-    case PVM_CALLSTACK_OVERFLOW:
-    {
-        RuntimeError(PVM, "Callstack overflow");
-    } break;
-    case PVM_DIVISION_BY_0:
-    {
-        RuntimeError(PVM, "Integer division by 0");
-    } break;
-    case PVM_ILLEGAL_INSTRUCTION:
-    {
-        RuntimeError(PVM, "IllegalInstruction");
-    } break;
+        switch (Ret)
+        {
+        case PVM_NO_ERROR:
+        {
+            fprintf(PVM->LogFile, "Finished execution.\n"
+                    "Time elapsed: %f ms\n", (End - Start) * 1000 / CLOCKS_PER_SEC
+            );
+            NoError = true;
+        } break;
+        case PVM_CALLSTACK_OVERFLOW:
+        {
+            RuntimeError(PVM, "Callstack overflow");
+        } break;
+        case PVM_DIVISION_BY_0:
+        {
+            RuntimeError(PVM, "Integer division by 0");
+        } break;
+        case PVM_ILLEGAL_INSTRUCTION:
+        {
+            RuntimeError(PVM, "IllegalInstruction");
+        } break;
+        }
     }
     return NoError;
 }
@@ -245,22 +323,30 @@ do {\
             } break;
             case OP_SYS_WRITE:
             {
-                U32 ArgCount = PVM->R[0].Word.First;
-                PascalStr **Ptr = SP().Ptr.Raw;
-                Ptr -= ArgCount - 1;
+                U32 ArgCount = PVM->R[PVM_ARGREG_0].Word.First;
+                PVMGPR *Ptr = SP().Ptr.Raw;
+                /* TODO: make this more clear */
+                Ptr -= ArgCount*2 - 1;
+                PVMGPR *Cleanup = Ptr;
+                PASCAL_ASSERT((void*)Ptr >= FP().Ptr.Raw, "Unreachable: %d", ArgCount);
+
+                FILE *OutFile = stdout;
+                if (NULL != PVM->R[PVM_ARGREG_1].Ptr.Raw)
+                {
+                    OutFile = PVM->R[PVM_ARGREG_1].Ptr.Raw;
+                }
+
                 for (U32 i = 0; i < ArgCount; i++)
                 {
-                    PASCAL_ASSERT(NULL != *Ptr, "Unreachable");
-                    const PascalStr *PStr = *Ptr;
-                    fprintf(stdout, "%.*s", 
+                    IntegralType Type = (*Ptr++).DWord;
+                    const PascalStr *PStr = RuntimeTypeToStr(Type, *Ptr++);
+                    fprintf(OutFile, "%.*s", 
                             (int)PStrGetLen(PStr), PStrGetConstPtr(PStr)
                     );
-                    Ptr++;
-                    PASCAL_ASSERT((void*)Ptr >= FP().Ptr.Raw, "Unreachable");
                 }
                 /* callee does the cleanup */
-                /* TODO: this is outrageously unsafe */
-                SP().Ptr.Raw = Ptr;
+                SP().Ptr.Raw = Cleanup - 1;
+                PASCAL_ASSERT((void*)Ptr >= FP().Ptr.Raw, "Unreachable: %d", ArgCount);
             } break;
             }
         } break;
@@ -481,7 +567,7 @@ do {\
         case OP_MOVQI:
         {
             I32 Imm = BIT_SEX32(PVM_GET_RS(Opcode), 3);
-            PVM->R[PVM_GET_RD(Opcode)].SWord.First = Imm;
+            PVM->R[PVM_GET_RD(Opcode)].SDWord = Imm;
         } break;
         case OP_FMOV:   MOVE_FLOAT(Opcode, .Single, .Single); break;
         case OP_FMOV64: MOVE_FLOAT(Opcode, .Double, .Double); break;

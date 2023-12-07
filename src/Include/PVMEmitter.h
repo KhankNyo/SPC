@@ -112,7 +112,7 @@ VarLocation PVMSetParamType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType Pa
 VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgType);
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg);
 VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType);
-void PVMEmitPush(PVMEmitter *Emitter, const VarLocation *Location);
+void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...);
 
 
 /* stack instructions */

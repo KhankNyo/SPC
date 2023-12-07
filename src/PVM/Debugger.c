@@ -13,23 +13,23 @@ void PVMDebugPause(const PascalVM *PVM, const PVMChunk *Chunk,
         const U16 *IP, const PVMPTR SP, const PVMPTR FP
 )
 {
-    fprintf(stderr, "\n ==================== Debugger ==================== \n");
+    fprintf(PVM->LogFile, "\n ==================== Debugger ==================== \n");
 
-    fprintf(stderr, 
+    fprintf(PVM->LogFile, 
             "IP: [%p]: \n",
             (const void*)IP
     );
-    PVMDisasmSingleInstruction(stderr, Chunk, IP - Chunk->Code);
+    PVMDisasmSingleInstruction(PVM->LogFile, Chunk, IP - Chunk->Code);
 
-    fprintf(stderr, 
+    fprintf(PVM->LogFile, 
             "SP: [%p]: %08"PRIx64"\n"
             "FP: [%p]\n",
             SP.Raw, SP.UInt,
             FP.Raw
     );
 
-    PVMDumpState(stderr, PVM, 6);
-    fprintf(stderr, "Press Enter to continue.\n");
+    PVMDumpState(PVM->LogFile, PVM, 6);
+    fprintf(PVM->LogFile, "Press Enter to continue.\n");
 
     char Dummy[4];
     fgets(Dummy, sizeof Dummy, stdin);

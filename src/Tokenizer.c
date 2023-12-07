@@ -420,7 +420,7 @@ static Token ErrorToken(PascalTokenizer *Lexer, const char *ErrMsg)
 }
 
 
-static Token ConsumeHex(PascalTokenizer *Lexer)
+static U64 ConsumeHexNumber(PascalTokenizer *Lexer)
 {
     U64 Hex = 0;
     while (IsHex(*Lexer->Curr))
@@ -434,6 +434,35 @@ static Token ConsumeHex(PascalTokenizer *Lexer)
         Hex *= 16;
         Hex += Hexit;
     }
+    return Hex;
+}
+
+static U64 ConsumeBinaryNumber(PascalTokenizer *Lexer)
+{
+    U64 Bin = 0;
+    while ('0' == *Lexer->Curr || '1' == *Lexer->Curr)
+    {
+        Bin *= 2;
+        Bin += AdvanceChrPtr(Lexer) - '0';
+    }
+    return Bin;
+}
+
+static U64 ConsumeInteger(PascalTokenizer *Lexer)
+{
+    U64 n = 0;
+    while (!IsAtEnd(Lexer) && IsNumber(*Lexer->Curr))
+    {
+        n *= 10;
+        n += AdvanceChrPtr(Lexer) - '0';
+    }
+    return n;
+}
+
+
+static Token ConsumeHex(PascalTokenizer *Lexer)
+{
+    U64 Hex = ConsumeHexNumber(Lexer);
     if (IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
         return ErrorToken(Lexer, "Invalid character after number.");
 
@@ -444,12 +473,7 @@ static Token ConsumeHex(PascalTokenizer *Lexer)
 
 static Token ConsumeBinary(PascalTokenizer *Lexer)
 {
-    U64 Bin = 0;
-    while ('0' == *Lexer->Curr || '1' == *Lexer->Curr)
-    {
-        Bin *= 2;
-        Bin += AdvanceChrPtr(Lexer) - '0';
-    }
+    U64 Bin = ConsumeBinaryNumber(Lexer);
     if (IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
         return ErrorToken(Lexer, "Invalid character after number.");
 
@@ -469,14 +493,8 @@ static Token ConsumeNumber(PascalTokenizer *Lexer)
     }
 
 
-    U64 Integer = 0;
     Lexer->Curr = Lexer->Start;
-    while (IsNumber(*Lexer->Curr))
-    {
-        Integer *= 10;
-        Integer += AdvanceChrPtr(Lexer) - '0';
-    }
-
+    U64 Integer = ConsumeInteger(Lexer);
 
     /* decimal, or Real */
     if ('.' == *Lexer->Curr)
@@ -506,12 +524,7 @@ static Token ConsumeNumber(PascalTokenizer *Lexer)
             bool Sign = AdvanceIfEqual(Lexer, '-');
 
             /* consume exponent */
-            UInt Exponent = 0;
-            while (IsNumber(*Lexer->Curr))
-            {
-                Exponent *= 10;
-                Exponent += AdvanceChrPtr(Lexer) - '0';
-            }
+            UInt Exponent = ConsumeInteger(Lexer);
             static const U64 PowersOf10[] = {
                 1, 10, 100, 1000,
                 10000,
@@ -592,10 +605,17 @@ static Token ConsumeString(PascalTokenizer *Lexer)
 
             /* consume number */
             U8 EscCode = 0;
-            while (!IsAtEnd(Lexer) && IsNumber(*Lexer->Curr))
+            if (AdvanceIfEqual(Lexer, '$'))
             {
-                EscCode *= 10;
-                EscCode += AdvanceChrPtr(Lexer) - '0';
+                EscCode = ConsumeHexNumber(Lexer);
+            }
+            else if (AdvanceIfEqual(Lexer, '%'))
+            {
+                EscCode = ConsumeBinaryNumber(Lexer);
+            }
+            else 
+            {
+                EscCode = ConsumeInteger(Lexer);
             }
 
             PStrAppendChr(&Literal, EscCode);

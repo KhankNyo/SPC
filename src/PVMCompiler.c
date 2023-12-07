@@ -1907,6 +1907,10 @@ static void CompileWriteStmt(PVMCompiler *Compiler, bool NewLine)
     CompilerInitDebugInfo(Compiler, &Keyword);
     U32 ArgCount = 0;
 
+
+    /* register args */
+    PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
+
     /* arguments */
     if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
     {
@@ -1914,7 +1918,12 @@ static void CompileWriteStmt(PVMCompiler *Compiler, bool NewLine)
         {
             do {
                 VarLocation Arg = ParsePrecedence(Compiler, PREC_EXPR);
-                PVMEmitPush(EMITTER(), &Arg);
+                VarLocation ArgType = {
+                    .Type = TYPE_U32,
+                    .LocationType = VAR_LIT,
+                    .As.Literal.Int = Arg.Type,
+                };
+                PVMEmitPushMultiple(EMITTER(), 2, &ArgType, &Arg);
                 FreeExpr(Compiler, Arg);
 
                 ArgCount++;
@@ -1933,20 +1942,39 @@ static void CompileWriteStmt(PVMCompiler *Compiler, bool NewLine)
                 .Text = "\n",
             },
         };
-        PVMEmitPush(EMITTER(), &NewLineLiteral);
+        static const VarLocation LiteralType = {
+            .Type = TYPE_U32,
+            .LocationType = VAR_LIT,
+            .As.Literal.Int = TYPE_STRING,
+        };
+        PVMEmitPushMultiple(EMITTER(), 2, &LiteralType, &NewLineLiteral);
         ArgCount++;
     }
 
     /* argcount */
-    VarLocation Argc = {
+    const VarLocation Argc = {
         .Type = TypeOfIntLit(ArgCount),
         .LocationType = VAR_LIT,
         .As.Literal.Int = ArgCount,
     };
-    VarLocation ArgCountReg = PVMSetArgType(EMITTER(), 0, Argc.Type);
+    VarLocation ArgCountReg = PVMSetArgType(EMITTER(), PVM_ARGREG_0, Argc.Type);
     PVMEmitMov(EMITTER(), &ArgCountReg, &Argc);
+    PVMMarkRegisterAsAllocated(EMITTER(), PVM_ARGREG_0);
+
+    /* file */
+    const VarLocation File = {
+        .Type = TYPE_POINTER,
+        .LocationType = VAR_LIT,
+        .As.Literal.Ptr = NULL,
+    };
+    VarLocation FileReg = PVMSetArgType(EMITTER(), PVM_ARGREG_1, File.Type);
+    PVMEmitMov(EMITTER(), &FileReg, &File);
+    PVMMarkRegisterAsAllocated(EMITTER(), PVM_ARGREG_1);
+
+    /* call to write */
     PVMEmitWrite(EMITTER());
-    
+    PVMEmitUnsaveCallerRegs(EMITTER(), NO_RETURN_REG);
+
     CompilerEmitDebugInfo(Compiler, &Keyword);
 }
 
