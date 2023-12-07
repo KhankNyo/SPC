@@ -59,6 +59,7 @@ static const PascalStr *RuntimeTypeToStr(IntegralType Type, PVMGPR Data)
 } while (0)
 
     static PascalStr Tmp;
+    char *Str = (char *)PStrGetPtr(&Tmp);
     PStrSetLen(&Tmp, 0);
 
     switch (Type)
@@ -88,10 +89,19 @@ static const PascalStr *RuntimeTypeToStr(IntegralType Type, PVMGPR Data)
     } break;
     case TYPE_POINTER:
     {
+        int Len;
+        if (NULL == Data.Ptr.Raw)
+        {
+            Len = snprintf(Str, PSTR_MAX_LEN, "nil");
+        }
+        else
+        { 
+            Len = snprintf(Str, PSTR_MAX_LEN, "%p", Data.Ptr.Raw);
+        }
+        PStrSetLen(&Tmp, Len);
     } break;
     case TYPE_F64:
     { 
-        char *Str = (char *)PStrGetPtr(&Tmp);
         F64 f64;
         memcpy(&f64, &Data, sizeof f64);
         int Len = snprintf(Str, PSTR_MAX_LEN, "%f", f64);
@@ -99,7 +109,6 @@ static const PascalStr *RuntimeTypeToStr(IntegralType Type, PVMGPR Data)
     } break;
     case TYPE_F32:
     {
-        char *Str = (char *)PStrGetPtr(&Tmp);
         F32 f32;
         memcpy(&f32, &Data, sizeof f32);
         int Len = snprintf(Str, PSTR_MAX_LEN, "%f", f32);
