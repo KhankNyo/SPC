@@ -1529,6 +1529,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
             Result.As.Literal.Flt = Left->As.Literal.Flt * Right->As.Literal.Flt;
             Result.Type = Both;
         } 
+        else goto InvalidTypeConversion;
     } break;
     case TOKEN_DIV:
     case TOKEN_SLASH:
@@ -1548,8 +1549,8 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
             Result.As.Literal.Flt = Left->As.Literal.Flt / Right->As.Literal.Flt;
             Result.Type = Both;
         } 
+        else goto InvalidTypeConversion;
     } break;
-    case TOKEN_PERCENT:
     case TOKEN_MOD:
     {
         if (IntegralTypeIsInteger(Both))
@@ -1562,6 +1563,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
             Result.As.Literal.Int = Left->As.Literal.Int % Right->As.Literal.Int;
             Result.Type = Both;
         }
+        else goto InvalidTypeConversion;
     } break;
 
     case TOKEN_EQUAL:           COMPARE_OP(==); break;
@@ -1571,7 +1573,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     case TOKEN_LESS_EQUAL:      COMPARE_OP(<=); break;
     case TOKEN_GREATER_EQUAL:   COMPARE_OP(>=); break;
 
-                                /* TODO: issue a warning if shift amount > integer width */
+    /* TODO: issue a warning if shift amount > integer width */
     case TOKEN_SHL:
     case TOKEN_LESS_LESS:
     {
@@ -1580,12 +1582,14 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
             Result.As.Literal.Int = Left->As.Literal.Int << Right->As.Literal.Int;
             Result.Type = TypeOfIntLit(Result.As.Literal.Int);
         }
+        else goto InvalidTypeConversion;
     } break;
     case TOKEN_SHR:
     case TOKEN_GREATER_GREATER:
     {
-        if (IntegralTypeIsInteger(Both))
+        if (IntegralTypeIsInteger(Left->Type) && IntegralTypeIsInteger(Right->Type))
         {
+            /* sign bit */
             if (Left->As.Literal.Int >> 63)
             {
                 Result.As.Literal.Int = ArithmeticShiftRight(Left->As.Literal.Int, Right->As.Literal.Int);
@@ -1596,11 +1600,19 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
             }
             Result.Type = TypeOfIntLit(Result.As.Literal.Int);
         }
+        else goto InvalidTypeConversion;
     } break;
 
     case TOKEN_AND: INT_AND_BOOL_OP(&); break;
     case TOKEN_OR:  INT_AND_BOOL_OP(|); break;
-    case TOKEN_XOR: INT_AND_BOOL_OP(^); break;
+    case TOKEN_XOR:
+    {
+        if (IntegralTypeIsInteger(Left->Type) && IntegralTypeIsInteger(Right->Type))
+        {
+            Result.As.Literal.Int = Left->As.Literal.Int ^ Right->As.Literal.Int;
+        }
+        else goto InvalidTypeConversion;
+    } break;
     default:
     {
         PASCAL_UNREACHABLE("Unreachable operator in %s: %s", __func__, TokenTypeToStr(OpToken->Type));
@@ -1615,7 +1627,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
 InvalidTypeConversion:
     ErrorAt(Compiler, OpToken, "Invalid combination of type %s and %s", 
             IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right->Type)
-           );
+    );
     return *Left;
 #undef COMMON_BIN_OP
 #undef COMPARE_OP
@@ -1663,7 +1675,6 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
     {
         PVMEmitDiv(EMITTER(), &Dst, &Src);
     } break;
-    case TOKEN_PERCENT:
     case TOKEN_MOD:
     {
         PVMEmitMod(EMITTER(), &Dst, &Src);
@@ -1902,7 +1913,7 @@ static void CompileWriteStmt(PVMCompiler *Compiler, bool NewLine)
         if (!ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
         {
             do {
-                VarLocation Arg = CompileExpr(Compiler);
+                VarLocation Arg = ParsePrecedence(Compiler, PREC_EXPR);
                 PVMEmitPush(EMITTER(), &Arg);
                 FreeExpr(Compiler, Arg);
 
@@ -1914,7 +1925,16 @@ static void CompileWriteStmt(PVMCompiler *Compiler, bool NewLine)
 
     if (NewLine)
     {
-        PASCAL_UNREACHABLE("TODO: writeln");
+        static const VarLocation NewLineLiteral = {
+            .Type = TYPE_STRING,
+            .LocationType = VAR_LIT,
+            .As.Literal.Str = {
+                .Len = 1,
+                .Text = "\n",
+            },
+        };
+        PVMEmitPush(EMITTER(), &NewLineLiteral);
+        ArgCount++;
     }
 
     /* argcount */

@@ -39,6 +39,12 @@ static Token MakeToken(PascalTokenizer *Lexer, TokenType Type);
 /* creates an error token with the given info */
 static Token ErrorToken(PascalTokenizer *Lexer, const char *Msg);
 
+/* consumes a hexadecimal literal and return its token */
+static Token ConsumeHex(PascalTokenizer *Lexer);
+
+/* consumes a binary literal and return its token */
+static Token ConsumeBinary(PascalTokenizer *Lexer);
+
 /* consumes a numeric literal and return its token */
 static Token ConsumeNumber(PascalTokenizer *Lexer);
 
@@ -87,10 +93,11 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
 
     switch (PrevChr)
     {
+    case '\'': return ConsumeString(Lexer);
+    case '$': return ConsumeHex(Lexer);
     case '&': return MakeToken(Lexer, TOKEN_AMPERSAND);
     case '^': return MakeToken(Lexer, TOKEN_CARET);
     case '@': return MakeToken(Lexer, TOKEN_AT);
-    case '$': return MakeToken(Lexer, TOKEN_DOLLAR);
     case '[': return MakeToken(Lexer, TOKEN_LEFT_BRACKET);
     case ']': return MakeToken(Lexer, TOKEN_RIGHT_BRACKET);
     case '(': return MakeToken(Lexer, TOKEN_LEFT_PAREN);
@@ -108,7 +115,7 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
     {
         if (AdvanceIfEqual(Lexer, '='))
             return MakeToken(Lexer, TOKEN_PERCENT_EQUAL);
-        return MakeToken(Lexer, TOKEN_PERCENT);
+        return ConsumeBinary(Lexer);
     } break;
     case '!': 
     {
@@ -116,7 +123,6 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
             return ErrorToken(Lexer, "This is Pascal, use '<>' to check for inequality.");
         return MakeToken(Lexer, TOKEN_BANG);
     } break;
-    case '\'': return ConsumeString(Lexer);
 
     case ':': 
     {
@@ -227,7 +233,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_COLON_EQUAL",
         "TOKEN_LEFT_BRACKET", "TOKEN_RIGHT_BRACKET", 
         "TOKEN_LEFT_PAREN", "TOKEN_RIGHT_PAREN",
-        "TOKEN_CARET", "TOKEN_AT", "TOKEN_DOLLAR", "TOKEN_HASHTAG", "TOKEN_AMPERSAND", "TOKEN_PERCENT",
+        "TOKEN_CARET", "TOKEN_AT", "TOKEN_HASHTAG", "TOKEN_AMPERSAND",
 
         "TOKEN_NUMBER_LITERAL", "TOKEN_INTEGER_LITERAL", 
         "TOKEN_STRING_LITERAL", 
@@ -413,32 +419,53 @@ static Token ErrorToken(PascalTokenizer *Lexer, const char *ErrMsg)
     return Err;
 }
 
+
+static Token ConsumeHex(PascalTokenizer *Lexer)
+{
+    U64 Hex = 0;
+    while (IsHex(*Lexer->Curr))
+    {
+        UInt Hexit = AdvanceChrPtr(Lexer);
+        if (IsNumber(Hexit))
+            Hexit -= '0';
+        else 
+            Hexit = CHR_TO_UPPER(Hexit) - 'A' + 10;
+
+        Hex *= 16;
+        Hex += Hexit;
+    }
+    if (IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
+        return ErrorToken(Lexer, "Invalid character after number.");
+
+    Token HexNumber = MakeToken(Lexer, TOKEN_INTEGER_LITERAL);
+    HexNumber.Literal.Int = Hex;
+    return HexNumber;
+}
+
+static Token ConsumeBinary(PascalTokenizer *Lexer)
+{
+    U64 Bin = 0;
+    while ('0' == *Lexer->Curr || '1' == *Lexer->Curr)
+    {
+        Bin *= 2;
+        Bin += AdvanceChrPtr(Lexer) - '0';
+    }
+    if (IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
+        return ErrorToken(Lexer, "Invalid character after number.");
+
+    Token BinNumber = MakeToken(Lexer, TOKEN_INTEGER_LITERAL);
+    BinNumber.Literal.Int = Bin;
+    return BinNumber;
+}
+
 static Token ConsumeNumber(PascalTokenizer *Lexer)
 {
     TokenType Type = TOKEN_INTEGER_LITERAL;
 
-    if ('0' == Lexer->Start[0]
-    && ('X' == CHR_TO_UPPER(Lexer->Start[1])))
+    if ('0' == Lexer->Start[0] && ('X' == CHR_TO_UPPER(Lexer->Start[1])))
     {
         AdvanceChrPtr(Lexer); /* skip 'x' in 0x */
-        U64 Hex = 0;
-        while (IsHex(*Lexer->Curr))
-        {
-            UInt Hexit = AdvanceChrPtr(Lexer);
-            if (IsNumber(Hexit))
-                Hexit -= '0';
-            else 
-                Hexit = CHR_TO_UPPER(Hexit) - 'A' + 10;
-
-            Hex *= 16;
-            Hex += Hexit;
-        }
-        if (IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
-            goto Error;
-
-        Token HexNumber = MakeToken(Lexer, Type);
-        HexNumber.Literal.Int = Hex;
-        return HexNumber;
+        return ConsumeHex(Lexer);
     }
 
 

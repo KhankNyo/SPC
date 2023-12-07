@@ -18,6 +18,8 @@ begin
     end;
     A := A;
     B := B;
+
+    // call die to view stack content which contains A and B
     die;
 end;
 

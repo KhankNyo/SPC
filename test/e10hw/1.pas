@@ -1,3 +1,4 @@
+program p1;
 {
     E10 hw 3 problem 1:
         int a, b, c;

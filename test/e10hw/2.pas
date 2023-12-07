@@ -1,3 +1,4 @@
+program p2;
 {
     E10 problem 2:
 

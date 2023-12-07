@@ -1,4 +1,4 @@
-
+program FibonacciBenchmark;
 
 function fib(a: uint32): uint32;
 begin
@@ -8,17 +8,16 @@ begin
 end;
 
 
-procedure die;
-begin die end;
-
-
-
 procedure main;
+var return: int32;
 begin
-    if 9227465 <> fib(35) then die;
+    return := fib(35);
+    if 9227465 <> return 
+    then writeln('failed: fib(35) = ', return)
+    else writeln('passed: fib(35) = ', return);
 end;
 
 
 begin
     main;
-end;
+end.

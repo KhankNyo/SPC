@@ -1,3 +1,4 @@
+program ErrorTest;
 
 { missing parameter type name }
 function MissingParamType(x, y): integer;

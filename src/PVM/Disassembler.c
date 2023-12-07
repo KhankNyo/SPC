@@ -178,6 +178,10 @@ static U32 DisasmSysOp(FILE *f, const PVMChunk *Chunk, U32 Addr, U16 Opcode)
     {
         DisasmMnemonic(f, "exit", Opcode);
     } break;
+    case OP_SYS_WRITE:
+    {
+        DisasmMnemonic(f, "write", Opcode);
+    } break;
     }
     return Addr + 1;
 }

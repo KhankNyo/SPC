@@ -48,15 +48,20 @@ static void RuntimeError(PascalVM *PVM, const char *Fmt, ...)
 
 bool PVMRun(PascalVM *PVM, PVMChunk *Chunk)
 {
+#ifdef DEBUG
     PVMDisasm(stdout, Chunk, "Compiled Code");
     fprintf(stdout, "Press Enter to execute...\n");
     getc(stdin);
+#endif /* DEBUG */
 
     bool NoError = false;
     double Start = clock();
     PVMReturnValue Ret = PVMInterpret(PVM, Chunk);
     double End = clock();
+
+#ifdef DEBUG
     PVMDumpState(stdout, PVM, 4);
+#endif /* DEBUG */
 
 
     switch (Ret)
@@ -242,7 +247,7 @@ do {\
             {
                 U32 ArgCount = PVM->R[0].Word.First;
                 PascalStr **Ptr = SP().Ptr.Raw;
-                Ptr--;
+                Ptr -= ArgCount - 1;
                 for (U32 i = 0; i < ArgCount; i++)
                 {
                     PASCAL_ASSERT(NULL != *Ptr, "Unreachable");
@@ -250,8 +255,8 @@ do {\
                     fprintf(stdout, "%.*s", 
                             (int)PStrGetLen(PStr), PStrGetConstPtr(PStr)
                     );
-                    Ptr--;
-                    PASCAL_ASSERT((void*)Ptr > FP().Ptr.Raw, "Unreachable");
+                    Ptr++;
+                    PASCAL_ASSERT((void*)Ptr >= FP().Ptr.Raw, "Unreachable");
                 }
                 /* callee does the cleanup */
                 /* TODO: this is outrageously unsafe */
