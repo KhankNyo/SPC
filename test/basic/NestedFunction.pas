@@ -2,9 +2,7 @@
 program NestedFunction;
 
 procedure Die; 
-var a:integer;
 begin 
-    a := 1;
     Die { stack overflow }
 end;
 
