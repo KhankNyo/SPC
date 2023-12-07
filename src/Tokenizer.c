@@ -211,7 +211,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_THEN", "TOKEN_TRUE", "TOKEN_TYPE", "TOKEN_TO",
         "TOKEN_UNIT", "TOKEN_UNTIL", "TOKEN_USES", 
         "TOKEN_VAR", 
-        "TOKEN_WHILE", "TOKEN_WITH", 
+        "TOKEN_WHILE", "TOKEN_WITH",
         "TOKEN_XOR",
 
         /* symbols */

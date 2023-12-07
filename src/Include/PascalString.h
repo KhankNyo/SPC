@@ -12,10 +12,10 @@ typedef struct PascalStr
 {
     union {
         struct {
-            U8 Text[PSTR_MAX_LEN];
-            U8 LenLeft;
+            U8 Len;
+            U8 Text[PSTR_MAX_LEN + 1];
         };
-        U8 Data[PSTR_MAX_LEN + 1];
+        U8 Data[PSTR_MAX_LEN + 2];
     };
 } PascalStr;
 
@@ -27,7 +27,7 @@ static inline bool PStrIsDyn(const PascalStr *PStr) { UNUSED(PStr, PStr); return
 static inline U8 *PStrGetPtr(PascalStr *PStr) { return PStr->Text; }
 static inline const U8 *PStrGetConstPtr(const PascalStr *PStr) { return PStr->Text; }
 
-static inline USize PStrGetLen(const PascalStr *PStr) { return PSTR_MAX_LEN - PStr->LenLeft; }
+static inline USize PStrGetLen(const PascalStr *PStr) { return PStr->Len; }
 static inline USize PStrGetCap(const PascalStr *PStr) { UNUSED(PStr, PStr); return PSTR_MAX_LEN; }
 static inline void PStrReserve(PascalStr *PStr, USize NewCapacity) { UNUSED(PStr, NewCapacity); }
 void PStrSetLen(PascalStr *PStr, USize Len);

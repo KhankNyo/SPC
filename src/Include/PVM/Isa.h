@@ -88,7 +88,7 @@ typedef enum PVMOp
     OP_GETFCC,
 
 
-
+    OP_SCPY,
     OP_MOV32,
     OP_MOVZEX32_8,
     OP_MOVZEX32_16,

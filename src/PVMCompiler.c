@@ -245,8 +245,10 @@ static U32 CompilerGetSizeOfType(PVMCompiler *Compiler, IntegralType Type)
     case TYPE_F64:
         return 8;
 
-    case TYPE_POINTER:
     case TYPE_STRING:
+        return sizeof(PascalStr);
+
+    case TYPE_POINTER:
         return sizeof(void*);
     }
 
@@ -1720,7 +1722,7 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
 TypeMismatch:
     ErrorAt(Compiler, OpToken, "Invalid operands: %s and %s\n", 
             IntegralTypeToStr(Dst.Type), IntegralTypeToStr(Src.Type)
-           );
+    );
     return Dst;
 }
 
@@ -2313,6 +2315,7 @@ static void CompileStmt(PVMCompiler *Compiler)
         ConsumeToken(Compiler);
         CompileBeginStmt(Compiler);
     } break;
+    /* TODO: exit should not be a keyword */
     case TOKEN_EXIT:
     {
         ConsumeToken(Compiler);

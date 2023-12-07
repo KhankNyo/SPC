@@ -241,12 +241,6 @@ do {\
             }
         } break;
 
-        case OP_SADD: 
-        {
-            PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
-            PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
-            PStrConcat(Dst, Src);
-        } break;
         case OP_ADD: INTEGER_BINARY_OP(+, Opcode, .Word.First); break;
         case OP_SUB: INTEGER_BINARY_OP(-, Opcode, .Word.First); break;
         case OP_MUL: INTEGER_BINARY_OP(*, Opcode, .Word.First); break;
@@ -309,6 +303,37 @@ do {\
         } break;
 
 
+        case OP_SADD: 
+        {
+            PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
+            PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
+            PascalStr *TmpStr = &PVM->TmpStr;
+
+            /* We take the addr of TmpStr and put it into Rd because later on,
+             * the compiler should have emitted code to copy the string pointed by Rd to wherever
+             *
+             * This is a shitty way to do ensure that dst is not modified and is unsafe
+             */
+            /* TODO: this does not work in an expr like: a + b + (a + b) */
+            /* TODO: something better? */
+            if (TmpStr != Dst)
+            {
+                /* reset TmpStr */
+                PStrSetLen(TmpStr, 0);
+                PStrCopyInto(TmpStr, Dst);
+                PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw = TmpStr;
+            }
+            PStrConcat(TmpStr, Src);
+        } break;
+        case OP_SCPY:
+        {
+            PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
+            const PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
+            if (Src != Dst)
+            {
+                PStrCopyInto(Dst, Src);
+            }
+        } break;
         case OP_STRLT:
         {
             PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
@@ -415,12 +440,6 @@ do {\
         case OP_GETFCC: PVM->R[PVM_GET_RD(Opcode)].Word.First = PVM->FloatCondition; break;
 
 
-        case OP_SCPY:
-        {
-            PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
-            const PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
-            PStrCopyInto(Dst, Src);
-        } break;
         case OP_MOV32:       MOVE_INTEGER(Opcode, .Word.First, .Word.First); break;
         case OP_MOVZEX32_8:  MOVE_INTEGER(Opcode, .Word.First, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
         case OP_MOVZEX32_16: MOVE_INTEGER(Opocde, .Word.First, .Half.First); break;

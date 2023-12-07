@@ -320,15 +320,20 @@ static void StoreToPtr(PVMEmitter *Emitter,
         case TYPE_I16:
         case TYPE_U16: WriteOp32(Emitter, PVM_OP(ST16, Src.ID, Base.ID), Offset); break;
         CASE_PTR32(:)
-        CASE_OBJREF32(:)
         case TYPE_I32:
         case TYPE_U32: WriteOp32(Emitter, PVM_OP(ST32, Src.ID, Base.ID), Offset); break;
         case TYPE_I64:
         CASE_PTR64(:)
-        CASE_OBJREF64(:)
         case TYPE_U64: WriteOp32(Emitter, PVM_OP(ST64, Src.ID, Base.ID), Offset); break;
         case TYPE_F32: WriteOp32(Emitter, PVM_OP(STF32, Src.ID, Base.ID), Offset); break;
         case TYPE_F64: WriteOp32(Emitter, PVM_OP(STF64, Src.ID, Base.ID), Offset); break;
+        case TYPE_STRING:
+        {
+            VarLocation Rd = PVMAllocateRegister(Emitter, TYPE_STRING);
+            WriteOp32(Emitter, PVM_OP(LEA, Rd.As.Register.ID, Base.ID), Offset);
+            WriteOp16(Emitter, PVM_OP(SCPY, Rd.As.Register.ID, Src.ID));
+            PVMFreeRegister(Emitter, Rd.As.Register);
+        } break;
         default: PASCAL_UNREACHABLE("TODO: Src.Size > 8"); break;
         }
     } 
@@ -342,15 +347,20 @@ static void StoreToPtr(PVMEmitter *Emitter,
         case TYPE_I16:
         case TYPE_U16: WriteOp16(Emitter, PVM_OP(ST16L, Src.ID, Base.ID)); break;
         CASE_PTR32(:)
-        CASE_OBJREF32(:)
         case TYPE_I32:
         case TYPE_U32: WriteOp16(Emitter, PVM_OP(ST32L, Src.ID, Base.ID)); break;
         CASE_PTR64(:)
-        CASE_OBJREF64(:)
         case TYPE_I64:
         case TYPE_U64: WriteOp16(Emitter, PVM_OP(ST64L, Src.ID, Base.ID)); break;
         case TYPE_F32: WriteOp16(Emitter, PVM_OP(STF32L, Src.ID, Base.ID)); break;
         case TYPE_F64: WriteOp16(Emitter, PVM_OP(STF64L, Src.ID, Base.ID)); break;
+        case TYPE_STRING:
+        {
+            VarLocation Rd = PVMAllocateRegister(Emitter, TYPE_STRING);
+            WriteOp32(Emitter, PVM_OP(LEAL, Rd.As.Register.ID, Base.ID), Offset);
+            WriteOp16(Emitter, PVM_OP(SCPY, Rd.As.Register.ID, Src.ID));
+            PVMFreeRegister(Emitter, Rd.As.Register);
+        } break;
         default: PASCAL_UNREACHABLE("TODO: Dst.Size > 8"); break;
         }
         WriteOp32(Emitter, Offset, (U32)Offset >> 16);
@@ -418,12 +428,10 @@ static void DerefIntoIntReg(PVMEmitter *Emitter,
 #define LOAD_INTO(LongMode, ExtendType, DstSize, Base) do {\
     switch (SrcType) {\
     CASE_PTR64(:)\
-    CASE_OBJREF64(:)\
     case TYPE_I64:\
     case TYPE_U64: LOAD_OP(LongMode, , DstSize,, Base); break;\
     case TYPE_I32:\
     CASE_PTR32(:)\
-    CASE_OBJREF32(:)\
     case TYPE_U32: LOAD_OP(LongMode, ,DstSize,, Base); break;\
     case TYPE_I16:\
     case TYPE_U16: LOAD_OP(LongMode, ExtendType, DstSize, _16, Base); break;\
@@ -437,17 +445,19 @@ static void DerefIntoIntReg(PVMEmitter *Emitter,
     switch (DstType) {\
     case TYPE_I64: LOAD_INTO(LongMode, SEX, 64, Base); break;\
     CASE_PTR64(:)\
-    CASE_OBJREF64(:)\
     case TYPE_U64: LOAD_INTO(LongMode, ZEX, 64, Base); break;\
     case TYPE_I8:\
     case TYPE_I16:\
     case TYPE_I32: LOAD_INTO(LongMode, SEX, 32, Base); break;\
     CASE_PTR32(:)\
-    CASE_OBJREF32(:)\
     case TYPE_BOOLEAN:\
     case TYPE_U8:\
     case TYPE_U16:\
     case TYPE_U32: LOAD_INTO(LongMode, ZEX, 32, Base); break;\
+    CASE_OBJREF32(:)\
+    CASE_OBJREF64(:) {\
+        WriteOp16(Emitter, PVM_OP(LEA ## LongMode, Dst->ID, Base));\
+    } break;\
     default: PASCAL_UNREACHABLE("Unhandled case in %s: %s", __func__, IntegralTypeToStr(DstType)); break;\
     }\
 } while (0)
@@ -564,7 +574,10 @@ static bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, const Va
         }
         else if (TYPE_STRING == Tmp.Type)
         {
-            VarMemory String = PVMEmitGlobalData(Emitter, &Tmp.As.Literal.Str, sizeof Tmp.As.Literal.Str);
+            VarMemory String = PVMEmitGlobalData(Emitter, 
+                    &Tmp.As.Literal.Str, 
+                    1 + PStrGetLen(&Tmp.As.Literal.Str)
+            );
             VarLocation Location = {
                 .LocationType = VAR_MEM,
                 .Type = TYPE_STRING,
@@ -1198,7 +1211,7 @@ void PVMEmitAdd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
     }
     else
     {
-        OwningRd = PVMEmitIntoReg(Emitter, &Rs, Src);
+        OwningRs = PVMEmitIntoReg(Emitter, &Rs, Src);
         if (TYPE_F64 == Dst->Type || TYPE_F64 == Src->Type) 
         {
             WriteOp16(Emitter, PVM_OP(FADD64, Rd.As.Register.ID, Rs.As.Register.ID));
@@ -1246,7 +1259,7 @@ void PVMEmitSub(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
     }
     else
     {
-        OwningRd = PVMEmitIntoReg(Emitter, &Rs, Src);
+        OwningRs = PVMEmitIntoReg(Emitter, &Rs, Src);
         if (TYPE_F64 == Dst->Type || TYPE_F64 == Src->Type) 
         {
             WriteOp16(Emitter, PVM_OP(FSUB64, Rd.As.Register.ID, Rs.As.Register.ID));

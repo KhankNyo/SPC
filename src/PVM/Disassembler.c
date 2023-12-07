@@ -386,7 +386,8 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
 
     case OP_STRLT: DisasmRdRs(f, "strlt", sIntReg, Opcode); break;
     case OP_STRGT: DisasmRdRs(f, "strgt", sIntReg, Opcode); break;
-    case OP_STREQU:  DisasmRdRs(f, "strequ", sIntReg, Opcode); break;
+    case OP_STREQU:DisasmRdRs(f, "strequ", sIntReg, Opcode); break;
+    case OP_SCPY:  DisasmRdRs(f, "scpy", sIntReg, Opcode); break;
     case OP_SEQ: DisasmRdRs(f, "seq", sIntReg, Opcode); break;
     case OP_SNE: DisasmRdRs(f, "sne", sIntReg, Opcode); break;
     case OP_SLT: DisasmRdRs(f, "slt", sIntReg, Opcode); break;

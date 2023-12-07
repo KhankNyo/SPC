@@ -11,10 +11,12 @@ void PStrSetLen(PascalStr *PStr, USize Len)
 {
     if (Len > PSTR_MAX_LEN)
     {
-        PStr->LenLeft = PSTR_MAX_LEN;
-        return;
+        PStr->Len = PSTR_MAX_LEN;
     }
-    PStr->LenLeft = PSTR_MAX_LEN - Len;
+    else
+    {
+        PStr->Len = Len;
+    }
 }
 
 USize PStrAddToLen(PascalStr *PStr, ISize Extra)
@@ -22,11 +24,11 @@ USize PStrAddToLen(PascalStr *PStr, ISize Extra)
     USize OldLen = PStrGetLen(PStr);
     if (OldLen + Extra > PSTR_MAX_LEN)
     {
-        PStr->LenLeft = 0;
+        PStr->Len = PSTR_MAX_LEN;
     }
     else
     {
-        PStr->LenLeft = PSTR_MAX_LEN - OldLen - Extra;
+        PStr->Len += Extra;
     }
     return OldLen;
 }
@@ -36,8 +38,10 @@ USize PStrAddToLen(PascalStr *PStr, ISize Extra)
 
 PascalStr PStrInitReserved(USize Len, USize Extra)
 {
-    UNUSED(Len, Extra);
-    PascalStr PStr = { .LenLeft = PSTR_MAX_LEN };
+    UNUSED(Extra, Extra);
+    if (Len > PSTR_MAX_LEN)
+        Len = PSTR_MAX_LEN;
+    PascalStr PStr = { .Len = Len };
     return PStr;
 }
 
@@ -49,9 +53,7 @@ PascalStr PStrCopyReserved(const U8 *Str, USize Len, USize Extra)
 {
     PascalStr PStr = PStrInitReserved(Len, Extra);
     if (Len > PSTR_MAX_LEN)
-    {
         Len = PSTR_MAX_LEN;
-    }
     memcpy(PStrGetPtr(&PStr), Str, Len);
     PStrGetPtr(&PStr)[Len] = '\0';
     return PStr;
@@ -119,10 +121,11 @@ U8 PStrAppendChr(PascalStr *PStr, U8 Chr)
     USize OldLen = PStrGetLen(PStr);
     U8 Ret = (OldLen == 0) ? '\0' : PStrGetPtr(PStr)[OldLen - 1];
     PStrAddToLen(PStr, 1);
+    USize NewLen = PStrGetLen(PStr);
 
     U8 *Ptr = PStrGetPtr(PStr);
     Ptr[OldLen] = Chr;
-    Ptr[OldLen + 1] = '\0';
+    Ptr[NewLen] = '\0';
     return Ret;
 }
 
@@ -131,10 +134,11 @@ USize PStrAppendStr(PascalStr *PStr, const U8 *Str, USize Len)
 {
     USize OldLen = PStrGetLen(PStr);
     PStrAddToLen(PStr, Len);
+    USize NewLen = PStrGetLen(PStr);
 
     U8 *Ptr = PStrGetPtr(PStr);
-    memcpy(Ptr + OldLen, Str, Len);
-    Ptr[OldLen + Len] = '\0';
+    memcpy(Ptr + OldLen, Str, NewLen - OldLen);
+    Ptr[NewLen] = '\0';
     return OldLen;
 }
 
