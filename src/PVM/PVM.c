@@ -515,6 +515,15 @@ do {\
                 IP += Offset;
             }
         } break;
+        case OP_BNZ:
+        {
+            I32 Offset = GET_BCC_IMM(Opcode, IP);
+            if (PVM->R[PVM_GET_RD(Opcode)].Word.First)
+            {
+                /* TODO: bound chk */
+                IP += Offset;
+            }
+        } break;
 
 
         case OP_PSHL: PUSH_MULTIPLE(R, 0, Opcode); break;

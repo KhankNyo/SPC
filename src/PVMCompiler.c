@@ -146,7 +146,9 @@ static void PrintAndHighlightSource(FILE *LogFile, const Token *Tok)
     fprintf(LogFile, "\n    \"%.*s\"", Len, LineStart);
     fprintf(LogFile, "\n    %*s", Tok->LineOffset, "");
     for (U32 i = 0; i < Tok->Len; i++)
+    {
         fputc(Highlighter, LogFile);
+    }
 }
 
 
@@ -166,7 +168,7 @@ static void VaListError(PVMCompiler *Compiler, const Token *Tok, const char *Fmt
         Compiler->Panic = true;
         fprintf(Compiler->LogFile, "\n[line %d, offset %d]", 
                 Tok->Line, Tok->LineOffset
-               );
+        );
         PrintAndHighlightSource(Compiler->LogFile, Tok);
 
         fprintf(Compiler->LogFile, "\n    Error: ");
@@ -175,21 +177,17 @@ static void VaListError(PVMCompiler *Compiler, const Token *Tok, const char *Fmt
     }
 }
 
-static void ErrorAt(PVMCompiler *Compiler, const Token *Tok, const char *ErrFmt, ...)
+static void ErrorAt(PVMCompiler *Compiler, const Token *Tok, const char *Fmt, ...)
 {
     va_list Args;
-    va_start(Args, ErrFmt);
-    VaListError(Compiler, Tok, ErrFmt, Args);
+    va_start(Args, Fmt);
+    VaListError(Compiler, Tok, Fmt, Args);
     va_end(Args);
 }
 
-static void Error(PVMCompiler *Compiler, const char *ErrFmt, ...)
-{
-    va_list Args;
-    va_start(Args, ErrFmt);
-    VaListError(Compiler, &Compiler->Next, ErrFmt, Args);
-    va_end(Args);
-}
+
+#define Error(pCompiler, ...) ErrorAt(pCompiler, &(pCompiler)->Next, __VA_ARGS__)
+
 
 static bool ConsumeOrError(PVMCompiler *Compiler, TokenType Expected, const char *ErrFmt, ...)
 {
@@ -318,6 +316,7 @@ static void CompilerPushSubroutine(PVMCompiler *Compiler, VarSubroutine *Subrout
     Compiler->Subroutine[Compiler->Scope].Current = Subroutine;
     Compiler->Subroutine[Compiler->Scope].Location = Compiler->Var.Count;
     Compiler->Scope++;
+    PASCAL_ASSERT(Compiler->Scope < STATIC_ARRAY_SIZE(Compiler->Subroutine), "TODO: dynamic nested scope");
 }
 
 static VarSubroutine *CompilerPopSubroutine(PVMCompiler *Compiler)
@@ -345,7 +344,7 @@ static VarLocation *CompilerAllocateVarLocation(PVMCompiler *Compiler)
         Compiler->Var.Location = GPAReallocateArray(&Compiler->InternalAlloc, 
                 Compiler->Var.Location, *Compiler->Var.Location, 
                 Compiler->Var.Cap
-                );
+        );
         for (U32 i = OldCap; i < Compiler->Var.Cap; i++)
         {
             Compiler->Var.Location[i] = 
@@ -639,16 +638,12 @@ static bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLoc
     case VAR_LIT:
     {
         if (IntegralTypeIsInteger(To) && IntegralTypeIsInteger(From->Type))
-        {
             break;
-        }
 
         if (IntegralTypeIsFloat(To))
         {
             if (IntegralTypeIsFloat(From->Type))
-            {
                 break;
-            }
             if (IntegralTypeIsInteger(From->Type))
             {
                 From->As.Literal.Flt = From->As.Literal.Int;
@@ -1078,8 +1073,7 @@ static void CompilerCallSubroutine(PVMCompiler *Compiler, VarSubroutine *Callee,
 /*===============================================================================*/
 /*
  *                                  EXPRESSION
- * TODO: typecheck
- * */
+ */
 /*===============================================================================*/
 
 typedef enum Precedence 
@@ -1648,7 +1642,6 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
         Src = *Left;
     }
 
-    /* TODO: CoerceTypes is kinda useless */
     IntegralType Type = CoerceTypes(Compiler, OpToken, Left->Type, Right->Type);
     bool ConversionOk = 
         ConvertTypeImplicitly(Compiler, Type, &Dst) 
@@ -1709,15 +1702,6 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
         return Condition;
     } break;
 
-    /* TODO: lazy/bool eval */
-    case TOKEN_AND:
-    {
-        PVMEmitAnd(EMITTER(), &Dst, &Src);
-    } break;
-    case TOKEN_OR:
-    {
-        PVMEmitOr(EMITTER(), &Dst, &Src);
-    } break;
     case TOKEN_XOR:
     {
         PVMEmitXor(EMITTER(), &Dst, &Src);
@@ -1731,7 +1715,7 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
     return Dst;
 
 TypeMismatch:
-    ErrorAt(Compiler, OpToken, "Invalid operands: %s and %s\n", 
+    ErrorAt(Compiler, OpToken, "Invalid operands: %s and %s", 
             IntegralTypeToStr(Dst.Type), IntegralTypeToStr(Src.Type)
     );
     return Dst;
@@ -1761,6 +1745,103 @@ static VarLocation ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
 }
 
 
+static VarLocation ExprAnd(PVMCompiler *Compiler, VarLocation *Left)
+{
+    VarLocation Right;
+    Token OpToken = Compiler->Curr;
+    if (TYPE_BOOLEAN == Left->Type)
+    {
+        U32 FromFalse = PVMEmitBranchIfFalse(EMITTER(), Left);
+        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
+
+        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
+        if (TYPE_INVALID == ResultType)
+            goto InvalidOperands;
+        PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "Unreachable");
+        PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type, "Unreachable");
+
+        PVMEmitAnd(EMITTER(), Left, &Right);
+        PVMPatchBranchToCurrent(EMITTER(), FromFalse, BRANCHTYPE_CONDITIONAL);
+    }
+    else if (IntegralTypeIsInteger(Left->Type))
+    {
+        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
+        if (!IntegralTypeIsInteger(Right.Type))
+        {
+            goto InvalidOperands;
+        }
+        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
+        PASCAL_ASSERT(TYPE_INVALID != ResultType, "Unreachable");
+        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, Left), "Unreachable");
+        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, &Right), "Unreachable");
+
+        PVMEmitAnd(EMITTER(), Left, &Right);
+        FreeExpr(Compiler, Right);
+    }
+    else 
+    {
+        ErrorAt(Compiler, &OpToken, "Invalid left operand: %s",
+                IntegralTypeToStr(Left->Type)
+        );
+    }
+
+    return *Left;
+InvalidOperands:
+    ErrorAt(Compiler, &OpToken, "Invalid operands: %s and %s", 
+            IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right.Type)
+    );
+    return *Left;
+}
+
+static VarLocation ExprOr(PVMCompiler *Compiler, VarLocation *Left)
+{
+    VarLocation Right;
+    Token OpToken = Compiler->Curr;
+    if (TYPE_BOOLEAN == Left->Type)
+    {
+        U32 FromTrue = PVMEmitBranchIfTrue(EMITTER(), Left);
+        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
+
+        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
+        if (TYPE_INVALID == ResultType)
+            goto InvalidOperands;
+        PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "Unreachable");
+        PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type, "Unreachable");
+
+        PVMEmitOr(EMITTER(), Left, &Right);
+        PVMPatchBranchToCurrent(EMITTER(), FromTrue, BRANCHTYPE_CONDITIONAL);
+    }
+    else if (IntegralTypeIsInteger(Left->Type))
+    {
+        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
+        if (!IntegralTypeIsInteger(Right.Type))
+        {
+            goto InvalidOperands;
+        }
+        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
+        PASCAL_ASSERT(TYPE_INVALID != ResultType, "Unreachable");
+        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, Left), "Unreachable");
+        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, &Right), "Unreachable");
+
+        PVMEmitOr(EMITTER(), Left, &Right);
+        FreeExpr(Compiler, Right);
+    }
+    else 
+    {
+        ErrorAt(Compiler, &OpToken, "Invalid left operand: %s",
+                IntegralTypeToStr(Left->Type)
+        );
+    }
+
+    return *Left;
+InvalidOperands:
+    ErrorAt(Compiler, &OpToken, "Invalid operands: %s and %s", 
+            IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right.Type)
+    );
+    return *Left;
+}
+
+
 
 
 static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] = 
@@ -1782,9 +1863,7 @@ static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] =
     [TOKEN_DIV]             = { NULL,               ExprBinary,     PREC_TERM },
     [TOKEN_SLASH]           = { NULL,               ExprBinary,     PREC_TERM },
     [TOKEN_MOD]             = { NULL,               ExprBinary,     PREC_TERM },
-    [TOKEN_AND]             = { NULL,               ExprBinary,     PREC_TERM },
 
-    [TOKEN_OR]              = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_XOR]             = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_PLUS]            = { ExprUnary,          ExprBinary,     PREC_SIMPLE },
     [TOKEN_MINUS]           = { ExprUnary,          ExprBinary,     PREC_SIMPLE },
@@ -1792,6 +1871,9 @@ static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] =
     [TOKEN_SHL]             = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_LESS_LESS]       = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_GREATER_GREATER] = { NULL,               ExprBinary,     PREC_SIMPLE },
+
+    [TOKEN_AND]             = { NULL,               ExprAnd,        PREC_TERM },
+    [TOKEN_OR]              = { NULL,               ExprOr,         PREC_SIMPLE },
 
     [TOKEN_LESS]            = { NULL,               ExprBinary,     PREC_EXPR },
     [TOKEN_GREATER]         = { NULL,               ExprBinary,     PREC_EXPR },

@@ -49,6 +49,7 @@ typedef enum PVMOp
     OP_SETEZ,
 
     OP_BEZ,
+    OP_BNZ,
     OP_BR,
     OP_BSR,
 

@@ -151,10 +151,11 @@ static inline I64 BitSex64(U64 Value, UInt SignIndex)
 #ifdef DEBUG
 #  define PASCAL_ASSERT(expr, ...) do {\
     if (!(expr)) {\
-        fprintf(stderr, "Assertion failed on line "STRFY(__LINE__)" in "__FILE__":"\
-                "\n    "STRFY(expr)":"\
-                "\n    "__VA_ARGS__\
+        fprintf(stderr, "Assertion failed on line %d in %s in %s:"\
+                "\n    '"STRFY(expr)"':", \
+                __LINE__, __func__, __FILE__\
         );\
+        fprintf(stderr, __VA_ARGS__);\
         fputc('\n', stderr);\
         DIE();\
     }\

@@ -58,6 +58,8 @@ void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, U32 RegID);
 #define PVMMarkBranchTarget(pEmitter) PVMGetCurrentLocation(pEmitter)
 /* returns the offset of the branch instruction for later patching */
 U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition);
+/* returns the offset of the branch instruction for later patching */
+U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition);
 /* returns the offset of the branch instruction for patching if necessary */
 U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To);
 void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMBranchType Type);

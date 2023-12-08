@@ -384,6 +384,7 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
 
 
     case OP_BEZ: return DisasmBcc(f, "bez", Opcode, Chunk, Addr);
+    case OP_BNZ: return DisasmBcc(f, "bnz", Opcode, Chunk, Addr);
     case OP_BR: return DisasmBr(f, "br", Opcode, Chunk, Addr);
     case OP_BSR: return DisasmBr(f, "bsr", Opcode, Chunk, Addr);
 

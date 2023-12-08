@@ -747,6 +747,18 @@ U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition)
     return Location;
 }
 
+U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition)
+{
+    VarLocation Target;
+    bool IsOwning = PVMEmitIntoReg(Emitter, &Target, Condition);
+    U32 Location = WriteOp32(Emitter, PVM_B(NZ, Target.As.Register.ID, 0), 0);
+    if (IsOwning)
+    {
+        PVMFreeRegister(Emitter, Target.As.Register);
+    }
+    return Location;
+}
+
 U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To)
 {
     /* size of the branch instruction is 2 16 opcode word */
