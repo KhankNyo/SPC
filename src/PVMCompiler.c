@@ -2333,6 +2333,7 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
 {
     switch (Assignment->Type)
     {
+    case TOKEN_COLON_EQUAL: PVMEmitMov(EMITTER(), Left, Right); break;
     case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), Left, Right); break;
     case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), Left, Right); break;
     case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), Left, Right); break;
