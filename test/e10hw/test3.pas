@@ -1,10 +1,5 @@
 program t;
 
-
-procedure die; begin die; end;
-
-
-
 procedure main;
 var x, y: integer;
 begin 
@@ -15,7 +10,7 @@ begin
         y += x;
         x += 4;
     end;
-    die;
+    writeln('(x, y) = (', x, ', ', y, ')');
 end;
 
 

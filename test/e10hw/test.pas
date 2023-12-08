@@ -1,8 +1,6 @@
 program t;
 
 
-procedure die; begin die; end;
-
 procedure main; 
 var 
     B, A: integer;
@@ -16,11 +14,7 @@ begin
         B := A * B;
         A := B + 5;
     end;
-    A := A;
-    B := B;
-
-    // call die to view stack content which contains A and B
-    die;
+    writeln('A: ', A, '; B: ', B);
 end;
 
 begin main end.

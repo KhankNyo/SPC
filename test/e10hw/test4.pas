@@ -1,7 +1,6 @@
 program t;
 
 
-procedure die; begin die; end;
 
 procedure main;
 var i, control, count: integer;
@@ -18,7 +17,10 @@ begin
             control := 3;
         count += 1;
     end;
-    die;
+    writeln('i = ', i, 
+            '; control = ', control,
+            '; count = ', count
+    );
 end;
 
 begin main end.

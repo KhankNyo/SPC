@@ -172,6 +172,7 @@ static void TransferRegister(PVMEmitter *Emitter, VarRegister *Dst, IntegralType
     default:
 Unreachable:
     {
+        break;
         PASCAL_UNREACHABLE("Cannot move register of type %s into %s", IntegralTypeToStr(DstType), IntegralTypeToStr(SrcType));
     } break;
     case TYPE_I64:
@@ -541,10 +542,6 @@ static bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, const Va
     {
         PASCAL_UNREACHABLE("TODO: FnPtr in EmitIntoReg()");
     } break;
-    case VAR_INVALID:
-    {
-        PASCAL_UNREACHABLE("VAR_INVALID encountered in EmitIntoReg()");
-    } break;
     case VAR_LIT:
     {
         *OutTarget = PVMAllocateRegister(Emitter, Tmp.Type);
@@ -592,6 +589,7 @@ static bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, const Va
         }
         return true;
     } break;
+    case VAR_INVALID: break;
     }
 
     *OutTarget = Tmp;

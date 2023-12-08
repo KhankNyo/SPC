@@ -29,5 +29,6 @@ begin
 
         count := count + 1;
     end;
+    writeln('a: ', a, '; count: ', count);
 end.
 

@@ -1,4 +1,4 @@
 @echo off
 
-..\..\bin\pascal.exe %*
+..\..\bin\pascal.exe %* t
 

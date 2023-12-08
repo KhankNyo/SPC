@@ -39,4 +39,5 @@ begin
         a := 6;
         b := 0;
     end;
+    writeln('A: ', a, '; B: ', b, '; C: ', c);
 end.

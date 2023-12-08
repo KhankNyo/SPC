@@ -1,10 +1,6 @@
 program t;
 
 
-procedure die; begin die; end;
-
-
-
 procedure main; 
 var A, B: integer;
 begin 
@@ -17,8 +13,7 @@ begin
         B := A;
         A := B;
     end;
-    { look at stack dump for A and B }
-    die;
+    writeln('A: ', A, '; B: ', B);
 end;
 
 begin main end.
