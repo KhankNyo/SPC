@@ -1108,30 +1108,6 @@ static void FreeExpr(PVMCompiler *Compiler, VarLocation Expr)
 }
 
 
-static VarLocation FactorAddrOf(PVMCompiler *Compiler)
-{
-    /* Curr is '@' */
-    ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected identifier after '@'.");
-
-    /* single identifier for now, TODO: array and member access */
-    Token Identifier = Compiler->Curr;
-    PascalVar *Variable = GetIdenInfo(Compiler, &Identifier, "Undefined variable.");
-    if (NULL == Variable)
-        return (VarLocation) { 0 };
-
-    /* get its location */
-    VarLocation *Location = Variable->Location;
-    PASCAL_ASSERT(NULL != Location, "Location must be valid in %s", __func__);
-
-    /* load the addr of whatever, 
-     * TODO: array 
-     */
-    VarLocation Ptr = PVMAllocateRegister(EMITTER(), TYPE_POINTER);
-    PVMEmitLoadAddr(EMITTER(), &Ptr, Location);
-    Ptr.PointsAt = *Variable;
-    Ptr.PointsAt.Location = Location;
-    return Ptr;
-}
 
 
 static VarLocation FactorLiteral(PVMCompiler *Compiler)
@@ -1276,10 +1252,43 @@ Error:
     return (VarLocation) { 0 };
 }
 
+
+static VarLocation FactorAddrOf(PVMCompiler *Compiler)
+{
+#if 0
+    /* Curr is '@' */
+    VarLocation Location = FactorVariable(Compiler);
+#else
+    /* single identifier for now, TODO: array and member access */
+    ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected identifier");
+    Token Identifier = Compiler->Curr;
+    PascalVar *Variable = GetIdenInfo(Compiler, &Identifier, "Undefined variable.");
+    if (NULL == Variable)
+        return (VarLocation) { 0 };
+    PASCAL_ASSERT(NULL != Variable->Location, "Location must be valid in %s", __func__);
+
+    /* get its location */
+    VarLocation *Location = Variable->Location;
+#endif 
+
+    /* load the addr of whatever, 
+     * TODO: array and reference types
+     */
+    VarLocation Ptr = PVMAllocateRegister(EMITTER(), TYPE_POINTER);
+    if (VAR_MEM == Location->LocationType)
+        PVMEmitLoadAddr(EMITTER(), &Ptr, Location);
+    else
+        ErrorAt(Compiler, &Compiler->Curr, "Cannot take the address of this type of variable.");
+    Ptr.PointsAt = *Variable;
+    Ptr.PointsAt.Location = Location;
+    return Ptr;
+}
+
+
 static VarLocation FactorGrouping(PVMCompiler *Compiler)
 {
     /* '(' consumed */
-    VarLocation Group = ParsePrecedence(Compiler, PREC_EXPR);
+    VarLocation Group = CompileExpr(Compiler);
     ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
     return Group;
 }
@@ -1921,36 +1930,37 @@ static VarLocation ParsePrecedence(PVMCompiler *Compiler, Precedence Prec)
 
 static VarLocation CompileExpr(PVMCompiler *Compiler)
 {
-    VarLocation Expr = ParsePrecedence(Compiler, PREC_EXPR);
-    if (Compiler->Error || VAR_LIT !=  Expr.LocationType)
-        return Expr;
+    return ParsePrecedence(Compiler, PREC_EXPR);
+}
 
-    VarLocation Place = PVMAllocateRegister(EMITTER(), Expr.Type);
-    PVMEmitMov(EMITTER(), &Place, &Expr);
-    FreeExpr(Compiler, Expr);
-    return Place;
+static VarLocation CompileExprIntoReg(PVMCompiler *Compiler)
+{
+    VarLocation Expr = CompileExpr(Compiler);
+    if (VAR_REG != Expr.LocationType)
+    {
+        VarLocation Reg = PVMAllocateRegister(EMITTER(), Expr.Type);
+        PVMEmitMov(EMITTER(), &Reg, &Expr);
+        return Reg;
+    }
+    return Expr;
 }
 
 static void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLocation *Location)
 {
-    VarLocation Expr = ParsePrecedence(Compiler, PREC_EXPR);
+    VarLocation Expr = CompileExpr(Compiler);
     if (Compiler->Error)
         return;
 
-    CoerceTypes(Compiler, NULL, Location->Type, Expr.Type);
+    CoerceTypes(Compiler, OpToken, Location->Type, Expr.Type);
     if (IntegralTypeIsInteger(Location->Type) && IntegralTypeIsFloat(Expr.Type))
-    {
         ConvertTypeImplicitly(Compiler, Location->Type, &Expr);
-    }
 
     if (TYPE_POINTER == Location->Type && TYPE_POINTER == Expr.Type)
     {
         if (Location->PointsAt.Type != Expr.PointsAt.Type)
         {
             if (NULL == OpToken)
-            {
                 OpToken = &Compiler->Curr;
-            }
             ErrorAt(Compiler, OpToken, "Cannot assign %s pointer to %s pointer.", 
                     IntegralTypeToStr(Expr.PointsAt.Type),
                     IntegralTypeToStr(Location->PointsAt.Type)
@@ -1999,14 +2009,13 @@ static void CompileWriteStmt(PVMCompiler *Compiler, bool NewLine)
         if (!ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
         {
             do {
-                VarLocation Arg = ParsePrecedence(Compiler, PREC_EXPR);
+                VarLocation Arg = CompileExpr(Compiler);
                 VarLocation ArgType = {
                     .Type = TYPE_U32,
                     .LocationType = VAR_LIT,
                     .As.Literal.Int = Arg.Type,
                 };
                 PVMEmitPushMultiple(EMITTER(), 2, &ArgType, &Arg);
-                FreeExpr(Compiler, Arg);
 
                 ArgCount++;
             } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
@@ -2043,6 +2052,7 @@ static void CompileWriteStmt(PVMCompiler *Compiler, bool NewLine)
     PVMEmitMov(EMITTER(), &ArgCountReg, &Argc);
     PVMMarkRegisterAsAllocated(EMITTER(), PVM_ARGREG_0);
 
+    /* TODO:*/
     /* file */
     const VarLocation File = {
         .Type = TYPE_POINTER,
@@ -2071,32 +2081,33 @@ static void CompileExitStmt(PVMCompiler *Compiler)
     /* Exit */
     if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
     {
+        const VarSubroutine *CurrentSubroutine = Compiler->Subroutine[Compiler->Scope - 1].Current;
+
         if (IsAtGlobalScope(Compiler))
         {
             /* Exit() */
             if (ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
                 goto Done;
 
-            EMITTER()->ReturnValue.Type = TYPE_I32;
-            CompileExprInto(Compiler, &Keyword, &EMITTER()->ReturnValue);
+            VarLocation ReturnValue = PVMSetReturnType(EMITTER(), TYPE_I32);
+            CompileExprInto(Compiler, &Keyword, &ReturnValue);
         }
-        else if (Compiler->Subroutine[Compiler->Scope - 1].Current->HasReturnType)
+        else if (CurrentSubroutine->HasReturnType)
         {
             /* Exit(expr), must have return value */
             if (NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
             {
-                Error(Compiler, "Function must return a value.");
+                ErrorAt(Compiler, &Keyword, "Function must return a value.");
                 goto Done;
             }
 
-            EMITTER()->ReturnValue.Type = Compiler->Subroutine[Compiler->Scope - 1].Current->ReturnType;
-            VarLocation ReturnValue = PVMSetReturnType(EMITTER(), Compiler->Subroutine[Compiler->Scope - 1].Current->ReturnType);
+            VarLocation ReturnValue = PVMSetReturnType(EMITTER(), CurrentSubroutine->ReturnType);
             CompileExprInto(Compiler, &Keyword, &ReturnValue);
         }
         else if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
         {
             /* Exit(), no return type */
-            Error(Compiler, "Procedure cannot return a value.");
+            ErrorAt(Compiler, &Keyword, "Procedure cannot return a value.");
         }
         /* else Exit(), no return type */
         ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
@@ -2145,12 +2156,12 @@ static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
     Token UntilKeyword = Compiler->Curr;
     CompilerInitDebugInfo(Compiler, &UntilKeyword);
 
-    VarLocation Tmp = CompileExpr(Compiler);
+    VarLocation Tmp = CompileExprIntoReg(Compiler);
     PVMPatchBranch(EMITTER(), 
             PVMEmitBranchIfFalse(EMITTER(), &Tmp), 
             LoopHead,
             BRANCHTYPE_CONDITIONAL
-            );
+    );
     FreeExpr(Compiler, Tmp);
 
     CompilerEmitDebugInfo(Compiler, &UntilKeyword);
@@ -2171,7 +2182,21 @@ static void CompileForStmt(PVMCompiler *Compiler)
     /* for loop variable */
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected variable name.");
     PascalVar *Counter = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined variable.");
-    PASCAL_ASSERT(NULL != Counter->Location, "%s", __func__);
+    if (NULL == Counter)
+        return;
+    PASCAL_ASSERT(NULL != Counter->Location, "Invalid location.");
+    if (!IntegralTypeIsInteger(Counter->Type))
+    {
+        ErrorAt(Compiler, &Compiler->Curr, "Variable of type %s cannot be used as a counter",
+                IntegralTypeToStr(Counter->Type)
+        );
+        return;
+    }
+
+    /* FPC does not allow the address of a counter variable to be taken */
+    VarLocation CounterSave = *Counter->Location;
+    *Counter->Location = PVMAllocateRegister(EMITTER(), Counter->Type);
+
     /* init expression */
     ConsumeOrError(Compiler, TOKEN_COLON_EQUAL, "Expected ':=' after variable name.");
     Token Assignment = Compiler->Curr;
@@ -2181,7 +2206,7 @@ static void CompileForStmt(PVMCompiler *Compiler)
     /* for loop inc/dec */
     U32 LoopHead = PVMMarkBranchTarget(EMITTER());
     TokenType Op = TOKEN_GREATER;
-    I16 Inc = 1;
+    int Inc = 1;
     if (!ConsumeIfNextIs(Compiler, TOKEN_TO))
     {
         ConsumeOrError(Compiler, TOKEN_DOWNTO, "Expected 'to' or 'downto' after expression.");
@@ -2189,7 +2214,7 @@ static void CompileForStmt(PVMCompiler *Compiler)
         Inc = -1;
     }
     /* stop condition expr */
-    VarLocation StopCondition = CompileExpr(Compiler);
+    VarLocation StopCondition = CompileExprIntoReg(Compiler); 
     PVMEmitSetCC(EMITTER(), Op, &StopCondition, Counter->Location);
     U32 LoopExit = PVMEmitBranchIfFalse(EMITTER(), &StopCondition);
     FreeExpr(Compiler, StopCondition);
@@ -2206,6 +2231,12 @@ static void CompileForStmt(PVMCompiler *Compiler)
     PVMEmitAddImm(EMITTER(), Counter->Location, Inc);
     PVMEmitBranch(EMITTER(), LoopHead);
     PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_CONDITIONAL);
+
+
+    /* move the result of the counter variable */
+    PVMEmitMov(EMITTER(), &CounterSave, Counter->Location);
+    PVMFreeRegister(EMITTER(), Counter->Location->As.Register);
+    *Counter->Location = CounterSave;
 }
 
 
@@ -2282,11 +2313,9 @@ static void CompileIfStmt(PVMCompiler *Compiler)
 
 static void CompileCallStmt(PVMCompiler *Compiler, const Token Name, PascalVar *IdenInfo)
 {
-    PASCAL_ASSERT(NULL != IdenInfo, "Unreachable, IdenInfo is NULL in %s", __func__);
-    PASCAL_ASSERT(NULL != IdenInfo->Location, "Unreachable, Location is NULL in %s", __func__);
-    PASCAL_ASSERT(TYPE_FUNCTION == IdenInfo->Type, 
-            "Unreachable, IdenInfo is not a subroutine in %s", __func__
-    );
+    PASCAL_ASSERT(NULL != IdenInfo, "Unreachable, IdenInfo is NULL");
+    PASCAL_ASSERT(NULL != IdenInfo->Location, "Unreachable, Location is NULL");
+    PASCAL_ASSERT(TYPE_FUNCTION == IdenInfo->Type, "Unreachable, IdenInfo is not a subroutine");
 
     /* iden consumed */
     CompilerInitDebugInfo(Compiler, &Name);
@@ -2299,6 +2328,35 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token Name, PascalVar *
 }
 
 
+static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignment, 
+        VarLocation *Left, const VarLocation *Right)
+{
+    switch (Assignment->Type)
+    {
+    case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), Left, Right); break;
+    case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), Left, Right); break;
+    case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), Left, Right); break;
+    case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), Left, Right); break;
+    case TOKEN_PERCENT_EQUAL: 
+    {
+        if (IntegralTypeIsInteger(Left->Type) && IntegralTypeIsInteger(Right->Type))
+        {
+            PVMEmitMod(EMITTER(), Left, Right);
+        }
+        else 
+        {
+            ErrorAt(Compiler, Assignment, "Cannot perform modulo between %s and %s.",
+                    IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right->Type)
+            );
+        }
+    } break;
+    default: 
+    {
+        ErrorAt(Compiler, Assignment, "Expected ':=' or other assignment operator.");
+    } break;
+    }
+}
+
 static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
 {
     /* iden consumed */
@@ -2306,34 +2364,23 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
 
     VarLocation Tmp = GetVariable(Compiler);
     VarLocation *Dst = &Tmp;
-    PASCAL_ASSERT(VAR_INVALID != Dst->LocationType, "%s", __func__);
+    PASCAL_ASSERT(VAR_INVALID != Dst->LocationType, "Invalid location in AssignStmt.");
 
     /* TODO: this is a hack to be able to assign variable to a dereferenced pointer */
     /* this will fail if the left side is being deref multiple times */
     bool Deref = TOKEN_CARET == Compiler->Curr.Type;
 
-    Token Assignment = Compiler->Next;
+    const Token Assignment = Compiler->Next;
     ConsumeToken(Compiler); /* assignment type */
 
-    /* TODO: make CompileRawExpr as a wrapper around this */
-    VarLocation Right = ParsePrecedence(Compiler, PREC_EXPR);
+    VarLocation Right = CompileExpr(Compiler);
     if (Deref)
     {
         IntegralType Common = CoerceTypes(Compiler, &Assignment, Dst->PointsAt.Type, Right.Type);
         if (TYPE_INVALID == Common)
-        {
-            ErrorAt(Compiler, &Assignment, "Cannot assign expression of type %s to %s", 
-                    IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst->Type)
-            );
-            goto Exit;
-        }
+            goto InvalidAssignment;
         if (!ConvertTypeImplicitly(Compiler, Dst->PointsAt.Type, &Right))
-        {
-            ErrorAt(Compiler, &Assignment, "Cannot convert expression of type %s to %s", 
-                    IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst->Type)
-            );
-            goto Exit;
-        }
+            goto InvalidConversion;
 
 
         if (TOKEN_COLON_EQUAL == Assignment.Type)
@@ -2344,18 +2391,9 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
         {
             VarLocation Left = PVMAllocateRegister(EMITTER(), Dst->PointsAt.Type);
             PVMEmitDerefPtr(EMITTER(), &Left, Dst);
-            switch (Assignment.Type)
-            {
-            case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), &Left, &Right); break;
-            case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), &Left, &Right); break;
-            case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), &Left, &Right); break;
-            case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), &Left, &Right); break;
-            case TOKEN_PERCENT_EQUAL: PVMEmitMod(EMITTER(), &Left, &Right); break;
-            default: 
-            {
-                ErrorAt(Compiler, &Assignment, "Expected ':=' or other assignment operator.");
-            } break;
-            }
+
+            CompilerEmitAssignment(Compiler, &Assignment, &Left, &Right);
+
             PVMEmitStoreToPtr(EMITTER(), Dst, &Left);
             PVMFreeRegister(EMITTER(), Left.As.Register);
         }
@@ -2364,50 +2402,36 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
     {
         IntegralType Common = CoerceTypes(Compiler, &Assignment, Dst->Type, Right.Type);
         if (TYPE_INVALID == Common)
-        {
-            ErrorAt(Compiler, &Assignment, "Cannot assign expression of type %s to %s", 
-                    IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst->Type)
-            );
-            goto Exit;
-        }
+            goto InvalidAssignment;
         if (!ConvertTypeImplicitly(Compiler, Dst->Type, &Right))
+            goto InvalidConversion;
+
+        if (TYPE_POINTER == Dst->Type && TYPE_POINTER == Right.Type 
+        && Dst->PointsAt.Type != Right.PointsAt.Type)
         {
-            ErrorAt(Compiler, &Assignment, "Cannot convert expression of type %s to %s", 
-                    IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst->Type)
+            ErrorAt(Compiler, &Assignment, "Cannot assign %s pointer to %s pointer.", 
+                    IntegralTypeToStr(Right.PointsAt.Type),
+                    IntegralTypeToStr(Dst->PointsAt.Type)
             );
             goto Exit;
-        }
-        if (TYPE_POINTER == Dst->Type && TYPE_POINTER == Right.Type)
-        {
-            if (Dst->PointsAt.Type != Right.PointsAt.Type)
-            {
-                ErrorAt(Compiler, &Assignment, "Cannot assign %s pointer to %s pointer.", 
-                        IntegralTypeToStr(Right.PointsAt.Type),
-                        IntegralTypeToStr(Dst->PointsAt.Type)
-                );
-                goto Exit;
-            }
         }
 
-        switch (Assignment.Type)
-        {
-        case TOKEN_COLON_EQUAL: PVMEmitMov(EMITTER(), Dst, &Right); break;
-        case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), Dst, &Right); break;
-        case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), Dst, &Right); break;
-        case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), Dst, &Right); break;
-        case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), Dst, &Right); break;
-        case TOKEN_PERCENT_EQUAL: PVMEmitMod(EMITTER(), Dst, &Right); break;
-        default: 
-        {
-            ErrorAt(Compiler, &Assignment, "Expected ':=' or other assignment operator.");
-        } break;
-        }
+        CompilerEmitAssignment(Compiler, &Assignment, Dst, &Right);
     }
     
 
+    goto Exit;
+InvalidAssignment:
+    ErrorAt(Compiler, &Assignment, "Cannot assign expression of type %s to %s.", 
+            IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst->Type)
+    );
+    /* fallthrough is fine here */
+InvalidConversion:
+    ErrorAt(Compiler, &Assignment, "Cannot convert expression of type %s to %s", 
+            IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst->Type)
+    );
 Exit:
     FreeExpr(Compiler, Right);
-    //FreeExpr(Compiler, Tmp);
     CompilerEmitDebugInfo(Compiler, &Identifier);
 }
 

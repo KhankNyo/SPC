@@ -794,10 +794,18 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
                 IntegralTypeToStr(Dst->Type), IntegralTypeToStr(Src->Type)
         );
     }
-    if (Dst->LocationType == VAR_REG && VAR_MEM == Src->LocationType)
+    if (Dst->LocationType == VAR_REG)
     {
-        DerefIntoReg(Emitter, &Dst->As.Register, Dst->Type, Src->As.Memory, Src->Type);
-        return;
+        if (VAR_MEM == Src->LocationType)
+        {
+            DerefIntoReg(Emitter, &Dst->As.Register, Dst->Type, Src->As.Memory, Src->Type);
+            return;
+        }
+        else if (VAR_LIT == Src->LocationType && IntegralTypeIsInteger(Dst->Type))
+        {
+            ChunkWriteMovImm(PVMCurrentChunk(Emitter), Dst->As.Register.ID, Src->As.Literal.Int);
+            return;
+        }
     }
     /* TODO: mov imm straight into reg */
 
