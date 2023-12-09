@@ -79,7 +79,11 @@ struct VarLocation
 {
     VarLocationType LocationType;
     IntegralType Type;
-    PascalVar PointsAt;
+    U32 Size;
+    union {
+        PascalVar PointsAt;
+        PascalVartab Record;
+    };
     union {
         VarMemory Memory;
         VarRegister Register;

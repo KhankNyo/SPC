@@ -53,7 +53,7 @@ typedef struct PVMCompiler
     CompilerFrame Subroutine[PVM_MAX_SCOPE_COUNT];
 
 
-    U32 Scope;
+    I32 Scope;
     U32 EntryPoint;
     FILE *LogFile;
     bool Error, Panic;
@@ -69,22 +69,23 @@ static void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLoca
 
 
 static IntegralType sCoercionRules[TYPE_COUNT][TYPE_COUNT] = {
-    /*Invalid       I8            I16           I32           I64           U8            U16           U32           U64           F32           F64           Function      Boolean       Pointer         string */
-    { TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,   TYPE_INVALID},         /* Invalid */
-    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER,   TYPE_INVALID},         /* I8 */
-    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER,   TYPE_INVALID},         /* I16 */
-    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER,   TYPE_INVALID},         /* I32 */
-    { TYPE_INVALID, TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER,   TYPE_INVALID},         /* I64 */
-    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER,   TYPE_INVALID},         /* U8 */
-    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER,   TYPE_INVALID},         /* U16 */
-    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER,   TYPE_INVALID},         /* U32 */
-    { TYPE_INVALID, TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER,   TYPE_INVALID},         /* U64 */
-    { TYPE_INVALID, TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,   TYPE_INVALID},         /* F32 */
-    { TYPE_INVALID, TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,   TYPE_INVALID},         /* F64 */
-    { TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,   TYPE_INVALID},         /* Function */
-    { TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_BOOLEAN, TYPE_INVALID,   TYPE_INVALID},         /* Boolean */
-    { TYPE_INVALID, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_POINTER,   TYPE_INVALID},         /* Pointer */
-    { TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,   TYPE_STRING},          /* String */
+    /*Invalid       I8            I16           I32           I64           U8            U16           U32           U64           F32           F64           Function      Boolean       Pointer       string       record */
+    { TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,TYPE_INVALID},         /* Invalid */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER, TYPE_INVALID,TYPE_INVALID},         /* I8 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER, TYPE_INVALID,TYPE_INVALID},         /* I16 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER, TYPE_INVALID,TYPE_INVALID},         /* I32 */
+    { TYPE_INVALID, TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_I64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER, TYPE_INVALID,TYPE_INVALID},         /* I64 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER, TYPE_INVALID,TYPE_INVALID},         /* U8 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER, TYPE_INVALID,TYPE_INVALID},         /* U16 */
+    { TYPE_INVALID, TYPE_I32,     TYPE_I32,     TYPE_I32,     TYPE_I64,     TYPE_U32,     TYPE_U32,     TYPE_U32,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER, TYPE_INVALID,TYPE_INVALID},         /* U32 */
+    { TYPE_INVALID, TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_U64,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_POINTER, TYPE_INVALID,TYPE_INVALID},         /* U64 */
+    { TYPE_INVALID, TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F32,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,TYPE_INVALID},         /* F32 */
+    { TYPE_INVALID, TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_F64,     TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,TYPE_INVALID},         /* F64 */
+    { TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,TYPE_INVALID},         /* Function */
+    { TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_BOOLEAN, TYPE_INVALID, TYPE_INVALID,TYPE_INVALID},         /* Boolean */
+    { TYPE_INVALID, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_POINTER, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_POINTER, TYPE_INVALID,TYPE_INVALID},         /* Pointer */
+    { TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_STRING, TYPE_INVALID},         /* String */
+    { TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,TYPE_RECORD },         /* Record */
 };
 
 
@@ -215,7 +216,7 @@ static bool ConsumeOrError(PVMCompiler *Compiler, TokenType Expected, const char
 
 
 
-static U32 CompilerGetSizeOfType(PVMCompiler *Compiler, IntegralType Type)
+static U32 CompilerGetSizeOfType(PVMCompiler *Compiler, IntegralType Type, const VarLocation *TypeInfo)
 {
     switch (Type)
     {
@@ -248,9 +249,14 @@ static U32 CompilerGetSizeOfType(PVMCompiler *Compiler, IntegralType Type)
 
     case TYPE_POINTER:
         return sizeof(void*);
+    case TYPE_RECORD:
+    {
+        PASCAL_ASSERT(NULL != TypeInfo, "Unreachable");
+        return TypeInfo->Size;
+    } break;
     }
 
-    PASCAL_UNREACHABLE("Handle case %s in CompilerGetSizeOfType", IntegralTypeToStr(Type));
+    PASCAL_UNREACHABLE("Handle case %s", IntegralTypeToStr(Type));
     (void)Compiler;
     /* TODO: record and array types */
     return 0;
@@ -311,19 +317,34 @@ static bool IsAtGlobalScope(const PVMCompiler *Compiler)
 }
 
 
-static void CompilerPushSubroutine(PVMCompiler *Compiler, VarSubroutine *Subroutine)
+static PascalVartab *CurrentScope(PVMCompiler *Compiler)
 {
-    Compiler->Subroutine[Compiler->Scope].Current = Subroutine;
-    Compiler->Subroutine[Compiler->Scope].Location = Compiler->Var.Count;
-    Compiler->Scope++;
-    PASCAL_ASSERT(Compiler->Scope < STATIC_ARRAY_SIZE(Compiler->Subroutine), "TODO: dynamic nested scope");
+    if (IsAtGlobalScope(Compiler))
+    {
+        return Compiler->Global;
+    }
+    else 
+    {
+        return Compiler->Locals[Compiler->Scope - 1];
+    }
 }
 
-static VarSubroutine *CompilerPopSubroutine(PVMCompiler *Compiler)
+
+static void CompilerPushScope(PVMCompiler *Compiler, PascalVartab *Scope)
 {
+    Compiler->Locals[Compiler->Scope] = Scope;
+    Compiler->Scope++;
+}
+
+static PascalVartab *CompilerPopScope(PVMCompiler *Compiler)
+{
+    /* when popping a scope, we revert Var.Count back to Var.Count of the previous scope,
+     * and in the mean time, we'd also need to refill 
+     * the vars that were taken by the scope we're about to pop */
+
     Compiler->Scope--;
     U32 Last = Compiler->Var.Count;
-    Compiler->Var.Count = Compiler->Subroutine[Compiler->Scope].Location;
+    Compiler->Var.Count = CurrentScope(Compiler)->Count;
 
     /* refill the variables that have been taken */
     for (U32 i = Compiler->Var.Count; i < Last; i++)
@@ -331,7 +352,21 @@ static VarSubroutine *CompilerPopSubroutine(PVMCompiler *Compiler)
         Compiler->Var.Location[i] = 
             GPAAllocateZero(Compiler->GlobalAlloc, sizeof(Compiler->Var.Location[0][0]));
     }
-    return Compiler->Subroutine[Compiler->Scope].Current;
+    return Compiler->Locals[Compiler->Scope];
+}
+
+
+static void CompilerPushSubroutine(PVMCompiler *Compiler, VarSubroutine *Subroutine)
+{
+    Compiler->Subroutine[Compiler->Scope].Current = Subroutine;
+    Compiler->Subroutine[Compiler->Scope].Location = Compiler->Var.Count;
+    CompilerPushScope(Compiler, &Subroutine->Scope);
+    PASCAL_ASSERT(Compiler->Scope < (I32)STATIC_ARRAY_SIZE(Compiler->Subroutine), "TODO: dynamic nested scope");
+}
+
+static void CompilerPopSubroutine(PVMCompiler *Compiler)
+{
+    CompilerPopScope(Compiler);
 }
 
 
@@ -437,6 +472,7 @@ static void CalmDownDog(PVMCompiler *Compiler)
 
 static void CalmDownAtBlock(PVMCompiler *Compiler)
 {
+    /* TODO: this skips too much */
     Compiler->Panic = false;
     ConsumeToken(Compiler);
     while (!IsAtEnd(Compiler))
@@ -479,41 +515,6 @@ static void CalmDownAtBlock(PVMCompiler *Compiler)
  *                          VARIABLES AND IDENTIFIERS
  */
 /*===============================================================================*/
-
-
-static PascalVartab *CurrentScope(PVMCompiler *Compiler)
-{
-    if (IsAtGlobalScope(Compiler))
-    {
-        return Compiler->Global;
-    }
-    else 
-    {
-        return Compiler->Locals[Compiler->Scope - 1];
-    }
-}
-
-
-
-static void BeginScope(PVMCompiler *Compiler, VarSubroutine *Subroutine)
-{
-    /* creates new variable table */
-    PASCAL_ASSERT(Compiler->Scope <= PVM_MAX_SCOPE_COUNT, "Too many scopes");
-
-    Compiler->Locals[Compiler->Scope] = &Subroutine->Scope;
-
-    /* mark allocation point */
-    CompilerPushSubroutine(Compiler, Subroutine);
-    PVMEmitterBeginScope(EMITTER());
-}
-
-static void EndScope(PVMCompiler *Compiler)
-{
-    CompilerPopSubroutine(Compiler);
-    PVMEmitterEndScope(EMITTER());
-}
-
-
 
 
 
@@ -804,14 +805,13 @@ static void CompilerResolveSubroutineCalls(PVMCompiler *Compiler, VarSubroutine 
 
 
 
-static bool CompileAndDeclareParameter(PVMCompiler *Compiler, 
+static U32 CompileAndDeclareParameter(PVMCompiler *Compiler, 
         U32 VarCount, U32 VarSize, IntegralType VarType, PascalVar TypeInfo, VarSubroutine *Subroutine)
 {
     PASCAL_ASSERT(CompilerGetTmpIdentifierCount(Compiler) != 0, 
             "cannot be called outside of %s", __func__
     );
 
-    bool HasStackParams = false;
     /* TODO: let the emitter determine rounded size */
     VarSize += sizeof(PVMGPR);
     if (VarSize % sizeof(PVMGPR))
@@ -831,17 +831,20 @@ static bool CompileAndDeclareParameter(PVMCompiler *Compiler,
         PVMMarkArgAsOccupied(EMITTER(), Location);
         if (Subroutine->ArgCount > PVM_ARGREG_COUNT)
         {
-            HasStackParams = true;
             Subroutine->StackArgSize += VarSize;
         }
-        Location->PointsAt = TypeInfo;
+        if (TYPE_RECORD == VarType && NULL != TypeInfo.Location)
+            Location->Record = TypeInfo.Location->Record;
+        else
+            Location->PointsAt = TypeInfo;
         Location->Type = VarType;
+        Location->Size = VarSize;
         SubroutineDataPushParameter(Compiler->GlobalAlloc, Subroutine, Var);
     }
-    return HasStackParams;
+    return Subroutine->StackArgSize;
 }
 
-static bool CompileAndDeclareLocal(PVMCompiler *Compiler, 
+static U32 CompileAndDeclareLocal(PVMCompiler *Compiler, 
         U32 VarCount, U32 VarSize, IntegralType VarType, PascalVar TypeInfo)
 {
     PASCAL_ASSERT(VarCount > 0, "Unreachable");
@@ -856,11 +859,15 @@ static bool CompileAndDeclareLocal(PVMCompiler *Compiler,
         );
 
         Location->LocationType = VAR_MEM;
-        Location->PointsAt = TypeInfo;
+        if (TYPE_RECORD == VarType && NULL != TypeInfo.Location)
+            Location->Record = TypeInfo.Location->Record;
+        else
+            Location->PointsAt = TypeInfo;
         Location->Type = VarType;
+        Location->Size = VarSize;
         Location->As.Memory = PVMQueueStackAllocation(EMITTER(), VarSize);
     }
-    return true;
+    return VarCount * VarSize;
 }
 
 
@@ -880,14 +887,47 @@ static bool CompileAndDeclareGlobal(PVMCompiler *Compiler,
 
         Location->LocationType = VAR_MEM;
         Location->Type = VarType;
-        Location->PointsAt = TypeInfo;
+        if (TYPE_RECORD == VarType && NULL != TypeInfo.Location)
+            Location->Record = TypeInfo.Location->Record;
+        else
+            Location->PointsAt = TypeInfo;
+        Location->Size = VarSize;
         Location->As.Memory = PVMEmitGlobalSpace(EMITTER(), VarSize);
     }
-    return false;
+    return 0;
 }
 
-/* returns the size of the whole var list */
-static bool CompileAndDeclareVarList(PVMCompiler *Compiler, VarSubroutine *Function)
+
+static U32 CompileAndDeclareVarList(PVMCompiler *Compiler, VarSubroutine *Function);
+
+
+static PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Name)
+{
+    /* 'record' consumed */
+    PascalVartab RecordScope = VartabInit(Compiler->GlobalAlloc, 16);
+    CompilerPushScope(Compiler, &RecordScope);
+
+    U32 TotalSize = 0;
+    while (!IsAtEnd(Compiler) && !NextTokenIs(Compiler, TOKEN_END))
+    {
+        TotalSize += CompileAndDeclareVarList(Compiler, NULL);
+        if (NextTokenIs(Compiler, TOKEN_END)
+        || !ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expect ';' between member declaration."))
+            break;
+    }
+    ConsumeOrError(Compiler, TOKEN_END, "Expected 'end' after record definition.");
+
+    CompilerPopScope(Compiler);
+    VarLocation *Type = CompilerAllocateVarLocation(Compiler);
+    Type->Type = TYPE_RECORD;
+    Type->LocationType = VAR_INVALID;
+    Type->Record = RecordScope;
+    Type->Size = TotalSize;
+    return DefineIdentifier(Compiler, Name, TYPE_RECORD, Type);
+}
+
+/* returns whether or not the var list needs to be stack allocated */
+static U32 CompileAndDeclareVarList(PVMCompiler *Compiler, VarSubroutine *Function)
 {
     /* assumes next token is id1 */
     /* 
@@ -903,22 +943,31 @@ static bool CompileAndDeclareVarList(PVMCompiler *Compiler, VarSubroutine *Funct
         return false;
 
 
+    IntegralType VarType = TYPE_INVALID;
+    PascalVar ValidType = { 0 };
     /* pointer */
     bool IsPointer = ConsumeIfNextIs(Compiler, TOKEN_CARET);
-    if (!ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected type name after '%.*s'", Compiler->Curr.Len, Compiler->Curr.Str))
-        return false;
-
-
-    /* typename */
-    IntegralType VarType = TYPE_INVALID;
-    PascalVar *TypeInfo = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined type name.");
-    PascalVar ValidType = { 0 };
-    if (NULL != TypeInfo)
+    /* record */
+    if (ConsumeIfNextIs(Compiler, TOKEN_RECORD))
     {
-        ValidType = *TypeInfo;
-        VarType = TypeInfo->Type;
+        PASCAL_UNREACHABLE("TODO: annonymous records");
     }
-    U32 VarSize = CompilerGetSizeOfType(Compiler, VarType);
+    /* typename */
+    else if (ConsumeOrError(Compiler, TOKEN_IDENTIFIER, 
+            "Expected type name after '%.*s'", Compiler->Curr.Len, Compiler->Curr.Str))
+    {
+        /* typename */
+        PascalVar *TypeInfo = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined type name.");
+        if (NULL != TypeInfo)
+        {
+            ValidType = *TypeInfo;
+            VarType = TypeInfo->Type;
+        }
+    }
+    else return false;
+
+
+    U32 VarSize = CompilerGetSizeOfType(Compiler, VarType, ValidType.Location);
     if (IsPointer)
     {
         VarSize = sizeof(void*);
@@ -1083,6 +1132,7 @@ typedef enum Precedence
     PREC_SIMPLE,
     PREC_TERM,
     PREC_FACTOR,
+    PREC_VARIABLE,
     PREC_HIGHEST,
 } Precedence;
 typedef VarLocation (*InfixParseRoutine)(PVMCompiler *, VarLocation *);
@@ -1147,7 +1197,93 @@ static VarLocation FactorLiteral(PVMCompiler *Compiler)
     return Location;
 }
 
+
+
+
+static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
+{
+    Token Caret = Compiler->Curr;
+    if (TYPE_POINTER != Variable->Type)
+    {
+        ErrorAt(Compiler, &Caret, "%s is not dereferenceable.", 
+                IntegralTypeToStr(Variable->Type)
+        );
+        return *Variable;
+    }
+
+    VarLocation Register = PVMAllocateRegister(EMITTER(), Variable->PointsAt.Type);
+    PVMEmitDerefPtr(EMITTER(), &Register, Variable);
+    return Register;
+}
+
+static VarLocation *FindRecordMember(PascalVartab *Record, const Token *MemberName)
+{
+    U32 Hash = VartabHashStr(MemberName->Str, MemberName->Len);
+    PascalVar *Member = VartabFindWithHash(Record, MemberName->Str, MemberName->Len, Hash);
+    if (NULL == Member)
+        return NULL;
+    return Member->Location;
+}
+
+static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
+{
+    Token Dot = Compiler->Curr;
+    ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected member name.");
+    if (TYPE_RECORD != Left->Type)
+    {
+        ErrorAt(Compiler, &Dot, "%s does not have a member.", IntegralTypeToStr(Left->Type));
+        return *Left;
+    }
+
+    Token Name = Compiler->Curr;
+    VarLocation *Member = FindRecordMember(&Left->Record, &Name);
+    if (NULL == Member)
+    {
+        ErrorAt(Compiler, &Name, "'%.*s' is not a member.");
+        return *Left;
+    }
+
+    PVMEmitAddImm(EMITTER(), Left, Member->As.Memory.Location);
+    VarLocation Value = PVMAllocateRegister(EMITTER(), Member->Type);
+    PVMEmitDerefPtr(EMITTER(), &Value, Left);
+    FreeExpr(Compiler, *Left);
+    return Value;
+}
+
+
 static VarLocation GetVariable(PVMCompiler *Compiler)
+{
+    Token Identifier = Compiler->Curr;
+    PascalVar *Variable = GetIdenInfo(Compiler, &Identifier, "Undefined variable.");
+    if (NULL == Variable)
+        goto Error;
+
+    VarLocation *Location = Variable->Location;
+    PASCAL_ASSERT(NULL != Location, "Invalid location in %s", __func__);
+    PASCAL_ASSERT(Location->Type == Variable->Type, "%s", __func__);
+   
+    if (TYPE_FUNCTION == Location->Type)
+    {
+        VarSubroutine *Callee = &Location->As.Subroutine;
+        if (!Callee->HasReturnType)
+        {
+            ErrorAt(Compiler, &Identifier, "Procedure does not have a return value.");
+            goto Error;
+        }
+
+        /* setup return reg */
+        VarLocation ReturnValue = PVMAllocateRegister(EMITTER(), Callee->ReturnType);
+        CompilerCallSubroutine(Compiler, Callee, &Identifier, &ReturnValue);
+        return ReturnValue;
+    }
+    return *Location;
+Error:
+    return (VarLocation) { 0 };
+}
+
+
+
+static VarLocation GetVariable_(PVMCompiler *Compiler)
 {
     /* identifier consumed */
     Token Identifier = Compiler->Curr;
@@ -1160,6 +1296,7 @@ static VarLocation GetVariable(PVMCompiler *Compiler)
     PASCAL_ASSERT(Location->Type == Variable->Type, "%s", __func__);
 
 
+    /* TODO: multiple deref */
     if (ConsumeIfNextIs(Compiler, TOKEN_CARET))
     {
         PASCAL_ASSERT(!ConsumeIfNextIs(Compiler, TOKEN_CARET), "TODO: double deref.");
@@ -1198,6 +1335,8 @@ Error:
     return (VarLocation) { 0 };
 }
 
+
+
 static VarLocation FactorVariable(PVMCompiler *Compiler)
 {
     /* identifier consumed */
@@ -1224,6 +1363,7 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
         }
         VarLocation Register = PVMAllocateRegister(EMITTER(), Location->PointsAt.Type);
         PVMEmitDerefPtr(EMITTER(), &Register, Location);
+        Register.PointsAt = Location->PointsAt;
         return Register;
     }
     if (TYPE_FUNCTION == Location->Type)
@@ -1243,8 +1383,10 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
     else
     {
         VarLocation Register = PVMAllocateRegister(EMITTER(), Location->Type);
-        if (TYPE_POINTER == Location->Type)
+        if (Location->Type == TYPE_POINTER)
             Register.PointsAt = Location->PointsAt;
+        else if (Location->Type == TYPE_RECORD)
+            Register.Record = Location->Record;
         PVMEmitMov(EMITTER(), &Register, Location);
         return Register;
     }
@@ -1253,7 +1395,7 @@ Error:
 }
 
 
-static VarLocation FactorAddrOf(PVMCompiler *Compiler)
+static VarLocation VariableAddrOf(PVMCompiler *Compiler)
 {
 #if 0
     /* Curr is '@' */
@@ -1862,8 +2004,9 @@ static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] =
     [TOKEN_FALSE]           = { FactorLiteral,      NULL,           PREC_SINGLE },
     [TOKEN_IDENTIFIER]      = { FactorVariable,     NULL,           PREC_SINGLE },
 
-    [TOKEN_CARET]           = { FactorVariable,     NULL,           PREC_FACTOR },
-    [TOKEN_AT]              = { FactorAddrOf,       NULL,           PREC_SINGLE },
+    [TOKEN_CARET]           = { NULL,               VariableDeref,  PREC_VARIABLE },
+    [TOKEN_DOT]             = { NULL,               VariableAccess, PREC_VARIABLE },
+    [TOKEN_AT]              = { VariableAddrOf,     NULL,           PREC_SINGLE },
 
     [TOKEN_LEFT_PAREN]      = { FactorGrouping,     NULL,           PREC_FACTOR },
     [TOKEN_NOT]             = { ExprUnary,          NULL,           PREC_FACTOR },
@@ -1898,10 +2041,8 @@ static const PrecedenceRule *GetPrecedenceRule(TokenType CurrentTokenType)
     return &sPrecedenceRuleLut[CurrentTokenType];
 }
 
-
-static VarLocation ParsePrecedence(PVMCompiler *Compiler, Precedence Prec)
+static VarLocation ParseAssignmentLhs(PVMCompiler *Compiler, Precedence Prec)
 {
-    ConsumeToken(Compiler);
     const PrefixParseRoutine PrefixRoutine = GetPrecedenceRule(Compiler->Curr.Type)->PrefixRoutine;
     if (NULL == PrefixRoutine)
     {
@@ -1925,6 +2066,12 @@ static VarLocation ParsePrecedence(PVMCompiler *Compiler, Precedence Prec)
         Left = InfixRoutine(Compiler, &Left);
     }
     return Left;
+}
+
+static VarLocation ParsePrecedence(PVMCompiler *Compiler, Precedence Prec)
+{
+    ConsumeToken(Compiler);
+    return ParseAssignmentLhs(Compiler, Prec);
 }
 
 
@@ -2363,7 +2510,7 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
     /* iden consumed */
     CompilerInitDebugInfo(Compiler, &Identifier);
 
-    VarLocation Tmp = GetVariable(Compiler);
+    VarLocation Tmp = ParseAssignmentLhs(Compiler, PREC_VARIABLE);
     VarLocation *Dst = &Tmp;
     PASCAL_ASSERT(VAR_INVALID != Dst->LocationType, "Invalid location in AssignStmt.");
 
@@ -2625,8 +2772,10 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     }
 
 
+    /* begin subroutine scope */
+    CompilerPushSubroutine(Compiler, Subroutine);
+    PVMEmitterBeginScope(EMITTER());
     /* param list */
-    BeginScope(Compiler, Subroutine);
     CompileParameterList(Compiler, Subroutine);
 
 
@@ -2680,7 +2829,9 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
         CompilerEmitDebugInfo(Compiler, &End);
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s body.", SubroutineType);
     }
-    EndScope(Compiler);
+
+    CompilerPopSubroutine(Compiler);
+    PVMEmitterEndScope(EMITTER());
 }
 
 
@@ -2717,6 +2868,58 @@ static void CompileVarBlock(PVMCompiler *Compiler)
 }
 
 
+static void CompileTypeBlock(PVMCompiler *Compiler)
+{
+    /*
+     * type
+     *  id = id;
+     *  id = record ... end;
+     *  id = array of record ... end;
+     *       array of id;
+     */
+
+    if (!NextTokenIs(Compiler, TOKEN_IDENTIFIER))
+    {
+        Error(Compiler, "Type block must have at least 1 definition.");
+        return;
+    }
+
+    while (ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER))
+    {
+        Token Identifier = Compiler->Curr;
+        if (!ConsumeOrError(Compiler, TOKEN_EQUAL, "Expected '=' instead."))
+            return;
+
+        if (ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER))
+        {
+            const Token TypeName = Compiler->Curr;
+            PascalVar *Type = GetIdenInfo(Compiler, &TypeName, "Undefined type name.");
+            if (NULL == Type)
+                continue;
+            if (NULL != Type->Location)
+            {
+                ErrorAt(Compiler, &TypeName, "'%.*s' is not a type name.",
+                        TypeName.Len, TypeName.Str
+                );
+                continue;
+            }
+
+            DefineIdentifier(Compiler, &Identifier, Type->Type, NULL);
+        }
+        else if (ConsumeIfNextIs(Compiler, TOKEN_RECORD))
+        {
+            CompileRecordDefinition(Compiler, &Identifier);
+        }
+        else
+        {
+            PASCAL_UNREACHABLE("TODO: more type.");
+        }
+
+        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after type definition.");
+    }
+}
+
+
 
 
 
@@ -2746,7 +2949,7 @@ static bool CompileHeadlessBlock(PVMCompiler *Compiler)
         case TOKEN_TYPE:
         {
             ConsumeToken(Compiler);
-            PASCAL_UNREACHABLE("TODO: type");
+            CompileTypeBlock(Compiler);
         } break;
         case TOKEN_CONST:
         {

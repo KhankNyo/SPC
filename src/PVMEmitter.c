@@ -13,13 +13,13 @@
 #if UINTPTR_MAX == UINT32_MAX
 #  define CASE_PTR32(Colon) case TYPE_POINTER Colon
 #  define CASE_PTR64(Colon)
-#  define CASE_OBJREF32(Colon) case TYPE_STRING Colon
+#  define CASE_OBJREF32(Colon) case TYPE_STRING Colon case TYPE_RECORD Colon
 #  define CASE_OBJREF64(Colon)
 #else
 #  define CASE_PTR32(Colon)
 #  define CASE_PTR64(Colon) case TYPE_POINTER Colon
 #  define CASE_OBJREF32(Colon)
-#  define CASE_OBJREF64(Colon) case TYPE_STRING Colon
+#  define CASE_OBJREF64(Colon) case TYPE_STRING Colon case TYPE_RECORD Colon
 #endif
 
 

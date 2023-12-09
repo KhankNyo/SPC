@@ -16,6 +16,7 @@ typedef enum IntegralType
     TYPE_BOOLEAN,
     TYPE_POINTER,
     TYPE_STRING,
+    TYPE_RECORD,
     TYPE_COUNT,
 } IntegralType;
 
@@ -36,6 +37,7 @@ static inline const char *IntegralTypeToStr(IntegralType Type)
         [TYPE_FUNCTION] = "function",
         [TYPE_BOOLEAN] = "boolean",
         [TYPE_STRING] = "string",
+        [TYPE_RECORD] = "record",
         [TYPE_POINTER] = "pointer",
     };
     PASCAL_STATIC_ASSERT(TYPE_COUNT == STATIC_ARRAY_SIZE(StrLut), "Missing type for ParserIntegralTypeToStr()");

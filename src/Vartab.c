@@ -168,7 +168,7 @@ static PascalVar *VartabFindValidSlot(PascalVar *Table, ISize Cap, const U8 *Key
     PascalVar *Tombstoned = NULL;
     USize Index = Hash & (Cap - 1);
 
-    for (ISize i = 0; i < Cap; i++)
+    for (ISize i = 0; i < 2*Cap; i++)
     {
         PascalVar *Slot = &Table[Index];
         if (Len == Slot->Len
