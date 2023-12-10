@@ -3,7 +3,6 @@
 
 
 set "ARG1=%1"
-set "OUTDIRS=bin obj"
 set "SRCDIR=%CD%\src"
 set "OBJDIR=%CD%\obj"
 set "BINDIR=%CD%\bin"
@@ -42,17 +41,17 @@ set "OUTPUT=%BINDIR%\pascal.exe"
 
 
 if "%ARG1%"=="clean" (
-    if exist bin\ rmdir /q /s bin
-    if exist obj\ rmdir /q /s obj
+    if exist %OBJDIR%\ rmdir /q /s %OBJDIR%
+    if exist %BINDIR%\ rmdir /q /s %BINDIR%
 
     set "MSG=Removed build artifacts."
 ) else (
-    if not exist bin\ mkdir bin
-    if not exist obj\ mkdir obj
+    if not exist %BINDIR%\ mkdir %BINDIR%
+    if not exist %OBJDIR%\ mkdir %OBJDIR%
 
     setlocal enabledelayedexpansion
     set "OBJS="
-    pushd obj\
+    pushd %OBJDIR%\
         for %%F in (%SRCS%) do (
             set CURRENT_OBJ=%OBJDIR%\%%~nF.%OBJ_EXTENSION%
 
@@ -65,7 +64,7 @@ if "%ARG1%"=="clean" (
         )
     popd
 
-    pushd bin\
+    pushd %BINDIR%\
         :: linking 
         echo %CC% %LDF% %EXE_SWITCH%%OUTPUT% !OBJS! %LIBS%
         %CC% %LDF% %EXE_SWITCH%%OUTPUT% !OBJS! %LIBS%
