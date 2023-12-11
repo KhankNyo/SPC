@@ -8,6 +8,7 @@ end;
 
 procedure Test;
 var struct: r;
+    a: integer;
 begin 
     struct.a := 10;
     struct.b := struct.a;

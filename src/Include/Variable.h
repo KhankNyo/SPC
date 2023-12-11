@@ -43,6 +43,7 @@ typedef struct VarMemory
 typedef struct VarRegister
 {
     UInt ID;
+    bool Persistent;
 } VarRegister;
 
 typedef struct VarSubroutine

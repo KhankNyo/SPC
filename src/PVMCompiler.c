@@ -2301,12 +2301,14 @@ static void CompileForStmt(PVMCompiler *Compiler)
 
     /* FPC does not allow the address of a counter variable to be taken */
     VarLocation CounterSave = *Counter->Location;
-    *Counter->Location = PVMAllocateRegister(EMITTER(), Counter->Type);
+    VarLocation *i = Counter->Location;
+    *i = PVMAllocateRegister(EMITTER(), Counter->Type);
+    i->As.Register.Persistent = true;
 
     /* init expression */
     ConsumeOrError(Compiler, TOKEN_COLON_EQUAL, "Expected ':=' after variable name.");
     Token Assignment = Compiler->Curr;
-    CompileExprInto(Compiler, &Assignment, Counter->Location);
+    CompileExprInto(Compiler, &Assignment, i);
 
 
     /* for loop inc/dec */
@@ -2320,10 +2322,11 @@ static void CompileForStmt(PVMCompiler *Compiler)
         Inc = -1;
     }
     /* stop condition expr */
-    VarLocation StopCondition = CompileExprIntoReg(Compiler); 
-    PVMEmitSetCC(EMITTER(), Op, &StopCondition, Counter->Location);
-    U32 LoopExit = PVMEmitBranchIfFalse(EMITTER(), &StopCondition);
+    VarLocation StopCondition = CompileExpr(Compiler); 
+    VarLocation Condition = PVMEmitSetCC(EMITTER(), Op, &StopCondition, i);
+    U32 LoopExit = PVMEmitBranchIfFalse(EMITTER(), &Condition);
     FreeExpr(Compiler, StopCondition);
+    FreeExpr(Compiler, Condition);
     /* do */
     ConsumeOrError(Compiler, TOKEN_DO, "Expected 'do' after expression.");
     CompilerEmitDebugInfo(Compiler, &Keyword);
@@ -2334,15 +2337,15 @@ static void CompileForStmt(PVMCompiler *Compiler)
 
 
     /* loop increment */
-    PVMEmitAddImm(EMITTER(), Counter->Location, Inc);
+    PVMEmitAddImm(EMITTER(), i, Inc);
     PVMEmitBranch(EMITTER(), LoopHead);
     PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_CONDITIONAL);
 
 
     /* move the result of the counter variable */
-    PVMEmitMov(EMITTER(), &CounterSave, Counter->Location);
-    PVMFreeRegister(EMITTER(), Counter->Location->As.Register);
-    *Counter->Location = CounterSave;
+    PVMEmitMov(EMITTER(), &CounterSave, i);
+    PVMFreeRegister(EMITTER(), i->As.Register);
+    *i = CounterSave;
 }
 
 
@@ -2438,36 +2441,35 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
         VarLocation *Left, const VarLocation *Right)
 {
     VarLocation Dst = *Left;
-    if (TOKEN_COLON_EQUAL != Assignment->Type)
+    if (TOKEN_COLON_EQUAL == Assignment->Type)
     {
-        switch (Assignment->Type)
-        {
-        case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), Left, Right); break;
-        case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), Left, Right); break;
-        case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), Left, Right); break;
-        case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), Left, Right); break;
-        case TOKEN_PERCENT_EQUAL: 
-        {
-            if (IntegralTypeIsInteger(Left->Type) && IntegralTypeIsInteger(Right->Type))
-            {
-                PVMEmitMod(EMITTER(), Left, Right);
-            }
-            else 
-            {
-                ErrorAt(Compiler, Assignment, "Cannot perform modulo between %s and %s.",
-                        IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right->Type)
-                );
-            }
-        } break;
-        default: 
-        {
-            ErrorAt(Compiler, Assignment, "Expected ':=' or other assignment operator.");
-        } break;
-        }
+        PVMEmitMov(EMITTER(), Left, Right);
+        return;
     }
-    else 
+
+    switch (Assignment->Type)
     {
-        *Left = *Right;
+    case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), Left, Right); break;
+    case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), Left, Right); break;
+    case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), Left, Right); break;
+    case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), Left, Right); break;
+    case TOKEN_PERCENT_EQUAL: 
+    {
+        if (IntegralTypeIsInteger(Left->Type) && IntegralTypeIsInteger(Right->Type))
+        {
+            PVMEmitMod(EMITTER(), Left, Right);
+        }
+        else 
+        {
+            ErrorAt(Compiler, Assignment, "Cannot perform modulo between %s and %s.",
+                    IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right->Type)
+            );
+        }
+    } break;
+    default: 
+    {
+        ErrorAt(Compiler, Assignment, "Expected ':=' or other assignment operator.");
+    } break;
     }
 
 

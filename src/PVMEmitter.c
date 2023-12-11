@@ -1202,6 +1202,7 @@ void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I16 Imm)
 
 
 
+PASCAL_STATIC_ASSERT(false, "TODO; major rewrite to utilize the Persistent field in VarRegister");
 #define DEFINE_INTEGER_BINARY_OP(FnName, Mnemonic)\
 void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src) {\
     PASCAL_NONNULL(Emitter);\
@@ -1643,8 +1644,8 @@ do {\
 } while (0)
 
 
-    VarLocation Rd, Rs;
-    PVMEmitIntoReg(Emitter, &Rd, Dst);
+    VarLocation Rd = PVMAllocateRegister(Emitter, Dst->Type);
+    VarLocation Rs;
     bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, Src);
     bool Signed = (IntegralTypeIsSigned(Dst->Type) 
                 || IntegralTypeIsSigned(Src->Type));
@@ -1653,6 +1654,7 @@ do {\
         || TYPE_U64 == Src->Type
         || TYPE_I64 == Src->Type;
     UInt RdID = Rd.As.Register.ID, RsID = Rs.As.Register.ID;
+    PVMEmitMov(Emitter, &Rd, Dst);
 
     if (TYPE_STRING == Dst->Type)
     {
@@ -1761,7 +1763,7 @@ VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgT
     }
 
     /* TODO: pascal calling convention */
-    I32 ArgOffset = (PVM_ARGREG_COUNT - ArgNumber - 1) * sizeof(PVMGPR);
+    I32 ArgOffset = (ArgNumber - PVM_ARGREG_COUNT) * sizeof(PVMGPR);
     ArgOffset += Emitter->StackSpace;
     VarLocation Mem = {
         .Type = ArgType,
@@ -1771,7 +1773,7 @@ VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgT
             .Location = ArgOffset,
         },
     };
-    PASCAL_ASSERT(ArgOffset >= 0, "allocate space before call");
+    //PASCAL_ASSERT(ArgOffset >= 0, "allocate space before call");
     return Mem;
 }
 
@@ -1790,12 +1792,14 @@ VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType)
 {
     PASCAL_NONNULL(Emitter);
     VarLocation ReturnValue = Emitter->ReturnValue;
+    PASCAL_ASSERT(ReturnValue.LocationType == VAR_REG, "??");
+
     if (IntegralTypeIsFloat(ReturnType))
     {
         ReturnValue.As.Register.ID = Emitter->ReturnValue.As.Register.ID + PVM_REG_COUNT;
     }
+    PVMMarkRegisterAsAllocated(Emitter, ReturnValue.As.Register.ID);
     ReturnValue.Type = ReturnType;
-    PASCAL_ASSERT(ReturnValue.LocationType == VAR_REG, "??");
     return ReturnValue;
 }
 
@@ -1819,6 +1823,7 @@ void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...)
         {
             PVMFreeRegister(Emitter, Reg.As.Register);
         }
+        Emitter->StackSpace += sizeof(PVMGPR);
     }
     va_end(Args);
 }
@@ -1836,7 +1841,7 @@ VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size)
         NewOffset = (NewOffset + sizeof(PVMPTR)) & ~(sizeof(PVMPTR) - 1);
 
     VarMemory Mem = {
-        .RegPtr = PVM_REG_SP,
+        .RegPtr = PVM_REG_FP,
         .Location = Emitter->StackSpace,
     };
     Emitter->StackSpace = NewOffset;
