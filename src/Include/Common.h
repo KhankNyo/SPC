@@ -160,9 +160,18 @@ static inline I64 BitSex64(U64 Value, UInt SignIndex)
         DIE();\
     }\
 }while(0)
+#define PASCAL_NONNULL(Ptr) do {\
+    if (NULL == (Ptr)) {\
+        fprintf(stderr, "Invalid Pointer on line %d in %s in %s",\
+                __LINE__, __func__, __FILE__\
+        );\
+        DIE();\
+    }\
+} while (0)
 #  define DBG_PRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
 #  define PASCAL_ASSERT(expr, ...) (void)(expr), UNUSED(__VA_ARGS__)
+#  define PASCAL_NONNULL(Ptr)
 #  define DBG_PRINT(...) (void)UNUSED(__VA_ARGS__)
 #endif
 

@@ -26,6 +26,7 @@
 
 PVMEmitter PVMEmitterInit(PVMChunk *Chunk)
 {
+    PASCAL_NONNULL(Chunk);
     PVMEmitter Emitter = {
         .Chunk = Chunk,
         .Reglist = EMPTY_REGLIST,
@@ -76,6 +77,7 @@ PVMEmitter PVMEmitterInit(PVMChunk *Chunk)
 
 void PVMEmitterDeinit(PVMEmitter *Emitter)
 {
+    PASCAL_NONNULL(Emitter);
     PVMEmitExit(Emitter);
 }
 
@@ -89,17 +91,20 @@ void PVMEmitterDeinit(PVMEmitter *Emitter)
 
 static PVMChunk *PVMCurrentChunk(PVMEmitter *Emitter)
 {
+    PASCAL_NONNULL(Emitter);
     return Emitter->Chunk;
 }
 
 
 static U32 WriteOp16(PVMEmitter *Emitter, U16 Opcode)
 {
+    PASCAL_NONNULL(Emitter);
     return ChunkWriteCode(PVMCurrentChunk(Emitter), Opcode);
 }
 
 static U32 WriteOp32(PVMEmitter *Emitter, U16 Opcode, U16 SecondHalf)
 {
+    PASCAL_NONNULL(Emitter);
     U32 Location = WriteOp16(Emitter, Opcode);
     WriteOp16(Emitter, SecondHalf);
     return Location;
@@ -108,21 +113,25 @@ static U32 WriteOp32(PVMEmitter *Emitter, U16 Opcode, U16 SecondHalf)
 
 static bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt Reg)
 {
+    PASCAL_NONNULL(Emitter);
     return ((Emitter->Reglist >> Reg) & 1) == 0;
 }
 
 void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, UInt Reg)
 {
+    PASCAL_NONNULL(Emitter);
     Emitter->Reglist |= (U32)1 << Reg;
 }
 
 static void PVMMarkRegisterAsFreed(PVMEmitter *Emitter, UInt Reg)
 {
+    PASCAL_NONNULL(Emitter);
     Emitter->Reglist &= ~((U32)1 << Reg);
 }
 
 static void PVMEmitPushReg(PVMEmitter *Emitter, UInt Reg)
 {
+    PASCAL_NONNULL(Emitter);
     if (Reg < PVM_REG_COUNT / 2)
     {
         WriteOp16(Emitter, PVM_REGLIST(PSHL, 1 << Reg));
@@ -135,6 +144,7 @@ static void PVMEmitPushReg(PVMEmitter *Emitter, UInt Reg)
 
 static void PVMEmitPop(PVMEmitter *Emitter, UInt Reg)
 {
+    PASCAL_NONNULL(Emitter);
     if (Reg < PVM_REG_COUNT / 2)
     {
         WriteOp16(Emitter, PVM_REGLIST(POPL, 1 << Reg));
@@ -154,6 +164,8 @@ static void PVMEmitPop(PVMEmitter *Emitter, UInt Reg)
  */
 static void MakeDstTypeCompatible(PVMEmitter *Emitter, VarRegister *Dst, IntegralType DstType, VarRegister Src)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
     if (Dst->ID == Src.ID)
     {
         VarLocation NewLocation = PVMAllocateRegister(Emitter, DstType);
@@ -164,6 +176,8 @@ static void MakeDstTypeCompatible(PVMEmitter *Emitter, VarRegister *Dst, Integra
 
 static void TransferRegister(PVMEmitter *Emitter, VarRegister *Dst, IntegralType DstType, VarRegister Src, IntegralType SrcType)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
     if (DstType == SrcType && Dst->ID == Src.ID)
         return;
 
@@ -371,15 +385,13 @@ static void StoreToPtr(PVMEmitter *Emitter,
 
 static void StoreFromReg(PVMEmitter *Emitter, VarMemory Dst, IntegralType DstType, VarRegister Src, IntegralType SrcType)
 {    
+    PASCAL_NONNULL(Emitter);
     if (DstType != SrcType) 
     {
         TransferRegister(Emitter, &Src, DstType, Src, SrcType);
     }
 
-    VarRegister Base = Emitter->Reg.FP.As.Register;
-    if (Dst.IsGlobal)
-        Base = Emitter->Reg.GP.As.Register;
-
+    VarRegister Base = { .ID = Dst.RegPtr };
     StoreToPtr(Emitter,
             Base, Dst.Location, DstType,
             Src
@@ -390,6 +402,7 @@ static void DerefIntoFloatReg(PVMEmitter *Emitter,
         VarRegister *Dst, IntegralType DstType, 
         VarRegister Base, I32 Offset, IntegralType SrcType)
 {
+    PASCAL_NONNULL(Emitter);
 #define LOAD(FloatType)\
 do {\
     if (IN_I16(Offset)) {\
@@ -425,6 +438,8 @@ static void DerefIntoIntReg(PVMEmitter *Emitter,
         VarRegister *Dst, IntegralType DstType, 
         VarRegister Base, I32 Offset, IntegralType SrcType)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
 #define LOAD_OP(LongMode, ExtendType, DstSize, SrcSize, Base)\
     WriteOp16(Emitter, PVM_OP(LD ## ExtendType ## DstSize ## SrcSize ## LongMode, Dst->ID, Base))
 #define LOAD_INTO(LongMode, ExtendType, DstSize, Base) do {\
@@ -480,36 +495,14 @@ static void DerefIntoIntReg(PVMEmitter *Emitter,
 #undef LOAD_OP
 }
 
-static void DerefPtrIntoReg(PVMEmitter *Emitter, 
-        VarRegister *Dst, IntegralType DstType, VarRegister Ptr, I32 Offset)
-{
-    if (IntegralTypeIsFloat(DstType)) 
-    {
-        DerefIntoFloatReg(Emitter, 
-                Dst, DstType, 
-                Ptr, Offset, DstType
-        );
-    }
-    else
-    {
-        DerefIntoIntReg(Emitter, 
-                Dst, DstType, 
-                Ptr, Offset, DstType
-        );
-    }
-}
-
 
 
 static void DerefIntoReg(PVMEmitter *Emitter, 
         VarRegister *Dst, IntegralType DstType, VarMemory Src, IntegralType SrcType)
 {
-    VarRegister Base = Emitter->Reg.FP.As.Register;
-    if (Src.IsGlobal)
-    {
-        Base = Emitter->Reg.GP.As.Register;
-    }
-
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    VarRegister Base = { .ID = Src.RegPtr };
     if (IntegralTypeIsFloat(DstType))
     {
         DerefIntoFloatReg(Emitter,
@@ -528,6 +521,10 @@ static void DerefIntoReg(PVMEmitter *Emitter,
 
 static bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, const VarLocation *Src)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(OutTarget);
+    PASCAL_NONNULL(Src);
+
     VarLocation Tmp = *Src;
     switch (Tmp.LocationType)
     {
@@ -608,6 +605,7 @@ static bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, const Va
 
 void PVMSetEntryPoint(PVMEmitter *Emitter, U32 EntryPoint)
 {
+    PASCAL_NONNULL(Emitter);
     PVMCurrentChunk(Emitter)->EntryPoint = EntryPoint;
 }
 
@@ -616,11 +614,13 @@ void PVMSetEntryPoint(PVMEmitter *Emitter, U32 EntryPoint)
 
 void PVMEmitterBeginScope(PVMEmitter *Emitter)
 {
+    PASCAL_NONNULL(Emitter);
     Emitter->SavedRegisters[Emitter->NumSavelist++] = Emitter->Reglist;
 }
 
 void PVMEmitSaveFrame(PVMEmitter *Emitter)
 {
+    PASCAL_NONNULL(Emitter);
     TransferRegister(Emitter, 
             &Emitter->Reg.FP.As.Register, TYPE_POINTER, 
             Emitter->Reg.SP.As.Register, TYPE_POINTER
@@ -629,6 +629,7 @@ void PVMEmitSaveFrame(PVMEmitter *Emitter)
 
 void PVMEmitterEndScope(PVMEmitter *Emitter)
 {
+    PASCAL_NONNULL(Emitter);
     PASCAL_ASSERT(Emitter->NumSavelist > 0, "Unreachable");
     Emitter->Reglist = Emitter->SavedRegisters[--Emitter->NumSavelist];
 }
@@ -639,11 +640,13 @@ void PVMEmitterEndScope(PVMEmitter *Emitter)
 
 void PVMEmitDebugInfo(PVMEmitter *Emitter, const U8 *Src, U32 SrcLen, U32 LineNum)
 {
+    PASCAL_NONNULL(Emitter);
     ChunkWriteDebugInfo(PVMCurrentChunk(Emitter), Src, SrcLen, LineNum);
 }
 
 void PVMUpdateDebugInfo(PVMEmitter *Emitter, U32 LineLen, bool IsSubroutine)
 {
+    PASCAL_NONNULL(Emitter);
     LineDebugInfo *Info = ChunkGetDebugInfo(PVMCurrentChunk(Emitter), UINT32_MAX);
     PASCAL_ASSERT(NULL != Info, "PVMUpdateDebugInfo: Info is NULL");
     Info->SrcLen[Info->Count - 1] = LineLen;
@@ -661,11 +664,13 @@ void PVMUpdateDebugInfo(PVMEmitter *Emitter, U32 LineLen, bool IsSubroutine)
 
 U32 PVMGetCurrentLocation(PVMEmitter *Emitter)
 {
+    PASCAL_NONNULL(Emitter);
     return PVMCurrentChunk(Emitter)->Count;
 }
 
 VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type)
 {
+    PASCAL_NONNULL(Emitter);
     PASCAL_ASSERT(Type != TYPE_INVALID, "PVMAllocateRegister: received invalid type");
     if (IntegralTypeIsFloat(Type))
     {
@@ -714,6 +719,7 @@ VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type)
 
 void PVMFreeRegister(PVMEmitter *Emitter, VarRegister Reg)
 {
+    PASCAL_NONNULL(Emitter);
     PASCAL_ASSERT(!PVMRegisterIsFree(Emitter, Reg.ID), "double free register: %d", Reg.ID);
     UInt SpilledReg = (Emitter->SpilledRegCount - 1) % PVM_REG_COUNT;
     if (Emitter->SpilledRegCount > 0 && SpilledReg == Reg.ID)
@@ -735,6 +741,7 @@ void PVMFreeRegister(PVMEmitter *Emitter, VarRegister Reg)
 
 U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition)
 {
+    PASCAL_NONNULL(Emitter);
     VarLocation Target;
     bool IsOwning = PVMEmitIntoReg(Emitter, &Target, Condition);
     U32 Location = WriteOp32(Emitter, PVM_B(EZ, Target.As.Register.ID, 0), 0);
@@ -747,6 +754,7 @@ U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition)
 
 U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition)
 {
+    PASCAL_NONNULL(Emitter);
     VarLocation Target;
     bool IsOwning = PVMEmitIntoReg(Emitter, &Target, Condition);
     U32 Location = WriteOp32(Emitter, PVM_B(NZ, Target.As.Register.ID, 0), 0);
@@ -759,6 +767,7 @@ U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition)
 
 U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To)
 {
+    PASCAL_NONNULL(Emitter);
     /* size of the branch instruction is 2 16 opcode word */
     U32 Offset = To - PVMCurrentChunk(Emitter)->Count - PVM_BRANCH_INS_SIZE;
     return WriteOp32(Emitter, PVM_BR(Offset >> 16), Offset & 0xFFFF);
@@ -766,6 +775,7 @@ U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To)
 
 void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMBranchType Type)
 {
+    PASCAL_NONNULL(Emitter);
     /* size of the branch instruction is 2 16 opcode word */
     U32 Offset = To - From - PVM_BRANCH_INS_SIZE;
     PVMCurrentChunk(Emitter)->Code[From] = 
@@ -776,6 +786,7 @@ void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMBranchType Type)
 
 void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMBranchType Type)
 {
+    PASCAL_NONNULL(Emitter);
     PVMPatchBranch(Emitter, From, PVMCurrentChunk(Emitter)->Count, Type);
 }
 
@@ -785,6 +796,9 @@ void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMBranchType Type)
 /* TODO: mov is bloated just like x86, make it not? */
 void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
     if (Dst->LocationType == VAR_LIT)
     {
         /* compiler should've handled this */
@@ -859,13 +873,13 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
 void PVMEmitLoadAddr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
     PASCAL_ASSERT(Src->LocationType == VAR_MEM, "Src of %s must be a VAR_MEM", __func__);
     PASCAL_ASSERT(Dst->LocationType == VAR_REG, "Dst of %s must be a VAR_REG", __func__);
 
-    UInt Base = Emitter->Reg.FP.As.Register.ID;
-    if (Src->As.Memory.IsGlobal)
-        Base = Emitter->Reg.GP.As.Register.ID;
-
+    UInt Base = Src->As.Memory.RegPtr;
     UInt Rd = Dst->As.Register.ID;
     U32 Offset = Src->As.Memory.Location;
     if (IN_I16(Src->As.Memory.Location))
@@ -879,23 +893,55 @@ void PVMEmitLoadAddr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *S
     }
 }
 
+void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src, I32 Offset)
+{
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
+
+    PASCAL_ASSERT(Dst->LocationType == VAR_REG, "Unreachable");
+    PASCAL_ASSERT(Src->LocationType == VAR_MEM, "Unreachable");
+
+    if (IN_I16(Offset))
+    {
+        WriteOp32(Emitter, PVM_OP(LEA, Dst->As.Register.ID, Src->As.Memory.RegPtr), Offset);
+    }
+    else
+    {
+        WriteOp16(Emitter, PVM_OP(LEA, Dst->As.Register.ID, Src->As.Memory.RegPtr));
+        WriteOp32(Emitter, Offset, (U32)Offset >> 16);
+    }
+}
+
 void PVMEmitDerefPtr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Ptr)
 {
-    PASCAL_ASSERT(Dst->LocationType == VAR_REG, "Dst of %s must be a VAR_REG", __func__);
-    VarLocation Rd, Rp;
-    bool IsOwning = PVMEmitIntoReg(Emitter, &Rp, Ptr);
-    Rd = *Dst;
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Ptr);
+    /* move value of Ptr into Dst */
+    /* treat Dst as VarMem */
+    VarLocation Rd;
+    bool IsOwning = PVMEmitIntoReg(Emitter, &Rd, Dst);
 
-    DerefPtrIntoReg(Emitter, &Rd.As.Register, Rd.Type, Rp.As.Register, 0);
+    Rd.Type = TYPE_POINTER;
+    PVMEmitMov(Emitter, &Rd, Ptr);
+    Rd.Type = Dst->Type;
+
+    VarMemory Mem = { .Location = 0, .RegPtr = Rd.As.Register.ID };
+    Dst->As.Memory = Mem;
+    Dst->LocationType = VAR_MEM;
 
     if (IsOwning)
     {
-        PVMFreeRegister(Emitter, Rp.As.Register);
+        /* ownership is transfered */
     }
 }
 
 void PVMEmitStoreToPtr(PVMEmitter *Emitter, const VarLocation *Ptr, const VarLocation *Src)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Ptr);
+    PASCAL_NONNULL(Src);
     PASCAL_ASSERT(TYPE_POINTER == Ptr->Type, "must be pointer in %s", __func__);
     VarLocation Rp, Rs;
     bool OwningRp = PVMEmitIntoReg(Emitter, &Rp, Ptr);
@@ -923,6 +969,7 @@ void PVMEmitIntegerTypeConversion(PVMEmitter *Emitter,
         VarRegister Src, IntegralType SrcType
 )
 {
+    PASCAL_NONNULL(Emitter);
     if (Dst.ID == Src.ID && DstType == SrcType)
         return;
 
@@ -1016,6 +1063,7 @@ void PVMEmitFloatTypeConversion(PVMEmitter *Emitter,
         VarRegister Src, IntegralType SrcType
 )
 {
+    PASCAL_NONNULL(Emitter);
     if (Dst.ID == Src.ID && SrcType == DstType)
         return;
 
@@ -1055,6 +1103,7 @@ void PVMEmitIntToFltTypeConversion(PVMEmitter *Emitter,
         VarRegister Src, IntegralType SrcType
 )
 {
+    PASCAL_NONNULL(Emitter);
     if (TYPE_F64 == DstType)
     {
         switch (SrcType)
@@ -1126,6 +1175,8 @@ Unreachable:
 
 void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I16 Imm)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
     if (0 == Imm)
         return;
     VarLocation Target;
@@ -1153,6 +1204,9 @@ void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I16 Imm)
 
 #define DEFINE_INTEGER_BINARY_OP(FnName, Mnemonic)\
 void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src) {\
+    PASCAL_NONNULL(Emitter);\
+    PASCAL_NONNULL(Dst);\
+    PASCAL_NONNULL(Src);\
     PASCAL_ASSERT(Dst->Type == Src->Type, "Dst and Src type must be the same in %s", __func__);\
     VarLocation Rd, Rs;\
     bool OwningRd = PVMEmitIntoReg(Emitter, &Rd, Dst);\
@@ -1174,6 +1228,9 @@ void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
 #define DEFINE_GENERIC_BINARY_OP(FnName, Mnemonic)\
 void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src) {\
+    PASCAL_NONNULL(Emitter);\
+    PASCAL_NONNULL(Dst);\
+    PASCAL_NONNULL(Src);\
     PASCAL_ASSERT(Dst->Type == Src->Type, "Dst and Src type must be the same in %s", __func__);\
     VarLocation Rd, Rs;\
     bool OwningRd = PVMEmitIntoReg(Emitter, &Rd, Dst);\
@@ -1188,8 +1245,7 @@ void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src) {\
         WriteOp16(Emitter, PVM_OP( Mnemonic , Rd.As.Register.ID, Rs.As.Register.ID));\
     }\
     if (OwningRd) {\
-        StoreFromReg(Emitter, Dst->As.Memory, Dst->Type, Rd.As.Register, Rd.Type);\
-        PVMFreeRegister(Emitter, Rd.As.Register);\
+        *Dst = Rd;\
     }\
     if (OwningRs) {\
         PVMFreeRegister(Emitter, Rs.As.Register);\
@@ -1220,6 +1276,9 @@ do {\
 
 void PVMEmitAdd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src) 
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
     PASCAL_ASSERT(Dst->Type == Src->Type, "Dst and Src type must be the same in %s", __func__);
     VarLocation Rd, Rs;
     bool OwningRd = PVMEmitIntoReg(Emitter, &Rd, Dst);
@@ -1257,8 +1316,7 @@ void PVMEmitAdd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
     if (OwningRd) 
     {
-        StoreFromReg(Emitter, Dst->As.Memory, Dst->Type, Rd.As.Register, Rd.Type);
-        PVMFreeRegister(Emitter, Rd.As.Register);
+        *Dst = Rd;
     }
     if (OwningRs) 
     {
@@ -1268,6 +1326,9 @@ void PVMEmitAdd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
 void PVMEmitSub(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src) 
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
     PASCAL_ASSERT(Dst->Type == Src->Type, "Dst and Src type must be the same in %s", __func__);
     VarLocation Rd, Rs;
     bool OwningRd = PVMEmitIntoReg(Emitter, &Rd, Dst);
@@ -1300,8 +1361,7 @@ void PVMEmitSub(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
     if (OwningRd) 
     {
-        StoreFromReg(Emitter, Dst->As.Memory, Dst->Type, Rd.As.Register, Rd.Type);
-        PVMFreeRegister(Emitter, Rd.As.Register);
+        *Dst = Rd;
     }
     if (OwningRs) 
     {
@@ -1312,6 +1372,9 @@ void PVMEmitSub(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
 void PVMEmitIMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
     PASCAL_ASSERT(Dst->Type == Src->Type, "Dst and Src type must be the same in %s", __func__);
     VarLocation Rd, Rs;
     bool OwningRd = PVMEmitIntoReg(Emitter, &Rd, Dst);
@@ -1340,8 +1403,7 @@ void PVMEmitIMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
     if (OwningRd) 
     {
-        StoreFromReg(Emitter, Dst->As.Memory, Dst->Type, Rd.As.Register, Rd.Type);
-        PVMFreeRegister(Emitter, Rd.As.Register);
+        *Dst = Rd;
     }
     if (OwningRs) 
     {
@@ -1351,6 +1413,9 @@ void PVMEmitIMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
 void PVMEmitIDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
     PASCAL_ASSERT(Dst->Type == Src->Type, "Dst and Src type must be the same in %s", __func__);
     VarLocation Rd, Rs;
     bool OwningRd = PVMEmitIntoReg(Emitter, &Rd, Dst);
@@ -1379,8 +1444,7 @@ void PVMEmitIDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
     if (OwningRd) 
     {
-        StoreFromReg(Emitter, Dst->As.Memory, Dst->Type, Rd.As.Register, Rd.Type);
-        PVMFreeRegister(Emitter, Rd.As.Register);
+        *Dst = Rd;
     }
     if (OwningRs) 
     {
@@ -1392,6 +1456,9 @@ void PVMEmitIDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
 void PVMEmitMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
     PASCAL_ASSERT(Dst->Type == Src->Type, "Dst and Src type must be the same in %s", __func__);
     if (IntegralTypeIsSigned(Dst->Type) || IntegralTypeIsSigned(Src->Type))
     {
@@ -1435,8 +1502,7 @@ void PVMEmitMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
     if (OwningRd) 
     {
-        StoreFromReg(Emitter, Dst->As.Memory, Dst->Type, Rd.As.Register, Rd.Type);
-        PVMFreeRegister(Emitter, Rd.As.Register);
+        *Dst = Rd;
     }
     if (OwningRs) 
     {
@@ -1446,6 +1512,9 @@ void PVMEmitMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
 void PVMEmitDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
     PASCAL_ASSERT(Dst->Type == Src->Type, "Dst and Src type must be the same in %s", __func__);
     if (IntegralTypeIsSigned(Dst->Type) || IntegralTypeIsSigned(Src->Type))
     {
@@ -1490,8 +1559,7 @@ void PVMEmitDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
     if (OwningRd) 
     {
-        StoreFromReg(Emitter, Dst->As.Memory, Dst->Type, Rd.As.Register, Rd.Type);
-        PVMFreeRegister(Emitter, Rd.As.Register);
+        *Dst = Rd;
     }
     if (OwningRs) 
     {
@@ -1529,6 +1597,9 @@ DEFINE_INTEGER_BINARY_OP(PVMEmitAsr, VASR);
 
 VarLocation PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dst, const VarLocation *Src) 
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
 #define SET(SignPrefix, BitPostfix)\
 do {\
     switch (Op) {\
@@ -1655,6 +1726,7 @@ do {\
 /* subroutine arguments */
 VarLocation PVMSetParamType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ParamType)
 {
+    PASCAL_NONNULL(Emitter);
     if (ArgNumber < PVM_ARGREG_COUNT)
     {
         Emitter->ArgReg[ArgNumber].Type = ParamType;
@@ -1667,7 +1739,7 @@ VarLocation PVMSetParamType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType Pa
         .Type = ParamType,
         .LocationType = VAR_MEM,
         .As.Memory = {
-            .IsGlobal = false,
+            .RegPtr = PVM_REG_FP,
             .Location = ArgOffset,
         },
     };
@@ -1676,6 +1748,7 @@ VarLocation PVMSetParamType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType Pa
 
 VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgType)
 {
+    PASCAL_NONNULL(Emitter);
     if (ArgNumber < PVM_ARGREG_COUNT)
     {
         VarLocation Arg = Emitter->ArgReg[ArgNumber];
@@ -1694,8 +1767,8 @@ VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgT
         .Type = ArgType,
         .LocationType = VAR_MEM,
         .As.Memory = {
+            .RegPtr = PVM_REG_FP,
             .Location = ArgOffset,
-            .IsGlobal = false,
         },
     };
     PASCAL_ASSERT(ArgOffset >= 0, "allocate space before call");
@@ -1705,6 +1778,7 @@ VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgT
 
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg)
 {
+    PASCAL_NONNULL(Emitter);
     if (VAR_REG == Arg->LocationType)
     {
         PVMMarkRegisterAsAllocated(Emitter, Arg->As.Register.ID);
@@ -1714,6 +1788,7 @@ void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg)
 
 VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType)
 {
+    PASCAL_NONNULL(Emitter);
     VarLocation ReturnValue = Emitter->ReturnValue;
     if (IntegralTypeIsFloat(ReturnType))
     {
@@ -1727,12 +1802,15 @@ VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType)
 
 void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...)
 {
+    PASCAL_NONNULL(Emitter);
     va_list Args;
     va_start(Args, Count);
     for (int i = 0; i < Count; i++)
     {
         VarLocation Reg;
         VarLocation *Location = va_arg(Args, VarLocation *);
+        PASCAL_NONNULL(Location);
+
         bool Owning = PVMEmitIntoReg(Emitter, &Reg, Location);
 
         PVMEmitPushReg(Emitter, Reg.As.Register.ID);
@@ -1752,12 +1830,13 @@ void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...)
 /* stack allocation */
 VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size)
 {
+    PASCAL_NONNULL(Emitter);
     U32 NewOffset = Emitter->StackSpace + Size;
     if (NewOffset % sizeof(PVMPTR))
         NewOffset = (NewOffset + sizeof(PVMPTR)) & ~(sizeof(PVMPTR) - 1);
 
     VarMemory Mem = {
-        .IsGlobal = false,
+        .RegPtr = PVM_REG_SP,
         .Location = Emitter->StackSpace,
     };
     Emitter->StackSpace = NewOffset;
@@ -1767,11 +1846,13 @@ VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size)
 
 void PVMCommitStackAllocation(PVMEmitter *Emitter)
 {
+    PASCAL_NONNULL(Emitter);
 	PVMAllocateStack(Emitter, Emitter->StackSpace);
 }
 
 void PVMAllocateStack(PVMEmitter *Emitter, I32 Size) 
 {
+    PASCAL_NONNULL(Emitter);
     PVMEmitAddImm(Emitter, &Emitter->Reg.SP, Size);
 }
 
@@ -1782,8 +1863,9 @@ void PVMAllocateStack(PVMEmitter *Emitter, I32 Size)
 
 VarMemory PVMEmitGlobalData(PVMEmitter *Emitter, const void *Data, U32 Size)
 {
+    PASCAL_NONNULL(Emitter);
     VarMemory Global = {
-        .IsGlobal = true,
+        .RegPtr = PVM_REG_GP,
         .Location = ChunkWriteGlobalData(PVMCurrentChunk(Emitter), Data, Size),
     };
     return Global;
@@ -1792,6 +1874,7 @@ VarMemory PVMEmitGlobalData(PVMEmitter *Emitter, const void *Data, U32 Size)
 /* global instructions */
 VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size)
 {
+    PASCAL_NONNULL(Emitter);
     return PVMEmitGlobalData(Emitter, NULL, Size);
 }
 
@@ -1803,6 +1886,7 @@ VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size)
 /* subroutine */
 void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 {
+    PASCAL_NONNULL(Emitter);
     U32 SaveReglist = Emitter->Reglist & ~(((U16)1 << ReturnRegID) | EMPTY_REGLIST);
 
     if (SaveReglist & 0xFF)
@@ -1834,7 +1918,8 @@ void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 
 U32 PVMEmitCall(PVMEmitter *Emitter, const VarSubroutine *Callee)
 {
-    PASCAL_ASSERT(NULL != Callee, "%s", __func__);
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Callee);
 
     U32 CurrentLocation = PVMCurrentChunk(Emitter)->Count;
     U32 Location = Callee->Location - CurrentLocation - PVM_BRANCH_INS_SIZE;
@@ -1845,6 +1930,7 @@ U32 PVMEmitCall(PVMEmitter *Emitter, const VarSubroutine *Callee)
 
 void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 {
+    PASCAL_NONNULL(Emitter);
     U32 Restorelist = Emitter->SavedRegisters[--Emitter->NumSavelist];
     if (Restorelist >> 8)
     {
@@ -1872,6 +1958,7 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 /* exit/return */
 void PVMEmitExit(PVMEmitter *Emitter)
 {
+    PASCAL_NONNULL(Emitter);
     WriteOp16(Emitter, PVM_SYS(EXIT));
 }
 
@@ -1880,6 +1967,7 @@ void PVMEmitExit(PVMEmitter *Emitter)
 /* system calls */
 void PVMEmitWrite(PVMEmitter *Emitter)
 {
+    PASCAL_NONNULL(Emitter);
     WriteOp16(Emitter, PVM_SYS(WRITE));
 }
 

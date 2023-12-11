@@ -37,7 +37,7 @@ typedef struct VarLiteral
 typedef struct VarMemory
 {
     U32 Location;
-    bool IsGlobal;
+    UInt RegPtr;
 } VarMemory;
 
 typedef struct VarRegister

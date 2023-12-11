@@ -69,6 +69,7 @@ void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMBranchType Type);
 /* move and load */
 void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 void PVMEmitLoadAddr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Base, I32 Offset);
 void PVMEmitDerefPtr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Ptr);
 void PVMEmitStoreToPtr(PVMEmitter *Emitter, const VarLocation *Ptr, const VarLocation *Src);
 
