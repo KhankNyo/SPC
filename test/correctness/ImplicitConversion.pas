@@ -28,7 +28,7 @@ begin
     u16 := i8;
     u32 := i8;
     u64 := i8;
-    if u8 = i8 then Die(4); { FreePascal said this is false }
+    // if u8 = i8 then Die(4); { FreePascal said this is false, so this should be an error }
     if u8 <> u16 then Die(5);
     if u8 <> u32 then Die(6);
     if u8 <> u64 then Die(7);

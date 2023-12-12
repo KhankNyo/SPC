@@ -12,6 +12,7 @@ end;
 
 function Test: int32; 
 begin 
+    writeln('Hello from test');
     exit(7);
 end;
 
