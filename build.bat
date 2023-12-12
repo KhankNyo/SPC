@@ -19,7 +19,9 @@ if "%1"=="cl" (
     set "OBJ_EXTENSION=obj"
 ) else (
     set "CC=%1"
-    set "CCF=-Ofast -DDEBUG -Wall -Wextra -Wpedantic -Wno-missing-braces -I%INCPATH%"
+
+    :: STFU gcc you piece of shit 
+    set "CCF=-Ofast -DDEBUG -Wall -Wextra -Wpedantic -Wno-missing-braces -Wno-format-zero-length -I%INCPATH%"
     set "LDF="
     set "LIBS="
     set "OBJ_SWITCH=-o "
