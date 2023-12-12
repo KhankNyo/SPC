@@ -2,10 +2,18 @@
 - A toy Pascal Compiler I wrote for fun
 
 # Build:
-- Windows: `.\build.bat [your prefered C compiler] unity`
-    ex:    `.\build.bat cl unity` or `.\build.bat cl` to build each translation unit individually
-- Linux:   `./build.sh [your prefered C compiler]`
-    ex:    `./build.sh gcc`
+### Windows:
+- Prerequisite: C99 compiler, or cl
+- Build each translation unit individually:
+    -     .\build.bat cl
+- Or unity build to speed up compile time:
+    -     .\build.bat cl unity
+### Linux:
+- Prerequisite: C99 compiler, preferably gcc
+- Build each translation unit individually:
+    -     ./build.sh gcc
+- Or unity build to speed up compile time:
+    -     ./build.sh gcc unity
 
 # Usage:
 - Windows: `Pascal InputFile.pas OutputFile.exe`
