@@ -847,9 +847,9 @@ static U32 CompileAndDeclareParameter(PVMCompiler *Compiler,
             Subroutine->StackArgSize += VarSize;
         }
         if (TYPE_RECORD == VarType && NULL != TypeInfo.Location)
-            Location->Record = TypeInfo.Location->Record;
+            Location->PointerTo.Record = TypeInfo.Location->PointerTo.Record;
         else
-            Location->PointsAt = TypeInfo;
+            Location->PointerTo.Var = TypeInfo;
         Location->Type = VarType;
         Location->Size = VarSize;
         SubroutineDataPushParameter(Compiler->GlobalAlloc, Subroutine, Var);
@@ -874,11 +874,11 @@ static U32 CompileAndDeclareLocal(PVMCompiler *Compiler,
         Location->LocationType = VAR_MEM;
         if (TYPE_RECORD == VarType && NULL != TypeInfo.Location)
         {
-            Location->Record = TypeInfo.Location->Record;
+            Location->PointerTo.Record = TypeInfo.Location->PointerTo.Record;
         }
         else
         {
-            Location->PointsAt = TypeInfo;
+            Location->PointerTo.Var = TypeInfo;
         }
         Location->Type = VarType;
         Location->Size = VarSize;
@@ -905,9 +905,9 @@ static bool CompileAndDeclareGlobal(PVMCompiler *Compiler,
         Location->LocationType = VAR_MEM;
         Location->Type = VarType;
         if (TYPE_RECORD == VarType && NULL != TypeInfo.Location)
-            Location->Record = TypeInfo.Location->Record;
+            Location->PointerTo.Record = TypeInfo.Location->PointerTo.Record;
         else
-            Location->PointsAt = TypeInfo;
+            Location->PointerTo.Var = TypeInfo;
         Location->Size = VarSize;
         Location->As.Memory = PVMEmitGlobalSpace(EMITTER(), VarSize);
     }
@@ -979,9 +979,9 @@ static PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Na
 
 
             if (TYPE_RECORD == VarType && NULL != TypeInfo.Location)
-                Location->Record = TypeInfo.Location->Record;
+                Location->PointerTo.Record = TypeInfo.Location->PointerTo.Record;
             else
-                Location->PointsAt = TypeInfo;
+                Location->PointerTo.Var = TypeInfo;
             Location->Type = VarType;
             Location->LocationType = VAR_MEM;
             Location->Size = VarSize;
@@ -1003,7 +1003,7 @@ static PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Na
     VarLocation *Type = CompilerAllocateVarLocation(Compiler);
     Type->Type = TYPE_RECORD;
     Type->LocationType = VAR_INVALID;
-    Type->Record = RecordScope;
+    Type->PointerTo.Record = RecordScope;
     Type->Size = TotalSize;
 
     return DefineIdentifier(Compiler, Name, TYPE_RECORD, Type);
@@ -1129,7 +1129,7 @@ static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName
             PASCAL_NONNULL(CurrentArg);
 
             VarLocation Arg = PVMSetArgType(EMITTER(), ArgCount, CurrentArg->Type);
-            Arg.PointsAt = CurrentArg->PointsAt;
+            Arg.PointerTo.Var = CurrentArg->PointerTo.Var;
 
             CompileExprInto(Compiler, NULL, &Arg);
             PVMMarkArgAsOccupied(EMITTER(), &Arg);
@@ -1310,7 +1310,7 @@ static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
 
     VarLocation Memory = {
         .LocationType = VAR_MEM,
-        .Type = Variable->PointsAt.Type,
+        .Type = Variable->PointerTo.Var.Type,
         .As.Memory = {
             .RegPtr = Ptr.As.Register,
             .Location = 0,
@@ -1346,7 +1346,7 @@ static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
     }
 
     Token Name = Compiler->Curr;
-    VarLocation *Member = FindRecordMember(&Left->Record, &Name);
+    VarLocation *Member = FindRecordMember(&Left->PointerTo.Record, &Name);
     if (NULL == Member)
     {
         ErrorAt(Compiler, &Name, "'%.*s' is not a member.");
@@ -1532,6 +1532,11 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
     /* type casting */
     if (NULL == Location)
     {
+        /* a built-in function */
+        if (TYPE_FUNCTION == Variable->Type)
+        {
+            PASCAL_UNREACHABLE("TODO: built-in func");
+        }
         /* typename(expr) */
         ConsumeOrError(Compiler, TOKEN_LEFT_PAREN, "Expected '(' after type name.");
         VarLocation Expr = FactorGrouping(Compiler);
@@ -1541,8 +1546,6 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
     if (TYPE_FUNCTION == Location->Type)
     {
         VarSubroutine *Callee = &Location->As.Subroutine;
-        PASCAL_NONNULL(Callee);
-        /* TODO: if the callee is NULL, then maybe treat it as a built-in function */
         if (!Callee->HasReturnType)
         {
             ErrorAt(Compiler, &Identifier, "Procedure does not have a return value.");
@@ -1583,7 +1586,7 @@ static VarLocation VariableAddrOf(PVMCompiler *Compiler)
 
 
     VarLocation Ptr = PVMAllocateRegister(EMITTER(), TYPE_POINTER);
-    Ptr.PointsAt = *Variable;
+    Ptr.PointerTo.Var = *Variable;
     if (VAR_MEM != Location->LocationType)
     {
         ErrorAt(Compiler, &AtSign, "Cannot take the address of this type of variable.");
@@ -2273,13 +2276,13 @@ static void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLoca
 
     if (TYPE_POINTER == Location->Type && TYPE_POINTER == Expr.Type)
     {
-        if (Location->PointsAt.Type != Expr.PointsAt.Type)
+        if (Location->PointerTo.Var.Type != Expr.PointerTo.Var.Type)
         {
             if (NULL == OpToken)
                 OpToken = &Compiler->Curr;
             ErrorAt(Compiler, OpToken, "Cannot assign %s pointer to %s pointer.", 
-                    IntegralTypeToStr(Expr.PointsAt.Type),
-                    IntegralTypeToStr(Location->PointsAt.Type)
+                    IntegralTypeToStr(Expr.PointerTo.Var.Type),
+                    IntegralTypeToStr(Location->PointerTo.Var.Type)
             );
         }
     }
@@ -2341,19 +2344,16 @@ static void CompileWriteStmt(PVMCompiler *Compiler, bool NewLine)
 
     if (NewLine)
     {
-        static const VarLocation NewLineLiteral = {
+        static VarLocation NewLineLiteral = {
             .Type = TYPE_STRING,
             .LocationType = VAR_LIT,
-            .As.Literal.Str = {
-                .Len = 1,
-                .Text = "\n",
-            },
         };
         static const VarLocation LiteralType = {
             .Type = TYPE_U32,
             .LocationType = VAR_LIT,
             .As.Literal.Int = TYPE_STRING,
         };
+        NewLineLiteral.As.Literal.Str = PStrCopy((const U8*)"\n", 1);
         PVMEmitPushMultiple(EMITTER(), 2, &LiteralType, &NewLineLiteral);
         ArgCount++;
     }
@@ -2739,11 +2739,11 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
         goto Exit;
     }
     if (TYPE_POINTER == Dst.Type && TYPE_POINTER == Right.Type 
-    && Dst.PointsAt.Type != Right.PointsAt.Type)
+    && Dst.PointerTo.Var.Type != Right.PointerTo.Var.Type)
     {
         ErrorAt(Compiler, &Assignment, "Cannot assign %s pointer to %s pointer.", 
-                IntegralTypeToStr(Right.PointsAt.Type),
-                IntegralTypeToStr(Dst.PointsAt.Type)
+                IntegralTypeToStr(Right.PointerTo.Var.Type),
+                IntegralTypeToStr(Dst.PointerTo.Var.Type)
         );
         goto Exit;
     }
@@ -2764,16 +2764,22 @@ static void CompileIdenStmt(PVMCompiler *Compiler)
     PascalVar *IdentifierInfo = GetIdenInfo(Compiler, &Compiler->Curr,
             "Undefined identifier."
     );
-    if (NULL != IdentifierInfo && TYPE_FUNCTION == IdentifierInfo->Type)
+    if (NULL == IdentifierInfo)
+        return;
+    
+    if (TYPE_FUNCTION == IdentifierInfo->Type)
     {
         Token Callee = Compiler->Curr;
         /* Pascal's weird return statement */
-        if (IdentifierInfo->Len == Callee.Len && TokenEqualNoCase(IdentifierInfo->Str, Callee.Str, Callee.Len) 
+        if (IdentifierInfo->Len == Callee.Len 
+        && TokenEqualNoCase(IdentifierInfo->Str, Callee.Str, Callee.Len) 
         && ConsumeIfNextIs(Compiler, TOKEN_COLON_EQUAL))
         {
             PASCAL_UNREACHABLE("TODO: return by assigning to function name");
-            Compiler->Emitter.ReturnValue.Type = IdentifierInfo->Location->As.Subroutine.ReturnType;
-            CompileExprInto(Compiler, NULL, &Compiler->Emitter.ReturnValue);
+        }
+        else if (NULL == IdentifierInfo->Location)
+        {
+            PASCAL_UNREACHABLE("TODO: built-in functions");
         }
         else
         {

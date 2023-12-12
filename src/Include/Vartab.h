@@ -6,9 +6,15 @@
 #include "Common.h"
 #include "Memory.h"
 #include "IntegralTypes.h"
-typedef struct PascalVar PascalVar;
-typedef struct VarLocation VarLocation;
 
+#ifndef PASCAL_PASCALVAR_DEFINED
+#   define PASCAL_PASCALVAR_DEFINED
+    typedef struct PascalVar PascalVar;
+#endif /* PASCAL_PASCALVAR_DEFINED */
+#ifndef PASCAL_VARLOCATION_DEFINED
+#   define PASCAL_VARLOCATION_DEFINED
+    typedef struct VarLocation VarLocation;
+#endif /* PASCAL_VARLOCATION_DEFINED */
 
 
 #define VARTAB_MAX_LOAD 3/4

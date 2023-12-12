@@ -8,9 +8,16 @@
 #include "PascalString.h"
 
 
+#ifndef PASCAL_VARLOCATION_DEFINED
+#   define PASCAL_VARLOCATION_DEFINED
+    typedef struct VarLocation VarLocation;
+#endif /* PASCAL_VARLOCATION_DEFINED */
+#ifndef PASCAL_PASCALVAR_DEFINED
+#   define PASCAL_PASCALVAR_DEFINED
+    typedef struct PascalVar PascalVar;
+#endif /* PASCAL_PASCALVAR_DEFINED */
 
-typedef struct VarLocation VarLocation;
-typedef struct PascalVar
+struct PascalVar
 {
     const U8 *Str;
     UInt Len;
@@ -19,19 +26,17 @@ typedef struct PascalVar
 
     IntegralType Type;
     VarLocation *Location;
-} PascalVar;
+};
 
 
 
-typedef struct VarLiteral 
+typedef union VarLiteral 
 {
-    union {
-        U64 Int;
-        F64 Flt;
-        bool Bool;
-        GenericPtr Ptr;
-        PascalStr Str;
-    };
+    U64 Int;
+    F64 Flt;
+    bool Bool;
+    GenericPtr Ptr;
+    PascalStr Str;
 } VarLiteral;
 
 typedef struct VarRegister
@@ -83,9 +88,9 @@ struct VarLocation
     IntegralType Type;
     U32 Size;
     union {
-        PascalVar PointsAt;
+        PascalVar Var;
         PascalVartab Record;
-    };
+    } PointerTo;
     union {
         VarMemory Memory;
         VarRegister Register;

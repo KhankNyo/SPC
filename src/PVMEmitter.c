@@ -983,7 +983,7 @@ void PVMEmitStoreToPtr(PVMEmitter *Emitter, const VarLocation *Ptr, const VarLoc
     bool OwningRp = PVMEmitIntoReg(Emitter, &Rp, Ptr);
     bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, Src);
 
-    StoreToPtr(Emitter, Rp.As.Register, 0, Ptr->PointsAt.Type, Rs.As.Register);
+    StoreToPtr(Emitter, Rp.As.Register, 0, Ptr->PointerTo.Var.Type, Rs.As.Register);
 
     if (OwningRp)
     {
