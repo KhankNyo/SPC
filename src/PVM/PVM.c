@@ -16,7 +16,6 @@ PascalVM PVMInit(U32 StackSize, UInt RetStackSize)
     PascalVM PVM = {
         .F = { 0 },
         .R = { 0 },
-        .Condition = false,
         .Stack.Start.Raw = MemAllocateArray(PVM.Stack.Start.DWord[0], StackSize),
         .RetStack.Start = MemAllocateArray(PVM.RetStack.Start[0], RetStackSize),
         .RetStack.SizeLeft = RetStackSize,

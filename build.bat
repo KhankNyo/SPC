@@ -2,13 +2,14 @@
 
 
 
-set "ARG1=%1"
 set "SRCDIR=%CD%\src"
 set "OBJDIR=%CD%\obj"
 set "BINDIR=%CD%\bin"
 set "INCPATH=%SRCDIR%\Include"
 
-if "%ARG1%"=="cl" (
+if "%1"=="cl" (
+    call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
+
     set "CC=cl"
     set "CCF=/Zi /DEBUG /FC /I%INCPATH% /DDEBUG /DPVM_DEBUGGER"
     set "LDF=/MTd /DEBUG /Zi"
@@ -17,7 +18,7 @@ if "%ARG1%"=="cl" (
     set "EXE_SWITCH=/Fe"
     set "OBJ_EXTENSION=obj"
 ) else (
-    set "CC=tcc"
+    set "CC=%1"
     set "CCF=-Ofast -DDEBUG -DPVM_DEBUGGER -Wall -Wextra -Wpedantic -Wno-missing-braces -I%INCPATH%"
     set "LDF="
     set "LIBS="
@@ -36,15 +37,26 @@ set "SRCS=%SRCS% %SRCDIR%\PVM\Chunk.c %SRCDIR%\PVM\Disassembler.c %SRCDIR%\PVM\P
 
 set "SRCS=%SRCS% %SRCDIR%\PVM\Debugger.c"
 set "SRCS=%SRCS% %SRCDIR%\PascalFile.c %SRCDIR%\PascalRepl.c"
+
+set "UNITY=%SRCDIR%\UnityBuild.c"
 set "OUTPUT=%BINDIR%\pascal.exe"
 
 
 
-if "%ARG1%"=="clean" (
+if "%1"=="clean" (
     if exist %OBJDIR%\ rmdir /q /s %OBJDIR%
     if exist %BINDIR%\ rmdir /q /s %BINDIR%
 
     set "MSG=Removed build artifacts."
+) else if "%2"=="unity" (
+    if not exist %BINDIR%\ mkdir %BINDIR%
+
+    pushd %BINDIR%
+        echo %CC% %CCF% %LDF% %EXE_SWITCH%%OUTPUT% %UNITY% %LIBS%
+        %CC% %CCF% %LDF% %EXE_SWITCH%%OUTPUT% %UNITY% %LIBS%
+    popd %BINDIR%
+
+    set "MSG=Build finished"
 ) else (
     if not exist %BINDIR%\ mkdir %BINDIR%
     if not exist %OBJDIR%\ mkdir %OBJDIR%

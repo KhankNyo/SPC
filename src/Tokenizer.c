@@ -6,7 +6,7 @@
 
 
 
-static bool IsAtEnd(const PascalTokenizer *Lexer);
+static bool TokenizerIsAtEnd(const PascalTokenizer *Lexer);
 static bool IsNumber(U8 ch);
 static bool IsAlpha(U8 ch);
 static bool IsHex(U8 ch);
@@ -78,7 +78,7 @@ PascalTokenizer TokenizerInit(const U8 *Source)
 Token TokenizerGetToken(PascalTokenizer *Lexer)
 {
     SkipWhitespace(Lexer);
-    if (IsAtEnd(Lexer))
+    if (TokenizerIsAtEnd(Lexer))
         return MakeToken(Lexer, TOKEN_EOF);
 
     U8 PrevChr = AdvanceChrPtr(Lexer);
@@ -265,7 +265,7 @@ bool TokenEqualNoCase(const U8 *s1, const U8 *s2, USize Len)
 
 
 
-static bool IsAtEnd(const PascalTokenizer *Lexer)
+static bool TokenizerIsAtEnd(const PascalTokenizer *Lexer)
 {
     return ('\0' == *Lexer->Curr);
 }
@@ -293,7 +293,7 @@ static bool IsHex(U8 ch)
 static U8 AdvanceChrPtr(PascalTokenizer *Lexer)
 {
     U8 Ret = *Lexer->Curr;
-    if (!IsAtEnd(Lexer))
+    if (!TokenizerIsAtEnd(Lexer))
     {
         Lexer->Curr++;
     }
@@ -315,7 +315,7 @@ static bool AdvanceIfEqual(PascalTokenizer *Lexer, U8 Test)
 
 static U8 PeekChr(const PascalTokenizer *Lexer)
 {
-    if (IsAtEnd(Lexer)) 
+    if (TokenizerIsAtEnd(Lexer)) 
         return '\0';
     return Lexer->Curr[1];
 }
@@ -347,7 +347,7 @@ static void SkipWhitespace(PascalTokenizer *Lexer)
                 /* skip '(*' */
                 Lexer->Curr += 2;
 
-                while (!IsAtEnd(Lexer) 
+                while (!TokenizerIsAtEnd(Lexer) 
                 && !('*' == AdvanceChrPtr(Lexer) && ')' != *Lexer->Curr))
                 {
                     if ('\n' == *Lexer->Curr)
@@ -367,7 +367,7 @@ static void SkipWhitespace(PascalTokenizer *Lexer)
             do {
                 if ('\n' == *Lexer->Curr)
                     UpdateLine(Lexer);
-            } while (!IsAtEnd(Lexer) && ('}' != AdvanceChrPtr(Lexer)));
+            } while (!TokenizerIsAtEnd(Lexer) && ('}' != AdvanceChrPtr(Lexer)));
             /* pointing at EOF or next U8 */
         } break;
 
@@ -376,7 +376,7 @@ static void SkipWhitespace(PascalTokenizer *Lexer)
             if ('/' == PeekChr(Lexer))
             {
                 Lexer->Curr += 2; /* skip '//' */
-                while (!IsAtEnd(Lexer) && ('\n' != *Lexer->Curr))
+                while (!TokenizerIsAtEnd(Lexer) && ('\n' != *Lexer->Curr))
                 {
                     AdvanceChrPtr(Lexer);
                 }
@@ -451,7 +451,7 @@ static U64 ConsumeBinaryNumber(PascalTokenizer *Lexer)
 static U64 ConsumeInteger(PascalTokenizer *Lexer)
 {
     U64 n = 0;
-    while (!IsAtEnd(Lexer) && IsNumber(*Lexer->Curr))
+    while (!TokenizerIsAtEnd(Lexer) && IsNumber(*Lexer->Curr))
     {
         n *= 10;
         n += AdvanceChrPtr(Lexer) - '0';
@@ -591,7 +591,7 @@ static Token ConsumeString(PascalTokenizer *Lexer)
         /* consume string literal */
         const U8 *Slice = Lexer->Curr;
         UInt Len = 0;
-        while (!IsAtEnd(Lexer) && '\'' != AdvanceChrPtr(Lexer))
+        while (!TokenizerIsAtEnd(Lexer) && '\'' != AdvanceChrPtr(Lexer))
         {
             Len++;
         }
@@ -599,7 +599,7 @@ static Token ConsumeString(PascalTokenizer *Lexer)
 
 
         /* consumes escape codes */
-        while (!IsAtEnd(Lexer) && '#' == *Lexer->Curr)
+        while (!TokenizerIsAtEnd(Lexer) && '#' == *Lexer->Curr)
         {
             AdvanceChrPtr(Lexer); /* skip '#' */
 
@@ -621,10 +621,10 @@ static Token ConsumeString(PascalTokenizer *Lexer)
             PStrAppendChr(&Literal, EscCode);
             Trim = 1; /* don't want to trim the last character of the number */
         }
-    } while (!IsAtEnd(Lexer) && ('\'' == *Lexer->Curr));
+    } while (!TokenizerIsAtEnd(Lexer) && ('\'' == *Lexer->Curr));
 
 
-    if (IsAtEnd(Lexer))
+    if (TokenizerIsAtEnd(Lexer))
         return ErrorToken(Lexer, "Unterminated string literal.");
 
     Token StringToken = MakeToken(Lexer, TOKEN_STRING_LITERAL);
