@@ -1221,7 +1221,9 @@ static VarLocation ParsePrecedence(PVMCompiler *Compiler, Precedence Prec);
 
 static void FreeExpr(PVMCompiler *Compiler, VarLocation Expr)
 {
-    if (VAR_REG == Expr.LocationType)
+    PASCAL_NONNULL(Compiler);
+
+    if (VAR_REG == Expr.LocationType && !Expr.As.Register.Persistent)
     {
         PVMFreeRegister(EMITTER(), Expr.As.Register);
     }
@@ -1235,6 +1237,7 @@ static VarLocation FactorLiteral(PVMCompiler *Compiler)
     VarLocation Location = {
         .LocationType = VAR_LIT,
     };
+    PASCAL_NONNULL(Compiler);
 
     switch (Compiler->Curr.Type)
     {
@@ -1272,6 +1275,9 @@ static VarLocation FactorLiteral(PVMCompiler *Compiler)
 
 static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
 {
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Variable);
+
     Token Caret = Compiler->Curr;
     if (TYPE_POINTER != Variable->Type)
     {
@@ -1281,13 +1287,29 @@ static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
         return *Variable;
     }
 
-    VarLocation Register = PVMAllocateRegister(EMITTER(), Variable->PointsAt.Type);
-    PVMEmitDerefPtr(EMITTER(), &Register, Variable);
-    return Register;
+
+    VarLocation Ptr = PVMAllocateRegister(EMITTER(), TYPE_POINTER);
+
+    PVMEmitMov(EMITTER(), &Ptr, Variable);
+    Ptr.Type = Variable->Type;
+    Ptr.LocationType = VAR_MEM;
+
+    VarLocation Memory = {
+        .LocationType = VAR_MEM,
+        .Type = Variable->PointsAt.Type,
+        .As.Memory = {
+            .RegPtr = Ptr.As.Register,
+            .Location = 0,
+        },
+    };
+    return Memory;
 }
 
 static VarLocation *FindRecordMember(PascalVartab *Record, const Token *MemberName)
 {
+    PASCAL_NONNULL(Record);
+    PASCAL_NONNULL(MemberName);
+
     U32 Hash = VartabHashStr(MemberName->Str, MemberName->Len);
     PascalVar *Member = VartabFindWithHash(Record, MemberName->Str, MemberName->Len, Hash);
     if (NULL == Member)
@@ -1297,8 +1319,10 @@ static VarLocation *FindRecordMember(PascalVartab *Record, const Token *MemberNa
 
 static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
 {
-    PASCAL_ASSERT(NULL != Left, "Unreachable"); 
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Left);
 
+    /* identifier consumed */
     Token Dot = Compiler->Curr;
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected member name.");
     if (TYPE_RECORD != Left->Type)
@@ -1316,6 +1340,8 @@ static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
     }
 
     VarLocation Value = *Member;
+    /* member offset + record offset = location */
+    PASCAL_ASSERT(VAR_MEM == Left->LocationType, "TODO: offset by register");
     Value.As.Memory.Location += Left->As.Memory.Location;
     Value.As.Memory.RegPtr = Left->As.Memory.RegPtr;
     return Value;
@@ -1324,14 +1350,17 @@ static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
 
 static VarLocation FactorVariable(PVMCompiler *Compiler)
 {
+    PASCAL_NONNULL(Compiler);
+
+    /* consumed iden */
     Token Identifier = Compiler->Curr;
     PascalVar *Variable = GetIdenInfo(Compiler, &Identifier, "Undefined variable.");
     if (NULL == Variable)
         goto Error;
 
     VarLocation *Location = Variable->Location;
-    PASCAL_ASSERT(NULL != Location, "Invalid location in %s", __func__);
-    PASCAL_ASSERT(Location->Type == Variable->Type, "%s", __func__);
+    PASCAL_NONNULL(Location);
+    PASCAL_ASSERT(Location->Type == Variable->Type, "Unreachable");
    
     if (TYPE_FUNCTION == Location->Type)
     {
@@ -1356,6 +1385,7 @@ Error:
 static VarLocation VariableAddrOf(PVMCompiler *Compiler)
 {
     /* Curr is '@' */
+
     Token AtSign = Compiler->Curr;
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected variable name after '@'.");
     Token Identifier = Compiler->Curr;
@@ -1370,7 +1400,7 @@ static VarLocation VariableAddrOf(PVMCompiler *Compiler)
         PASCAL_UNREACHABLE("TODO: addr of record field");
     }
     VarLocation *Location = Variable->Location;
-    PASCAL_ASSERT(NULL != Location, "Unreachable");
+    PASCAL_NONNULL(Location);
     PASCAL_ASSERT(Variable->Type == Location->Type, "Unreachable");
 
 
@@ -1414,7 +1444,7 @@ static VarLocation NegateLiteral(PVMCompiler *Compiler,
     }
     else 
     {
-        ErrorAt(Compiler, OpToken, "Cannot be applied to value of tpe %s", 
+        ErrorAt(Compiler, OpToken, "Cannot be applied to value of type %s", 
                 IntegralTypeToStr(LiteralType)
         );
     }
@@ -1739,25 +1769,36 @@ InvalidTypeConversion:
 }
 
 
-
-
-
 static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken, VarLocation *Left, VarLocation *Right)
 {
-    VarLocation Dst = *Left;
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(OpToken);
+    PASCAL_NONNULL(Left);
+    PASCAL_NONNULL(Right);
+
+    VarLocation Tmp = *Left;
     VarLocation Src = *Right;
     if (VAR_LIT == Left->LocationType)
     {
-        Dst = *Right;
+        Tmp = *Right;
         Src = *Left;
     }
 
+    /* typecheck */
     IntegralType Type = CoerceTypes(Compiler, OpToken, Left->Type, Right->Type);
     bool ConversionOk = 
-        ConvertTypeImplicitly(Compiler, Type, &Dst) 
+        ConvertTypeImplicitly(Compiler, Type, &Tmp) 
         && ConvertTypeImplicitly(Compiler, Type, &Src);
-    if (!ConversionOk) goto TypeMismatch;
+    if (!ConversionOk) 
+    {
+        ErrorAt(Compiler, OpToken, "Invalid operands: %s and %s", 
+                IntegralTypeToStr(Tmp.Type), IntegralTypeToStr(Src.Type)
+        );
+        return *Left;
+    }
 
+    VarLocation Dst = PVMAllocateRegister(EMITTER(), Tmp.Type);
+    PVMEmitMov(EMITTER(), &Dst, &Tmp);
     switch (OpToken->Type)
     {
     case TOKEN_PLUS: 
@@ -1802,14 +1843,18 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
     case TOKEN_LESS_GREATER:
     case TOKEN_EQUAL:
     {
-        VarLocation Condition = PVMEmitSetCC(EMITTER(), OpToken->Type, &Dst, &Src);
-        if (Condition.LocationType == VAR_REG && Dst.LocationType == VAR_REG
-        && Condition.As.Register.ID != Dst.As.Register.ID)
+        if (IntegralTypeIsInteger(Dst.Type) 
+        && (IntegralTypeIsSigned(Left->Type) ^ IntegralTypeIsSigned(Right->Type)))
         {
-            FreeExpr(Compiler, Dst);
+            ErrorAt(Compiler, OpToken, "Comparison between integers of different sign (%s and %s) is not allowed.",
+                    IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right->Type)
+            );
+            return *Left;
         }
+        VarLocation Cond = PVMEmitSetFlag(EMITTER(), OpToken->Type, &Dst, &Src);
+        FreeExpr(Compiler, Dst);
         FreeExpr(Compiler, Src);
-        return Condition;
+        return Cond;
     } break;
 
     case TOKEN_XOR:
@@ -1822,12 +1867,6 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
 
     Dst.Type = Type;
     FreeExpr(Compiler, Src);
-    return Dst;
-
-TypeMismatch:
-    ErrorAt(Compiler, OpToken, "Invalid operands: %s and %s", 
-            IntegralTypeToStr(Dst.Type), IntegralTypeToStr(Src.Type)
-    );
     return Dst;
 }
 
@@ -2058,7 +2097,7 @@ static void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLoca
         return;
 
     CoerceTypes(Compiler, OpToken, Location->Type, Expr.Type);
-    if (IntegralTypeIsInteger(Location->Type) && IntegralTypeIsFloat(Expr.Type))
+    if (Expr.LocationType != VAR_MEM)
         ConvertTypeImplicitly(Compiler, Location->Type, &Expr);
 
     if (TYPE_POINTER == Location->Type && TYPE_POINTER == Expr.Type)
@@ -2278,7 +2317,9 @@ static void CompileForStmt(PVMCompiler *Compiler)
 {
     /* 
      * for i := 0 to 100 do
-     * for j := 100 downto 0 do 
+     * for i := 100 downto 0 do 
+     * for i in RangeType do 
+     * for i in [RangeType] do
      */
     /* 'for' consumed */
     Token Keyword = Compiler->Curr;
@@ -2312,8 +2353,9 @@ static void CompileForStmt(PVMCompiler *Compiler)
 
 
     /* for loop inc/dec */
-    U32 LoopHead = PVMMarkBranchTarget(EMITTER());
+    U32 LoopHead = 0;
     TokenType Op = TOKEN_GREATER;
+    Token OpToken = Compiler->Next;
     int Inc = 1;
     if (!ConsumeIfNextIs(Compiler, TOKEN_TO))
     {
@@ -2322,29 +2364,43 @@ static void CompileForStmt(PVMCompiler *Compiler)
         Inc = -1;
     }
     /* stop condition expr */
-    VarLocation StopCondition = CompileExpr(Compiler); 
-    VarLocation Condition = PVMEmitSetCC(EMITTER(), Op, &StopCondition, i);
-    U32 LoopExit = PVMEmitBranchIfFalse(EMITTER(), &Condition);
-    FreeExpr(Compiler, StopCondition);
-    FreeExpr(Compiler, Condition);
+    U32 LoopExit = 0;
+    VarLocation StopCondition = CompileExprIntoReg(Compiler); 
+    if (TYPE_INVALID == CoerceTypes(Compiler, &OpToken, i->Type, StopCondition.Type))
+    {
+        ErrorAt(Compiler, &OpToken, "Incompatible types from %s %.*s %s.", 
+                IntegralTypeToStr(i->Type),
+                OpToken.Len, OpToken.Str, 
+                IntegralTypeToStr(StopCondition.Type)
+        );
+    }
+    else
+    {
+        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, i->Type, &StopCondition), "Unreachable");
+
+        LoopHead = PVMMarkBranchTarget(EMITTER());
+        PVMEmitSetFlag(EMITTER(), Op, &StopCondition, i);
+        LoopExit = PVMEmitBranchOnFalseFlag(EMITTER());
+    }
     /* do */
     ConsumeOrError(Compiler, TOKEN_DO, "Expected 'do' after expression.");
     CompilerEmitDebugInfo(Compiler, &Keyword);
 
 
     /* loop body */
+    /* TODO: what if the body try to write to the loop variable */
     CompileStmt(Compiler);
 
 
     /* loop increment */
-    PVMEmitAddImm(EMITTER(), i, Inc);
-    PVMEmitBranch(EMITTER(), LoopHead);
-    PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_CONDITIONAL);
+    PVMEmitBranchAndInc(EMITTER(), i->As.Register, Inc, LoopHead);
+    PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_FLAG);
 
 
     /* move the result of the counter variable */
     PVMEmitMov(EMITTER(), &CounterSave, i);
     PVMFreeRegister(EMITTER(), i->As.Register);
+    FreeExpr(Compiler, StopCondition);
     *i = CounterSave;
 }
 
@@ -2447,6 +2503,10 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
         return;
     }
 
+    if (VAR_REG != Left->LocationType)
+    {
+        PVMEmitIntoReg(EMITTER(), Left, Left);
+    }
     switch (Assignment->Type)
     {
     case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), Left, Right); break;
@@ -2473,8 +2533,8 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
     }
 
 
-    /* value of left is in register, TODO: this is a hack */
     PVMEmitMov(EMITTER(), &Dst, Left);
+    /* value of left is in register, TODO: this is a hack */
     if (memcmp(&Dst, Left, sizeof Dst) != 0)
     {
         FreeExpr(Compiler, *Left);

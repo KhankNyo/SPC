@@ -20,8 +20,8 @@ typedef struct PascalVM
 {
     PVMGPR R[PVM_REG_COUNT];
     PVMFPR F[PVM_REG_COUNT];
-    bool FloatCondition;
     PascalStr TmpStr;
+    bool Condition;
 
     struct {
         PVMPTR Start;

@@ -21,6 +21,7 @@ typedef struct PVMEmitter
     U32 StackSpace, ArgSpace;
     struct {
         VarLocation SP, FP, GP;
+        VarLocation Flag;
     } Reg;
 
     VarLocation ReturnValue;
@@ -30,7 +31,9 @@ typedef struct PVMEmitter
 typedef enum PVMBranchType
 {
     BRANCHTYPE_UNCONDITIONAL    = 0x00FF,
+    BRANCHTYPE_FLAG             = 0x00FF,
     BRANCHTYPE_CONDITIONAL      = 0x000F,
+    BRANCHTYPE_INC              = 0x0000,
 } PVMBranchType;
 
 
@@ -58,8 +61,9 @@ void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, U32 RegID);
 #define PVMMarkBranchTarget(pEmitter) PVMGetCurrentLocation(pEmitter)
 /* returns the offset of the branch instruction for later patching */
 U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition);
-/* returns the offset of the branch instruction for later patching */
 U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition);
+U32 PVMEmitBranchOnFalseFlag(PVMEmitter *Emitter);
+U32 PVMEmitBranchAndInc(PVMEmitter *Emitter, VarRegister Reg, I8 By, U32 To);
 /* returns the offset of the branch instruction for patching if necessary */
 U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To);
 void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMBranchType Type);
@@ -68,8 +72,11 @@ void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMBranchType Type);
 
 /* move and load */
 void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitLoadAddr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Base, I32 Offset);
+/* returns true if the caller owns OutTarget, false otherwise, 
+ * call PVMFreeRegister to dipose OutTarget if true is returned */
+bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, const VarLocation *Src);
+void PVMEmitLoadAddr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Base, I32 Offset);
 void PVMEmitDerefPtr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Ptr);
 void PVMEmitStoreToPtr(PVMEmitter *Emitter, const VarLocation *Ptr, const VarLocation *Src);
 
@@ -105,8 +112,8 @@ void PVMEmitMod(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 void PVMEmitShl(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 void PVMEmitShr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 void PVMEmitAsr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-/* returns the register contains the result of the comparison */
-VarLocation PVMEmitSetCC(PVMEmitter *Emitter, TokenType Op, const VarLocation *Dst, const VarLocation *Right);
+/* returns flag */
+VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op, const VarLocation *Left, const VarLocation *Right);
 
 
 

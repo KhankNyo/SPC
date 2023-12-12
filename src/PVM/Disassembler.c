@@ -162,6 +162,32 @@ static U32 DisasmBr(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *C
 }
 
 
+static U32 DisasmBri(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *Chunk, U32 Addr)
+{
+    I32 BrOffset = (I16)Chunk->Code[Addr + 1];
+
+    int Pad = fprintf(f, "%02x %02x %02x %02x",
+            Opcode >> 8, Opcode & 0xFF, Chunk->Code[Addr + 1] >> 8, Chunk->Code[Addr + 1] & 0xFF
+    );
+
+    Addr += 2;
+    U32 Location = Addr + BrOffset;
+    const LineDebugInfo *Info = ChunkGetConstDebugInfo(Chunk, Location);
+
+    PrintPaddedMnemonic(f, Pad, Mnemonic);
+    Pad = fprintf(f, "%s, [%u]", sIntReg[PVM_GET_RD(Opcode)], Location);
+    if (NULL != Info)
+    {
+        PrintComment(f, Pad, "line %d: '%.*s'\n", Info->Line[0], Info->SrcLen[0], Info->Src[0]);
+    }
+    else
+    {
+        fputc('\n', f);
+    }
+    return Addr;
+}
+
+
 static void DisasmMnemonic(FILE *f, const char *Mnemonic, U16 Opcode)
 {
     int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
@@ -387,6 +413,9 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_BNZ: return DisasmBcc(f, "bnz", Opcode, Chunk, Addr);
     case OP_BR: return DisasmBr(f, "br", Opcode, Chunk, Addr);
     case OP_BSR: return DisasmBr(f, "bsr", Opcode, Chunk, Addr);
+    case OP_BCT: return DisasmBr(f, "bct", Opcode, Chunk, Addr);
+    case OP_BCF: return DisasmBr(f, "bcf", Opcode, Chunk, Addr);
+    case OP_BRI: return DisasmBri(f, "bri", Opcode, Chunk, Addr);
 
 
     case OP_STRLT: DisasmRdRs(f, "strlt", sIntReg, Opcode); break;
@@ -491,7 +520,8 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_FSGT64: DisasmFscc(f, "fsgt64", Opcode); break;
     case OP_FSLE64: DisasmFscc(f, "fsle64", Opcode); break;
     case OP_FSGE64: DisasmFscc(f, "fsge64", Opcode); break;
-    case OP_GETFCC: DisasmSingleOperand(f, "getfcc", Opcode); break;
+
+    case OP_GETFLAG: DisasmSingleOperand(f, "getfcc", Opcode); break;
 
 
 

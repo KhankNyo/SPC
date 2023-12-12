@@ -34,17 +34,17 @@ typedef struct VarLiteral
     };
 } VarLiteral;
 
-typedef struct VarMemory
-{
-    U32 Location;
-    UInt RegPtr;
-} VarMemory;
-
 typedef struct VarRegister
 {
     UInt ID;
     bool Persistent;
 } VarRegister;
+
+typedef struct VarMemory
+{
+    U32 Location;
+    VarRegister RegPtr;
+} VarMemory;
 
 typedef struct VarSubroutine
 {
@@ -67,6 +67,7 @@ typedef struct VarSubroutine
 typedef enum VarLocationType
 {
     VAR_INVALID = 0,
+    VAR_FLAG,
     VAR_REG,
     VAR_MEM,
     VAR_LIT,

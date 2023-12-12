@@ -52,6 +52,9 @@ typedef enum PVMOp
     OP_BNZ,
     OP_BR,
     OP_BSR,
+    OP_BCT,
+    OP_BCF,
+    OP_BRI,
 
     OP_PSHL,
     OP_PSHH,
@@ -86,7 +89,8 @@ typedef enum PVMOp
     OP_FSLT64,
     OP_FSGE64,
     OP_FSLE64,
-    OP_GETFCC,
+
+    OP_GETFLAG,
 
 
     OP_SCPY,
@@ -240,6 +244,7 @@ typedef enum PVMImmType
 
 #define PVM_MOVI(Rd, ImmType) PVM_OP(MOVI, Rd, IMMTYPE_ ## ImmType)
 
+
 #define PVM_B(Condition, Rd, Imm4)\
     (BIT_POS32(OP_B ## Condition, 8, 8)\
      | BIT_POS32(Rd, 4, 4)\
@@ -252,6 +257,10 @@ typedef enum PVMImmType
 #define PVM_BSR(UpperByte)\
     (BIT_POS32(OP_BSR, 8, 8)\
      | BIT_POS32(UpperByte, 8, 0))
+
+#define PVM_BR_COND(Cond, UpperByte)\
+    (BIT_POS32(OP_BC ## Cond, 8, 8)\
+     | BIT_POS32(UpperByte, 8, 8))\
 
 
 #define PVM_GET_OP(OpcodeHalf) (PVMOp)(((Opcode) >> 8) & 0xFF)

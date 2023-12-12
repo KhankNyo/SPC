@@ -16,7 +16,7 @@ PascalVM PVMInit(U32 StackSize, UInt RetStackSize)
     PascalVM PVM = {
         .F = { 0 },
         .R = { 0 },
-        .FloatCondition = false,
+        .Condition = false,
         .Stack.Start.Raw = MemAllocateArray(PVM.Stack.Start.DWord[0], StackSize),
         .RetStack.Start = MemAllocateArray(PVM.RetStack.Start[0], RetStackSize),
         .RetStack.SizeLeft = RetStackSize,
@@ -24,6 +24,7 @@ PascalVM PVMInit(U32 StackSize, UInt RetStackSize)
         .LogFile = stderr,
         .Error = { 0 }, 
         .SingleStepMode = false,
+        .Condition = false,
     };
     PVM.Stack.End.Raw = PVM.Stack.Start.DWord + StackSize;
     PVM.RetStack.Val = PVM.RetStack.Start;
@@ -189,7 +190,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
 #define INTEGER_BINARY_OP(Operator, Opc, RegType)\
     PVM->R[PVM_GET_RD(Opc)]RegType GLUE(Operator,=) PVM->R[PVM_GET_RS(Opc)]RegType
 #define INTEGER_SET_IF(Operator, Opc, RegType)\
-    PVM->R[PVM_GET_RD(Opc)].Word.First = PVM->R[PVM_GET_RD(Opc)]RegType Operator PVM->R[PVM_GET_RS(Opc)]RegType
+    PVM->Condition = PVM->R[PVM_GET_RD(Opc)]RegType Operator PVM->R[PVM_GET_RS(Opc)]RegType
 
 #define GET_BR_IMM(Opc, IP) \
     BitSex32Safe(*IP++ | (((U32)(Opc) & 0xFF) << 16), PVM_BR_OFFSET_SIZE - 1)
@@ -201,7 +202,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
 #define FLOAT_BINARY_OP(Operator, Opc, RegType)\
     PVM->F[PVM_GET_RD(Opc)]RegType GLUE(Operator,=) PVM->F[PVM_GET_RS(Opc)]RegType
 #define FLOAT_SET_IF(Operator, Opc, RegType)\
-    PVM->FloatCondition = PVM->F[PVM_GET_RD(Opc)]RegType Operator PVM->F[PVM_GET_RS(Opc)]RegType
+    PVM->Condition = PVM->F[PVM_GET_RD(Opc)]RegType Operator PVM->F[PVM_GET_RS(Opc)]RegType
 
 #define PUSH_MULTIPLE(RegType, Base, Opc) do{\
     UInt RegList = PVM_GET_REGLIST(Opc);\
@@ -490,6 +491,7 @@ do {\
         case OP_BR:
         {
             I32 Offset = GET_BR_IMM(Opcode, IP);
+            /* TODO: bound chk */
             IP += Offset;
             PASCAL_ASSERT(IP < Chunk->Code + Chunk->Count, "Unreachable");
         } break;
@@ -503,6 +505,8 @@ do {\
             PVM->RetStack.Val->FP = FP().Ptr;
             PVM->RetStack.Val++;
             PVM->RetStack.SizeLeft--;
+
+            /* TODO: bound chk */
 
             IP += Offset;
         } break;
@@ -523,6 +527,31 @@ do {\
                 /* TODO: bound chk */
                 IP += Offset;
             }
+        } break;
+        case OP_BCT:
+        {
+            I32 Offset = GET_BR_IMM(Opcode, IP);
+            if (PVM->Condition)
+            {
+                /* TODO: bound chk */
+                IP += Offset;
+            }
+        } break;
+        case OP_BCF:
+        {
+            I32 Offset = GET_BR_IMM(Opcode, IP);
+            if (!PVM->Condition)
+            {
+                /* TODO: bound check */
+                IP += Offset;
+            }
+        } break;
+        case OP_BRI:
+        {
+            I32 Offset = (I16)*IP++;
+            /* TODO: bound check */
+            IP += Offset;
+            PVM->R[PVM_GET_RD(Opcode)].DWord += BitSex64(PVM_GET_RS(Opcode), 3);
         } break;
 
 
@@ -565,7 +594,7 @@ do {\
         case OP_FSGT64: FLOAT_SET_IF(>, Opcode, .Double); break;
         case OP_FSLE64: FLOAT_SET_IF(<=, Opcode, .Double); break;
         case OP_FSGE64: FLOAT_SET_IF(>=, Opcode, .Double); break;
-        case OP_GETFCC: PVM->R[PVM_GET_RD(Opcode)].Word.First = PVM->FloatCondition; break;
+        case OP_GETFLAG: PVM->R[PVM_GET_RD(Opcode)].Word.First = PVM->Condition; break;
 
 
         case OP_MOV32:       MOVE_INTEGER(Opcode, .Word.First, .Word.First); break;

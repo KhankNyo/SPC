@@ -17,7 +17,7 @@ if "%ARG1%"=="cl" (
     set "EXE_SWITCH=/Fe"
     set "OBJ_EXTENSION=obj"
 ) else (
-    set "CC=gcc"
+    set "CC=tcc"
     set "CCF=-Ofast -DDEBUG -DPVM_DEBUGGER -Wall -Wextra -Wpedantic -Wno-missing-braces -I%INCPATH%"
     set "LDF="
     set "LIBS="

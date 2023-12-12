@@ -709,7 +709,7 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
             {.Str = (const U8 *)"ABEL", .Len = 4, .Type = TOKEN_LABEL},
         },
         ['M'] = {
-            {.Str = (const U8 *)"OD", .Len = 3, .Type = TOKEN_MOD},
+            {.Str = (const U8 *)"OD", .Len = 2, .Type = TOKEN_MOD},
         },
         ['N'] = {
             {.Str = (const U8 *)"IL", .Len = 2, .Type = TOKEN_NIL},
