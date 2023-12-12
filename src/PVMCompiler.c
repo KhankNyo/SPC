@@ -1,6 +1,7 @@
 
 
-#include <stdarg.h>
+#include <stdarg.h> /* duh */
+#include <inttypes.h> /* PRI* */
 
 
 #include "Memory.h"
@@ -251,7 +252,7 @@ static U32 CompilerGetSizeOfType(PVMCompiler *Compiler, IntegralType Type, const
         return sizeof(void*);
     case TYPE_RECORD:
     {
-        PASCAL_ASSERT(NULL != TypeInfo, "Unreachable");
+        PASCAL_NONNULL(TypeInfo);
         return TypeInfo->Size;
     } break;
     }
@@ -602,7 +603,7 @@ static PascalVar *GetIdenInfo(PVMCompiler *Compiler, const Token *Identifier, co
 /* returns the type that both sides should be */
 static IntegralType CoerceTypes(PVMCompiler *Compiler, const Token *Op, IntegralType Left, IntegralType Right)
 {
-    PASCAL_ASSERT(Left >= TYPE_INVALID && Right >= TYPE_INVALID, "Unreachable");
+    PASCAL_ASSERT(Left >= TYPE_INVALID && Right >= TYPE_INVALID, "");
     if (Left > TYPE_COUNT || Right > TYPE_COUNT)
         PASCAL_UNREACHABLE("Invalid types");
 
@@ -683,6 +684,18 @@ static bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLoc
     } break;
     case VAR_MEM:
     {
+        if (To != From->Type)
+        {
+            Error(Compiler, "Cannot reinterpret memory of %s as %s.", 
+                    IntegralTypeToStr(From->Type), IntegralTypeToStr(To)
+            );
+            return false;
+        }
+    } break;
+    case VAR_FLAG:
+    {
+        if (TYPE_BOOLEAN != To)
+            goto InvalidTypeConversion;
     } break;
     case VAR_INVALID:
     case VAR_SUBROUTINE: 
@@ -847,7 +860,7 @@ static U32 CompileAndDeclareParameter(PVMCompiler *Compiler,
 static U32 CompileAndDeclareLocal(PVMCompiler *Compiler, 
         U32 VarCount, U32 VarSize, IntegralType VarType, PascalVar TypeInfo)
 {
-    PASCAL_ASSERT(VarCount > 0, "Unreachable");
+    PASCAL_ASSERT(VarCount > 0, "");
 
     for (U32 i = 0; i < VarCount; i++)
     {
@@ -878,7 +891,7 @@ static U32 CompileAndDeclareLocal(PVMCompiler *Compiler,
 static bool CompileAndDeclareGlobal(PVMCompiler *Compiler, 
         U32 VarCount, U32 VarSize, IntegralType VarType, PascalVar TypeInfo)
 {
-    PASCAL_ASSERT(VarCount > 0, "Unreachable");
+    PASCAL_ASSERT(VarCount > 0, "");
 
     for (U32 i = 0; i < VarCount; i++)
     {
@@ -1063,8 +1076,9 @@ static U32 CompileAndDeclareVarList(PVMCompiler *Compiler, VarSubroutine *Functi
 
 static void CompileParameterList(PVMCompiler *Compiler, VarSubroutine *CurrentFunction)
 {
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(CurrentFunction);
     PASCAL_ASSERT(!IsAtGlobalScope(Compiler), "Cannot compile param list at global scope");
-    PASCAL_ASSERT(NULL != CurrentFunction, "CompileParameterList() does not accept NULL");
     /* assumes '(' or some kind of terminator is the next token */
 
     CurrentFunction->ArgCount = 0;
@@ -1112,7 +1126,7 @@ static void CompileArgumentList(PVMCompiler *Compiler, const Token *FunctionName
         if (ArgCount < ExpectedArgCount)
         {
             const VarLocation *CurrentArg = Subroutine->Args[ArgCount].Location;
-            PASCAL_ASSERT(NULL != CurrentArg, "%s", __func__);
+            PASCAL_NONNULL(CurrentArg);
 
             VarLocation Arg = PVMSetArgType(EMITTER(), ArgCount, CurrentArg->Type);
             Arg.PointsAt = CurrentArg->PointsAt;
@@ -1348,23 +1362,185 @@ static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
 }
 
 
+static VarLocation FactorGrouping(PVMCompiler *Compiler)
+{
+    /* '(' consumed */
+    VarLocation Group = CompileExpr(Compiler);
+    ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
+    return Group;
+}
+
+
+
+static bool JavascriptStrToBool(const PascalStr *Str)
+{
+    if (0 == PStrGetLen(Str))
+        return false;
+
+    const char *Ptr = (const char *)PStrGetConstPtr(Str);
+    /* assumes null-terminated */
+
+    while (' ' == *Ptr)
+        Ptr++;
+
+    if ('-' == *Ptr) Ptr++;
+    while ('0' == *Ptr)
+        Ptr++;
+
+    if ('.' == *Ptr) Ptr++;
+    while ('0' == *Ptr)
+        Ptr++;
+
+    return !('e' == *Ptr || 'E' == *Ptr || '\0' == *Ptr);
+}
+
+
+static VarLiteral ConvertLiteralTypeExplicitly(PVMCompiler *Compiler, const Token *Converter, IntegralType To, const VarLiteral *Lit, IntegralType LitType)
+{
+    VarLiteral Converted = { 0 };
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Lit);
+    PASCAL_NONNULL(Converter);
+    if (To == LitType)
+        return *Lit;
+    if (TYPE_FUNCTION == To || TYPE_RECORD == To)
+    {
+        if (To != LitType)
+            goto InvalidTypeConversion;
+        return *Lit;
+    }
+
+    /* fuck fpc and tp I'm going wild with explicit type conversion */
+    if (TYPE_STRING == To)
+    {
+        static char Buf[1024];
+        UInt Len = 0;
+        if (IntegralTypeIsInteger(LitType))
+        {
+            if (IntegralTypeIsSigned(LitType))
+                Len = snprintf(Buf, sizeof Buf, "%"PRIi64, Lit->Int);
+            else 
+                Len = snprintf(Buf, sizeof Buf, "%"PRIu64, Lit->Int);
+        }
+        else if (IntegralTypeIsFloat(LitType))
+            Len = snprintf(Buf, sizeof Buf, "%f", Lit->Flt);
+        else if (TYPE_POINTER == LitType)
+            Len = snprintf(Buf, sizeof Buf, "%p", Lit->Ptr.As.Raw);
+        else if (TYPE_BOOLEAN == LitType)
+            Len = snprintf(Buf, sizeof Buf, Lit->Bool? "TRUE" : "FALSE");
+        else goto InvalidTypeConversion;
+
+        Converted.Str = PStrCopy((const U8*)Buf, Len);
+    }
+    else if (TYPE_BOOLEAN == To)
+    {
+        if (IntegralTypeIsInteger(LitType))
+            Converted.Bool = Lit->Int != 0;
+        else if (IntegralTypeIsFloat(LitType))
+            Converted.Bool = Lit->Flt != 0;
+        else if (TYPE_POINTER == LitType)
+            Converted.Bool = Lit->Ptr.As.UInt != 0;
+        else if (TYPE_STRING == LitType)
+            Converted.Bool = JavascriptStrToBool(&Lit->Str);
+        else goto InvalidTypeConversion;
+    }
+    else if (IntegralTypeIsInteger(To))
+    {
+        if (IntegralTypeIsFloat(LitType))
+            Converted.Int = Lit->Flt;
+        else if (TYPE_POINTER == LitType)
+            Converted.Int = Lit->Ptr.As.UInt;
+        else if (TYPE_BOOLEAN == LitType)
+            Converted.Int = 0 != Lit->Bool;
+        else goto InvalidTypeConversion;
+    }
+    else if (IntegralTypeIsFloat(To))
+    {
+        if (IntegralTypeIsInteger(LitType))
+            Converted.Flt = Lit->Int; /* truncated */
+        else if (TYPE_BOOLEAN == LitType)
+            Converted.Flt = 0 != Lit->Bool;
+        else if (TYPE_POINTER == LitType)
+            Converted.Flt = Lit->Ptr.As.UInt;
+        else goto InvalidTypeConversion;
+    }
+
+
+    return Converted;
+InvalidTypeConversion:
+    ErrorAt(Compiler, Converter, "Cannot convert from %s to %s explicitly.",
+            IntegralTypeToStr(LitType), IntegralTypeToStr(To)
+    ); 
+    return *Lit;
+}
+
+static VarLocation ConvertTypeExplicitly(PVMCompiler *Compiler, const Token *Converter, IntegralType To, const VarLocation *Expr)
+{
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Expr);
+    PASCAL_NONNULL(Converter);
+    if (To == Expr->Type)
+        return *Expr;
+
+    VarLocation Converted = { 
+        .Type = TYPE_INVALID,
+        .LocationType = Expr->LocationType,
+    };
+    switch (Expr->LocationType)
+    {
+    case VAR_INVALID:
+    case VAR_FLAG:
+    {
+        PASCAL_UNREACHABLE("");
+    } break;
+
+    case VAR_MEM:
+    {
+    } break;
+    case VAR_REG:
+    {
+    } break;
+    case VAR_LIT:
+    {
+        Converted.As.Literal = ConvertLiteralTypeExplicitly(Compiler, Converter, 
+                To, &Expr->As.Literal, Expr->Type
+        );
+        Converted.Type = To;
+    } break;
+    case VAR_SUBROUTINE:
+    {
+    } break;
+    }
+
+    return Converted;
+}
+
+
 static VarLocation FactorVariable(PVMCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
 
     /* consumed iden */
     Token Identifier = Compiler->Curr;
-    PascalVar *Variable = GetIdenInfo(Compiler, &Identifier, "Undefined variable.");
+    PascalVar *Variable = GetIdenInfo(Compiler, &Identifier, "Undefined identifier.");
     if (NULL == Variable)
         goto Error;
 
     VarLocation *Location = Variable->Location;
-    PASCAL_NONNULL(Location);
-    PASCAL_ASSERT(Location->Type == Variable->Type, "Unreachable");
-   
+    /* type casting */
+    if (NULL == Location)
+    {
+        /* typename(expr) */
+        ConsumeOrError(Compiler, TOKEN_LEFT_PAREN, "Expected '(' after type name.");
+        VarLocation Expr = FactorGrouping(Compiler);
+        return ConvertTypeExplicitly(Compiler, &Identifier, Variable->Type, &Expr);
+    }
+    /* function call */
     if (TYPE_FUNCTION == Location->Type)
     {
         VarSubroutine *Callee = &Location->As.Subroutine;
+        PASCAL_NONNULL(Callee);
+        /* TODO: if the callee is NULL, then maybe treat it as a built-in function */
         if (!Callee->HasReturnType)
         {
             ErrorAt(Compiler, &Identifier, "Procedure does not have a return value.");
@@ -1401,7 +1577,7 @@ static VarLocation VariableAddrOf(PVMCompiler *Compiler)
     }
     VarLocation *Location = Variable->Location;
     PASCAL_NONNULL(Location);
-    PASCAL_ASSERT(Variable->Type == Location->Type, "Unreachable");
+    PASCAL_ASSERT(Variable->Type == Location->Type, "");
 
 
     VarLocation Ptr = PVMAllocateRegister(EMITTER(), TYPE_POINTER);
@@ -1415,14 +1591,6 @@ static VarLocation VariableAddrOf(PVMCompiler *Compiler)
     return Ptr;
 }
 
-
-static VarLocation FactorGrouping(PVMCompiler *Compiler)
-{
-    /* '(' consumed */
-    VarLocation Group = CompileExpr(Compiler);
-    ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
-    return Group;
-}
 
 
 static VarLocation NegateLiteral(PVMCompiler *Compiler, 
@@ -1844,7 +2012,8 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
     case TOKEN_EQUAL:
     {
         if (IntegralTypeIsInteger(Dst.Type) 
-        && (IntegralTypeIsSigned(Left->Type) ^ IntegralTypeIsSigned(Right->Type)))
+        && VAR_LIT != Left->LocationType && VAR_LIT != Right->LocationType
+        && (IntegralTypeIsSigned(Left->Type) != IntegralTypeIsSigned(Right->Type)))
         {
             ErrorAt(Compiler, OpToken, "Comparison between integers of different sign (%s and %s) is not allowed.",
                     IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right->Type)
@@ -1906,8 +2075,8 @@ static VarLocation ExprAnd(PVMCompiler *Compiler, VarLocation *Left)
         IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
         if (TYPE_INVALID == ResultType)
             goto InvalidOperands;
-        PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "Unreachable");
-        PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type, "Unreachable");
+        PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
+        PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type, "");
 
         PVMEmitAnd(EMITTER(), Left, &Right);
         PVMPatchBranchToCurrent(EMITTER(), FromFalse, BRANCHTYPE_CONDITIONAL);
@@ -1920,9 +2089,9 @@ static VarLocation ExprAnd(PVMCompiler *Compiler, VarLocation *Left)
             goto InvalidOperands;
         }
         IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
-        PASCAL_ASSERT(TYPE_INVALID != ResultType, "Unreachable");
-        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, Left), "Unreachable");
-        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, &Right), "Unreachable");
+        PASCAL_ASSERT(TYPE_INVALID != ResultType, "");
+        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, Left), "");
+        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, &Right), "");
 
         PVMEmitAnd(EMITTER(), Left, &Right);
         FreeExpr(Compiler, Right);
@@ -1954,8 +2123,8 @@ static VarLocation ExprOr(PVMCompiler *Compiler, VarLocation *Left)
         IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
         if (TYPE_INVALID == ResultType)
             goto InvalidOperands;
-        PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "Unreachable");
-        PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type, "Unreachable");
+        PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
+        PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type, "");
 
         PVMEmitOr(EMITTER(), Left, &Right);
         PVMPatchBranchToCurrent(EMITTER(), FromTrue, BRANCHTYPE_CONDITIONAL);
@@ -1968,9 +2137,9 @@ static VarLocation ExprOr(PVMCompiler *Compiler, VarLocation *Left)
             goto InvalidOperands;
         }
         IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
-        PASCAL_ASSERT(TYPE_INVALID != ResultType, "Unreachable");
-        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, Left), "Unreachable");
-        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, &Right), "Unreachable");
+        PASCAL_ASSERT(TYPE_INVALID != ResultType, "");
+        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, Left), "");
+        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, &Right), "");
 
         PVMEmitOr(EMITTER(), Left, &Right);
         FreeExpr(Compiler, Right);
@@ -2060,7 +2229,7 @@ static VarLocation ParseAssignmentLhs(PVMCompiler *Compiler, Precedence Prec)
         const InfixParseRoutine InfixRoutine = 
             GetPrecedenceRule(Compiler->Curr.Type)->InfixRoutine;
 
-        PASCAL_ASSERT(NULL != InfixRoutine, "NULL infix routine in ParsePrecedence()");
+        PASCAL_NONNULL(InfixRoutine);
         Left = InfixRoutine(Compiler, &Left);
     }
     return Left;
@@ -2331,7 +2500,7 @@ static void CompileForStmt(PVMCompiler *Compiler)
     PascalVar *Counter = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined variable.");
     if (NULL == Counter)
         return;
-    PASCAL_ASSERT(NULL != Counter->Location, "Invalid location.");
+    PASCAL_NONNULL(Counter->Location);
     if (!IntegralTypeIsInteger(Counter->Type))
     {
         ErrorAt(Compiler, &Compiler->Curr, "Variable of type %s cannot be used as a counter",
@@ -2376,7 +2545,7 @@ static void CompileForStmt(PVMCompiler *Compiler)
     }
     else
     {
-        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, i->Type, &StopCondition), "Unreachable");
+        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, i->Type, &StopCondition), "");
 
         LoopHead = PVMMarkBranchTarget(EMITTER());
         PVMEmitSetFlag(EMITTER(), Op, &StopCondition, i);
@@ -2407,6 +2576,8 @@ static void CompileForStmt(PVMCompiler *Compiler)
 
 static void CompileWhileStmt(PVMCompiler *Compiler)
 {
+    PASCAL_NONNULL(Compiler);
+
     /* 'while' consumed */
     Token Keyword = Compiler->Curr;
     CompilerInitDebugInfo(Compiler, &Keyword);
@@ -2434,6 +2605,8 @@ static void CompileWhileStmt(PVMCompiler *Compiler)
 
 static void CompileIfStmt(PVMCompiler *Compiler)
 {
+    PASCAL_NONNULL(Compiler);
+
     /* 'if' consumed */
     Token Keyword = Compiler->Curr;
     CompilerInitDebugInfo(Compiler, &Keyword);
@@ -2478,8 +2651,9 @@ static void CompileIfStmt(PVMCompiler *Compiler)
 
 static void CompileCallStmt(PVMCompiler *Compiler, const Token Name, PascalVar *IdenInfo)
 {
-    PASCAL_ASSERT(NULL != IdenInfo, "Unreachable, IdenInfo is NULL");
-    PASCAL_ASSERT(NULL != IdenInfo->Location, "Unreachable, Location is NULL");
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(IdenInfo);
+    PASCAL_NONNULL(IdenInfo->Location);
     PASCAL_ASSERT(TYPE_FUNCTION == IdenInfo->Type, "Unreachable, IdenInfo is not a subroutine");
 
     /* iden consumed */
@@ -2554,16 +2728,10 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
     ConsumeToken(Compiler); /* assignment type */
 
     VarLocation Right = CompileExpr(Compiler);
-    if (TYPE_INVALID == CoerceTypes(Compiler, &Assignment, Dst.Type, Right.Type))
+    if (TYPE_INVALID == CoerceTypes(Compiler, &Assignment, Dst.Type, Right.Type)
+    || !ConvertTypeImplicitly(Compiler, Dst.Type, &Right))
     {
         ErrorAt(Compiler, &Assignment, "Cannot assign expression of type %s to %s.", 
-                IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst.Type)
-        );
-        goto Exit;
-    }
-    if (!ConvertTypeImplicitly(Compiler, Dst.Type, &Right))
-    {
-        ErrorAt(Compiler, &Assignment, "Cannot convert expression of type %s to %s", 
                 IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst.Type)
         );
         goto Exit;
@@ -2747,7 +2915,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     /* subroutine is already declared */
     if (NULL != SubroutineInfo)
     {
-        PASCAL_ASSERT(NULL != SubroutineInfo->Location, "%s", __func__);
+        PASCAL_NONNULL(SubroutineInfo->Location);
         Subroutine = &SubroutineInfo->Location->As.Subroutine;
         /* redefinition error */
         if (Subroutine->Defined)
@@ -2795,7 +2963,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     else
     {
         if (ConsumeIfNextIs(Compiler, TOKEN_COLON) 
-                && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
+        && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
         {
             Error(Compiler, "Procedure does not have a return type.");
         }

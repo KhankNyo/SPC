@@ -521,7 +521,7 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_FSLE64: DisasmFscc(f, "fsle64", Opcode); break;
     case OP_FSGE64: DisasmFscc(f, "fsge64", Opcode); break;
 
-    case OP_GETFLAG: DisasmSingleOperand(f, "getfcc", Opcode); break;
+    case OP_GETFLAG: DisasmSingleOperand(f, "getflag", Opcode); break;
 
 
 

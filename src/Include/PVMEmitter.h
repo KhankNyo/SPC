@@ -63,6 +63,7 @@ void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, U32 RegID);
 U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition);
 U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition);
 U32 PVMEmitBranchOnFalseFlag(PVMEmitter *Emitter);
+U32 PVMEmitBranchOnTrueFlag(PVMEmitter *Emitter);
 U32 PVMEmitBranchAndInc(PVMEmitter *Emitter, VarRegister Reg, I8 By, U32 To);
 /* returns the offset of the branch instruction for patching if necessary */
 U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To);

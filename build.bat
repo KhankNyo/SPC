@@ -8,7 +8,7 @@ set "BINDIR=%CD%\bin"
 set "INCPATH=%SRCDIR%\Include"
 
 if "%1"=="cl" (
-    call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
+    if "%VisualStudioVersion%"=="" call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
 
     set "CC=cl"
     set "CCF=/Zi /DEBUG /FC /I%INCPATH% /DDEBUG /DPVM_DEBUGGER"
@@ -19,7 +19,7 @@ if "%1"=="cl" (
     set "OBJ_EXTENSION=obj"
 ) else (
     set "CC=%1"
-    set "CCF=-Ofast -DDEBUG -DPVM_DEBUGGER -Wall -Wextra -Wpedantic -Wno-missing-braces -I%INCPATH%"
+    set "CCF=-Ofast -DDEBUG -Wall -Wextra -Wpedantic -Wno-missing-braces -I%INCPATH%"
     set "LDF="
     set "LIBS="
     set "OBJ_SWITCH=-o "

@@ -766,6 +766,12 @@ void PVMFreeRegister(PVMEmitter *Emitter, VarRegister Reg)
 U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition)
 {
     PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Condition);
+    if (VAR_FLAG == Condition->LocationType)
+    {
+        return PVMEmitBranchOnFalseFlag(Emitter);
+    }
+
     VarLocation Target;
     bool IsOwning = PVMEmitIntoReg(Emitter, &Target, Condition);
     U32 Location = WriteOp32(Emitter, PVM_B(EZ, Target.As.Register.ID, 0), 0);
@@ -779,6 +785,12 @@ U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition)
 U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition)
 {
     PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Condition);
+    if (VAR_FLAG == Condition->LocationType)
+    {
+        return PVMEmitBranchOnTrueFlag(Emitter);
+    }
+
     VarLocation Target;
     bool IsOwning = PVMEmitIntoReg(Emitter, &Target, Condition);
     U32 Location = WriteOp32(Emitter, PVM_B(NZ, Target.As.Register.ID, 0), 0);
@@ -794,6 +806,14 @@ U32 PVMEmitBranchOnFalseFlag(PVMEmitter *Emitter)
     PASCAL_NONNULL(Emitter);
     return WriteOp32(Emitter, PVM_BR_COND(F, 0), 0); 
 }
+
+U32 PVMEmitBranchOnTrueFlag(PVMEmitter *Emitter)
+{
+    PASCAL_NONNULL(Emitter);
+    return WriteOp32(Emitter, PVM_BR_COND(T, 0), 0); 
+}
+
+
 
 U32 PVMEmitBranchAndInc(PVMEmitter *Emitter, VarRegister Reg, I8 Imm, U32 To)
 {
