@@ -1496,9 +1496,11 @@ static VarLocation ConvertTypeExplicitly(PVMCompiler *Compiler, const Token *Con
 
     case VAR_MEM:
     {
+        PASCAL_UNREACHABLE("TODO: Convert type implicitly for VAR_MEM");
     } break;
     case VAR_REG:
     {
+        PASCAL_UNREACHABLE("TODO: Convert type implicitly for VAR_REG");
     } break;
     case VAR_LIT:
     {
