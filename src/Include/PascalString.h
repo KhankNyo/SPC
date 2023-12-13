@@ -11,10 +11,10 @@
 union PascalStr 
 {
     struct {
-        U8 Buf[PSTR_MAX_LEN];
-        U8 LenLeft;
+        U8 Len;
+        U8 Buf[PSTR_MAX_LEN + 1];
     } FbString;
-    U8 Data[PSTR_MAX_LEN + 1];
+    U8 Data[PSTR_MAX_LEN + 2];
 };
 
 
@@ -28,7 +28,7 @@ static inline bool PStrIsDyn(const PascalStr *PStr) { UNUSED(PStr, PStr); return
 static inline U8 *PStrGetPtr(PascalStr *PStr) { return PStr->FbString.Buf; }
 static inline const U8 *PStrGetConstPtr(const PascalStr *PStr) { return PStr->FbString.Buf; }
 
-static inline USize PStrGetLen(const PascalStr *PStr) { return PSTR_MAX_LEN - PStr->FbString.LenLeft; }
+static inline USize PStrGetLen(const PascalStr *PStr) { return PStr->FbString.Len; }
 static inline USize PStrGetCap(const PascalStr *PStr) { UNUSED(PStr, PStr); return PSTR_MAX_LEN; }
 static inline void PStrReserve(PascalStr *PStr, USize NewCapacity) { UNUSED(PStr, NewCapacity); }
 void PStrSetLen(PascalStr *PStr, USize Len);

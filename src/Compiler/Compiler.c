@@ -750,11 +750,14 @@ static void CompileVarBlock(PVMCompiler *Compiler)
 
     bool AtGlobalScope = IsAtGlobalScope(Compiler);
     U32 TotalSize = 0;
-    UInt Alignment = sizeof(PVMGPR);
+    U32 Base = PVMGetStackOffset(EMITTER());
+    if (AtGlobalScope)
+        Base = PVMGetGlobalOffset(EMITTER());
+    UInt Alignment = sizeof(U32);
 
     while (!IsAtEnd(Compiler) && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
-        U32 Next = CompileVarList(Compiler, TotalSize, Alignment, AtGlobalScope);
+        U32 Next = CompileVarList(Compiler, Base + TotalSize, Alignment, AtGlobalScope);
         if (Next == TotalSize)
         {
             DBG_PRINT("Nex: %d", Next);
@@ -776,6 +779,7 @@ static void CompileVarBlock(PVMCompiler *Compiler)
     }
     else
     {
+
         CompilerInitDebugInfo(Compiler, &Keyword);
         CompilerEmitDebugInfo(Compiler, &Keyword);
         PVMEmitStackAllocation(EMITTER(), TotalSize);

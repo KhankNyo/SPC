@@ -570,6 +570,8 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_QSHL64: DisasmRdSmallImm(f, "qshl", Opcode, false); break;
     case OP_QSHR64: DisasmRdSmallImm(f, "qshr", Opcode, false); break;
     case OP_QASR64: DisasmRdSmallImm(f, "qasr", Opcode, false); break;
+    case OP_ADDI64: return DisasmRdImm(f, "addi64", Chunk, Addr, Opcode);
+    case OP_ADDQI64: DisasmRdSmallImm(f, "addqi64", Opcode, false); break;
 
     case OP_SEQ64: DisasmRdRs(f, "seq64", sIntReg, Opcode); break;
     case OP_SNE64: DisasmRdRs(f, "sne64", sIntReg, Opcode); break;

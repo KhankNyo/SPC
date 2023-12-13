@@ -922,7 +922,15 @@ void PVMEmitLoadAddr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocat
     UInt Base = Src->As.Memory.RegPtr.ID;
     UInt Rd = Dst->As.Register.ID;
     U32 Offset = Src->As.Memory.Location;
-    if (IN_I16(Src->As.Memory.Location))
+    if (0 == Src->As.Memory.Location)
+    {
+        VarRegister Rd = Dst->As.Register;
+        TransferRegister(Emitter, 
+                &Rd, Dst->Type, 
+                Src->As.Memory.RegPtr, Src->Type
+        );
+    }
+    else if (IN_I16(Src->As.Memory.Location))
     {
         WriteOp32(Emitter, PVM_OP(LEA, Rd, Base), Offset);
     }
@@ -942,7 +950,12 @@ void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, const VarLocation *Dst, const
     PASCAL_ASSERT(Dst->LocationType == VAR_REG, "Unreachable");
     PASCAL_ASSERT(Src->LocationType == VAR_MEM, "Unreachable");
 
-    if (IN_I16(Offset))
+    if (0 == Offset)
+    {
+        VarRegister Rd = Dst->As.Register;
+        TransferRegister(Emitter, &Rd, Dst->Type, Src->As.Memory.RegPtr, Src->Type);
+    }
+    else if (IN_I16(Offset))
     {
         WriteOp32(Emitter, PVM_OP(LEA, Dst->As.Register.ID, Src->As.Memory.RegPtr.ID), Offset);
     }
@@ -1222,14 +1235,41 @@ void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I16 Imm)
     VarLocation Target;
     bool IsOwning = PVMEmitIntoReg(Emitter, &Target, Dst);
 
-    if (IS_SMALL_IMM(Imm))
+    if (Dst->Type == TYPE_U64 || Dst->Type == TYPE_I64)
     {
+        if (IS_SMALL_IMM(Imm))
+            WriteOp16(Emitter, PVM_OP(ADDQI64, Target.As.Register.ID, Imm));
+        else if (IN_I16(Imm))
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_I16), Imm);
+        else if (IN_U16(Imm))
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_U16), Imm);
+        else if (IN_I32(Imm))
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_I32), Imm);
+        else if (IN_U32(Imm))
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_U32), Imm);
+        else if (IN_I48(Imm))
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_I48), Imm);
+        else if (IN_U48(Imm))
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_U48), Imm);
+        else
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_U64), Imm);
+    }
+    else if (IS_SMALL_IMM(Imm))
         WriteOp16(Emitter, PVM_OP(ADDQI, Target.As.Register.ID, Imm));
-    }
-    else /* TODO: more ops */
-    {
+    else if (IN_I16(Imm))
         WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_I16), Imm);
-    }
+    else if (IN_U16(Imm))
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_U16), Imm);
+    else if (IN_I32(Imm))
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_I32), Imm);
+    else if (IN_U32(Imm))
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_U32), Imm);
+    else if (IN_I48(Imm))
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_I48), Imm);
+    else if (IN_U48(Imm))
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_U48), Imm);
+    else
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_U64), Imm);
 
     if (IsOwning)
     {

@@ -191,6 +191,8 @@ typedef enum PVMOp
     OP_VSHL64,
     OP_VSHR64,
     OP_VASR64,
+    OP_ADDI64,
+    OP_ADDQI64,
 
 
     OP_SEQ64,

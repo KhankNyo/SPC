@@ -410,8 +410,6 @@ do {\
         {
             PVM->R[PVM_GET_RD(Opcode)].Word.First += BIT_SEX32(PVM_GET_RS(Opcode), 3); 
         } break;
-
-
         case OP_ADDI:
         {
             U32 Imm = 0;
@@ -735,6 +733,16 @@ do {\
         case OP_QASR64: 
         {
             PVM->R[PVM_GET_RD(Opcode)].SDWord >>= PVM_GET_RS(Opcode);
+        } break;
+        case OP_ADDQI64:
+        {
+            PVM->R[PVM_GET_RD(Opcode)].DWord += BIT_SEX32(PVM_GET_RS(Opcode), 3); 
+        } break;
+        case OP_ADDI64:
+        {
+            U64 Imm = 0;
+            GET_SEX_IMM(Imm, PVM_GET_RS(Opcode), IP);
+            PVM->R[PVM_GET_RD(Opcode)].DWord += Imm;
         } break;
 
         case OP_SETEZ64: 

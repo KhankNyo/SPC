@@ -29,6 +29,7 @@ static U32 sNewlineConstHash = 0;
 
 static void CompileSysWrite(PVMCompiler *Compiler, bool Newline)
 {
+    PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
     UInt ArgCount = 0;
     VarLocation File = VAR_LOCATION_LIT(.Ptr.As.Raw = stdout, TYPE_POINTER);
     if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
@@ -72,6 +73,7 @@ static void CompileSysWrite(PVMCompiler *Compiler, bool Newline)
 
     /* syscall */
     PVMEmitWrite(EMITTER());
+    PVMEmitUnsaveCallerRegs(EMITTER(), NO_RETURN_REG);
 }
 
 PASCAL_BUILTIN(Writeln, Compiler, FnName)
@@ -127,8 +129,9 @@ void DefineSystemSubroutines(PVMCompiler *Compiler)
     static VarLocation NewlineConstant = {
         .Type = TYPE_STRING,
         .LocationType = VAR_MEM,
+        .As.Memory.Location = 10,
     };
-    NewlineConstant.As.Memory = PVMEmitGlobalData(EMITTER(), "\n", sizeof("\n") - 1);
+    NewlineConstant.As.Memory = PVMEmitGlobalData(EMITTER(), "\1\n", sizeof("\n"));
     DEFINE_BUILTIN_LIT(Scope, sNewlineConstName, TYPE_STRING, &NewlineConstant);
 
     DEFINE_BUILTIN_FN(Scope, "WRITELN", sWriteln);

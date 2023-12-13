@@ -11,11 +11,11 @@ void PStrSetLen(PascalStr *PStr, USize Len)
 {
     if (Len > PSTR_MAX_LEN)
     {
-        PStr->FbString.LenLeft = 0;
+        PStr->FbString.Len = PSTR_MAX_LEN;
     }
     else
     {
-        PStr->FbString.LenLeft = PSTR_MAX_LEN - Len;
+        PStr->FbString.Len = Len;
     }
 }
 
@@ -24,11 +24,11 @@ USize PStrAddToLen(PascalStr *PStr, ISize Extra)
     USize OldLen = PStrGetLen(PStr);
     if (OldLen + Extra > PSTR_MAX_LEN)
     {
-        PStr->FbString.LenLeft = 0;
+        PStr->FbString.Len = PSTR_MAX_LEN;
     }
     else
     {
-        PStr->FbString.LenLeft -= Extra;
+        PStr->FbString.Len += Extra;
     }
     return OldLen;
 }
@@ -43,7 +43,7 @@ PascalStr PStrInitReserved(USize Len, USize Extra)
         Len = PSTR_MAX_LEN;
     PascalStr PStr = { .FbString = {
         .Buf = { 0 },
-        .LenLeft = PSTR_MAX_LEN - Len,
+        .Len = Len,
     } };
     return PStr;
 }
