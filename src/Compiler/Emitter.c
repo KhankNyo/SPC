@@ -1226,7 +1226,7 @@ Unreachable:
 
 /* arith instructions */
 
-void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I16 Imm)
+void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I64 Imm)
 {
     PASCAL_NONNULL(Emitter);
     PASCAL_NONNULL(Dst);

@@ -100,7 +100,7 @@ void PVMEmitIntToFltTypeConversion(PVMEmitter *Emitter,
 );
 
 /* arith instructions */
-void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I16 Imm);
+void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I64 Imm);
 void PVMEmitAdd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 void PVMEmitSub(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 void PVMEmitNeg(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
