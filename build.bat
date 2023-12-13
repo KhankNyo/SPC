@@ -23,7 +23,7 @@ if "%1"=="cl" (
     :: STFU gcc you piece of shit 
     set "CCF=-Ofast -std=c99 -Wall -Wextra -Wpedantic -Wno-missing-braces -Wno-format-zero-length -I%INCPATH%"
     set "LDF="
-    set "LIBS="
+    set "LIBS= "
     set "OBJ_SWITCH=-o "
     set "SRC_SWITCH=-c "
     set "EXE_SWITCH=-o "
@@ -35,8 +35,9 @@ set "SRCS=%SRCDIR%\PascalString.c %SRCDIR%\main.c %SRCDIR%\Pascal.c %SRCDIR%\Mem
 set "SRCS=%SRCS% %SRCDIR%\PascalFile.c %SRCDIR%\PascalRepl.c"
 
 set "SRCS=%SRCS% %SRCDIR%\Tokenizer.c %SRCDIR%\Vartab.c"
-set "SRCS=%SRCS% %SRCDIR%\PVMCompiler.c %SRCDIR%\PVMEmitter.c "
-set "SRCS=%SRCS% %SRCDIR%\CompilerData.c %SRCDIR%\Error.c %SRCDIR%\PascalBuiltins.c"
+set "SRCS=%SRCS% %SRCDIR%\Compiler\Compiler.c %SRCDIR%\Compiler\Emitter.c "
+set "SRCS=%SRCS% %SRCDIR%\Compiler\Data.c %SRCDIR%\Compiler\Error.c %SRCDIR%\Compiler\Builtins.c"
+set "SRCS=%SRCS% %SRCDIR%\Compiler\Expr.c %SRCDIR%\Compiler\VarList.c"
 
 set "SRCS=%SRCS% %SRCDIR%\PVM\Chunk.c %SRCDIR%\PVM\Disassembler.c %SRCDIR%\PVM\PVM.c"
 set "SRCS=%SRCS% %SRCDIR%\PVM\Debugger.c"

@@ -28,7 +28,7 @@
 #define _UNUSED5(a, b, c, d, e) (_UNUSED4(a, b, c, d), (void)(e))
 
 #define _COUNT(_1, _2, _3, _4, _5, N, ...) N
-#define _VANARGS(...) _COUNT(__VA_ARGS__, 5, 4, 3, 2, 1)
+#define _VANARGS(...) _COUNT(__VA_ARGS__, 5, 4, 3, 2, 1, 0)
 #define _UNUSED_N(N, ...) GLUE(_UNUSED, N) (__VA_ARGS__)
 #define UNUSED(...) _UNUSED_N(_VANARGS(__VA_ARGS__), __VA_ARGS__) 
 
@@ -151,9 +151,9 @@ static inline I64 BitSex64(U64 Value, UInt SignIndex)
 } while (0)
 #  define DBG_PRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
-#  define PASCAL_ASSERT(expr, ...) (void)(expr), UNUSED(__VA_ARGS__)
-#  define PASCAL_NONNULL(Ptr)
-#  define DBG_PRINT(...) (void)UNUSED(__VA_ARGS__)
+#  define PASCAL_ASSERT(expr, ...) ((void)(expr), (void)UNUSED(__VA_ARGS__))
+#  define PASCAL_NONNULL(Ptr) ((void)(Ptr))
+#  define DBG_PRINT(...) ((void)UNUSED(__VA_ARGS__))
 #endif
 
 
