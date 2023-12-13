@@ -1,7 +1,8 @@
 
 #include <stdarg.h>
+
+#include "Compiler/Emitter.h"
 #include "PVM/Isa.h"
-#include "PVMEmitter.h"
 
 
 
@@ -591,6 +592,7 @@ bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, const VarLocati
         DerefIntoReg(Emitter, &OutTarget->As.Register, Tmp.Type, Tmp.As.Memory, Tmp.Type);
         return true;
     } break;
+    case VAR_BUILTIN:
     case VAR_SUBROUTINE:
     {
         PASCAL_UNREACHABLE("TODO: emitting function pointer");
@@ -867,6 +869,7 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
     case VAR_LIT:
     case VAR_INVALID:
     case VAR_FLAG:
+    case VAR_BUILTIN:
     case VAR_SUBROUTINE:
     {
         PASCAL_UNREACHABLE("Are you crazy???");
@@ -880,6 +883,7 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
         {
         case VAR_INVALID:
         case VAR_SUBROUTINE:
+        case VAR_BUILTIN:
         {
             PASCAL_UNREACHABLE("No");
         } break;
@@ -1815,38 +1819,28 @@ void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...)
 
 
 /* stack allocation */
-VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size)
+U32 PVMGetStackOffset(PVMEmitter *Emitter)
 {
-    PASCAL_NONNULL(Emitter);
-    U32 NewOffset = Emitter->StackSpace + Size;
-    if (NewOffset % sizeof(PVMPTR))
-        NewOffset = (NewOffset + sizeof(PVMPTR)) & ~(sizeof(PVMPTR) - 1);
-
-    VarMemory Mem = {
-        .RegPtr = Emitter->Reg.FP.As.Register,
-        .Location = Emitter->StackSpace,
-    };
-    Emitter->StackSpace = NewOffset;
-    return Mem;
+    return Emitter->StackSpace;
 }
 
-
-void PVMCommitStackAllocation(PVMEmitter *Emitter)
-{
-    PASCAL_NONNULL(Emitter);
-	PVMAllocateStack(Emitter, Emitter->StackSpace);
-}
-
-void PVMAllocateStack(PVMEmitter *Emitter, I32 Size) 
+void PVMEmitStackAllocation(PVMEmitter *Emitter, I32 Size) 
 {
     PASCAL_NONNULL(Emitter);
     PVMEmitAddImm(Emitter, &Emitter->Reg.SP, Size);
+    Emitter->StackSpace += Size;
 }
 
 
 
 
 
+
+/* global instructions */
+U32 PVMGetGlobalOffset(PVMEmitter *Emitter)
+{
+    return PVMCurrentChunk(Emitter)->Global.Count;
+}
 
 VarMemory PVMEmitGlobalData(PVMEmitter *Emitter, const void *Data, U32 Size)
 {
@@ -1858,7 +1852,6 @@ VarMemory PVMEmitGlobalData(PVMEmitter *Emitter, const void *Data, U32 Size)
     return Global;
 }
 
-/* global instructions */
 VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size)
 {
     PASCAL_NONNULL(Emitter);

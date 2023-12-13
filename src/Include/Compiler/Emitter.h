@@ -1,16 +1,19 @@
 #ifndef PASCAL_VM2_EMITTER_H
 #define PASCAL_VM2_EMITTER_H
 
-#include "PVM/Chunk.h"
-#include "PVM/Isa.h"
 #include "Variable.h"
 #include "Tokenizer.h"
-#include "PVMCompiler.h"
+#include "Compiler.h"
+
+#include "PVM/Chunk.h"
+#include "PVM/Isa.h"
+
+
 
 
 #define PVM_MAX_CALL_IN_EXPR 32
 
-typedef struct PVMEmitter 
+struct PVMEmitter 
 {
     PVMChunk *Chunk;
     U32 Reglist;
@@ -26,7 +29,7 @@ typedef struct PVMEmitter
 
     VarLocation ReturnValue;
     VarLocation ArgReg[PVM_ARGREG_COUNT];
-} PVMEmitter;
+};
 
 typedef enum PVMBranchType
 {
@@ -123,19 +126,20 @@ VarLocation PVMSetParamType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType Pa
 VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgType);
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg);
 VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType);
+/* accepts Pointer to VarLocation as args */
 void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...);
 
 
 /* stack instructions */
-VarMemory PVMQueueStackAllocation(PVMEmitter *Emitter, U32 Size);
+U32 PVMGetStackOffset(PVMEmitter *Emitter);
 VarMemory PVMQueueStackArg(PVMEmitter *Emitter, U32 Size);
-void PVMCommitStackAllocation(PVMEmitter *Emitter);
-void PVMAllocateStack(PVMEmitter *Emitter, I32 Size);
-
+void PVMEmitStackAllocation(PVMEmitter *Emitter, I32 Size);
 
 /* global instructions */
+U32 PVMGetGlobalOffset(PVMEmitter *Emitter);
 VarMemory PVMEmitGlobalData(PVMEmitter *Emitter, const void *Data, U32 Size);
 VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
+#define PVMEmitGlobalAllocation(pEmitter, U32Size) PVMEmitGlobalSpace(pEmitter, U32Size)
 
 
 /* call instructions */

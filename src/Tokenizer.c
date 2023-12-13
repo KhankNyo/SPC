@@ -217,7 +217,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_THEN", "TOKEN_TRUE", "TOKEN_TYPE", "TOKEN_TO",
         "TOKEN_UNIT", "TOKEN_UNTIL", "TOKEN_USES", 
         "TOKEN_VAR", 
-        "TOKEN_WHILE", "TOKEN_WITH", "TOKEN_WRITE", "TOKEN_WRITELN",
+        "TOKEN_WHILE", "TOKEN_WITH", 
         "TOKEN_XOR",
 
         /* symbols */
@@ -755,8 +755,6 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
         ['W'] = {
             {.Str = (const U8 *)"ITH", .Len = 3, .Type = TOKEN_WITH},
             {.Str = (const U8 *)"HILE", .Len = 4, .Type = TOKEN_WHILE},
-            {.Str = (const U8 *)"RITE", .Len = 4, .Type = TOKEN_WRITE},
-            {.Str = (const U8 *)"RITELN", .Len = 6, .Type = TOKEN_WRITELN},
         },
         ['X'] = {
             {.Str = (const U8 *)"OR", .Len = 2, .Type = TOKEN_XOR},

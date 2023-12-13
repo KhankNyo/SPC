@@ -7,25 +7,15 @@
 #include "Memory.h"
 #include "IntegralTypes.h"
 
-#ifndef PASCAL_PASCALVAR_DEFINED
-#   define PASCAL_PASCALVAR_DEFINED
-    typedef struct PascalVar PascalVar;
-#endif /* PASCAL_PASCALVAR_DEFINED */
-#ifndef PASCAL_VARLOCATION_DEFINED
-#   define PASCAL_VARLOCATION_DEFINED
-    typedef struct VarLocation VarLocation;
-#endif /* PASCAL_VARLOCATION_DEFINED */
-
-
 #define VARTAB_MAX_LOAD 3/4
 #define VARTAB_GROW_FACTOR 2 /* should be powers of 2 */
 
-typedef struct PascalVartab 
+struct PascalVartab 
 {
     PascalVar *Table;
     ISize Cap, Count;
     PascalGPA *Allocator;
-} PascalVartab;
+};
 
 
 PascalVartab VartabInit(PascalGPA *Allocator, ISize InitialCap);

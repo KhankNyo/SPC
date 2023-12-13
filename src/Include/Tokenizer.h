@@ -5,12 +5,12 @@
 #include "Common.h"
 #include "PascalString.h"
 
-typedef struct PascalTokenizer 
+struct PascalTokenizer 
 {
     const U8 *Start, *Curr;
     const U8 *LinePtr;
     UInt Line;
-} PascalTokenizer;
+};
 
 
 typedef enum TokenType 
@@ -37,7 +37,7 @@ typedef enum TokenType
     TOKEN_THEN, TOKEN_TRUE, TOKEN_TYPE, TOKEN_TO, 
     TOKEN_UNIT, TOKEN_UNTIL, TOKEN_USES, 
     TOKEN_VAR, 
-    TOKEN_WHILE, TOKEN_WITH, TOKEN_WRITE, TOKEN_WRITELN,
+    TOKEN_WHILE, TOKEN_WITH, 
     TOKEN_XOR,
 
     /* symbols */
@@ -64,7 +64,7 @@ typedef enum TokenType
 } TokenType;
 
 
-typedef struct Token 
+struct Token 
 {
     TokenType Type;
     const U8 *Str;
@@ -78,7 +78,7 @@ typedef struct Token
     UInt Len;
     UInt Line;
     UInt LineOffset;
-} Token;
+};
 
 
 /* initializes PascalTokenizer struct with a Pascal source file */

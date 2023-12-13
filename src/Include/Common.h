@@ -1,31 +1,11 @@
 #ifndef PASCAL_COMMON_H
 #define PASCAL_COMMON_H
 
-#include <stdint.h>
 #include <stddef.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
-
-
-typedef uint8_t U8;
-typedef uint16_t U16;
-typedef uint32_t U32;
-typedef uint64_t U64;
-typedef size_t USize;
-typedef unsigned UInt;
-
-typedef int8_t I8;
-typedef int16_t I16;
-typedef int32_t I32;
-typedef int64_t I64;
-typedef ptrdiff_t ISize;
-
-
-
-typedef double F64;
-typedef float F32;
-typedef long double LargeType;
+#include "Typedefs.h"
 
 
 /* this is a cry for help */
@@ -143,6 +123,7 @@ static inline I64 BitSex64(U64 Value, UInt SignIndex)
                 STRFY(__LINE__)" in "__FILE__":\n    "\
                 __VA_ARGS__\
         );\
+        fputc('\n', stderr);\
         DIE();\
     }while(0)
 #define PASCAL_STATIC_ASSERT(COND, MSG) extern int static_assertion(char foo[(COND)?1:-1])
@@ -162,7 +143,7 @@ static inline I64 BitSex64(U64 Value, UInt SignIndex)
 }while(0)
 #define PASCAL_NONNULL(Ptr) do {\
     if (NULL == (Ptr)) {\
-        fprintf(stderr, "Invalid Pointer on line %d in %s in %s",\
+        fprintf(stderr, "Invalid Pointer on line %d in %s in %s\n",\
                 __LINE__, __func__, __FILE__\
         );\
         DIE();\

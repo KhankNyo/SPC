@@ -7,7 +7,7 @@
 #include "Memory.h"
 
 #include "PVM/PVM.h"
-#include "PVMCompiler.h"
+#include "Compiler/Compiler.h"
 
 
 
@@ -75,7 +75,7 @@ static bool PascalRun(const U8 *Source)
 
     PVMChunk Code = ChunkInit(1024);
     PascalCompileFlags Flags = { 0 };
-    if (!PVMCompile(Source, Flags, &Identifiers, &Code, MemGetAllocator(), stderr))
+    if (!PascalCompile(Source, Flags, &Identifiers, MemGetAllocator(), stderr, &Code))
         goto CompileError;
 
     PascalVM VM = PVMInit(1024, 128);

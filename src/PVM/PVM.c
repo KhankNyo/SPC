@@ -117,6 +117,7 @@ static const PascalStr *RuntimeTypeToStr(IntegralType Type, PVMGPR Data)
 
     case TYPE_FUNCTION:
     case TYPE_COUNT:
+    case TYPE_RECORD:
     case TYPE_INVALID:
     {
         PASCAL_UNREACHABLE("Invalid type in %s", __func__);
@@ -332,19 +333,16 @@ do {\
             } break;
             case OP_SYS_WRITE:
             {
-                U32 ArgCount = PVM->R[PVM_ARGREG_0].Word.First;
+                U32 ArgCount = PVM->R[0].Word.First;
                 PVMGPR *Ptr = SP().Ptr.Raw;
+
                 /* TODO: make this more clear */
                 Ptr -= ArgCount*2 - 1;
                 PVMGPR *Cleanup = Ptr;
                 PASCAL_ASSERT((void*)Ptr >= FP().Ptr.Raw, "Unreachable: %d", ArgCount);
 
-                FILE *OutFile = stdout;
-                if (NULL != PVM->R[PVM_ARGREG_1].Ptr.Raw)
-                {
-                    OutFile = PVM->R[PVM_ARGREG_1].Ptr.Raw;
-                }
-
+                FILE *OutFile = PVM->R[1].Ptr.Raw;
+                PASCAL_NONNULL(OutFile);
                 for (U32 i = 0; i < ArgCount; i++)
                 {
                     IntegralType Type = (*Ptr++).DWord;

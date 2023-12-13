@@ -1,11 +1,11 @@
-#ifndef PASCAL_VM_COMPILER_H
-#define PASCAL_VM_COMPILER_H
+#ifndef PASCAL_COMPILER_H
+#define PASCAL_COMPILER_H
 
 
 
 #include "Common.h"
-#include "PVM/Chunk.h"
 #include "Vartab.h"
+#include "PVM/Chunk.h"
 
 #define PVM_MAX_FUNCTION_COUNT 1024
 #define PVM_MAX_SCOPE_COUNT 16              /* 15 nested functions */
@@ -26,10 +26,11 @@ typedef struct PascalCompileFlags
 } PascalCompileFlags;
 
 /* Returns true on success, false on failure and logs error to log file */
-bool PVMCompile(const U8 *Source, 
+bool PascalCompile(const U8 *Source, 
         PascalCompileFlags Flags,
-        PascalVartab *PredefinedIdentifiers, PVMChunk *Chunk, 
-        PascalGPA *GlobalAlloc, FILE *LogFile
+        PascalVartab *PredefinedIdentifiers, 
+        PascalGPA *GlobalAlloc, FILE *LogFile,
+        PVMChunk *OutChunk
 );
 
 

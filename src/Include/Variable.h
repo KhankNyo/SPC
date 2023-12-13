@@ -8,15 +8,6 @@
 #include "PascalString.h"
 
 
-#ifndef PASCAL_VARLOCATION_DEFINED
-#   define PASCAL_VARLOCATION_DEFINED
-    typedef struct VarLocation VarLocation;
-#endif /* PASCAL_VARLOCATION_DEFINED */
-#ifndef PASCAL_PASCALVAR_DEFINED
-#   define PASCAL_PASCALVAR_DEFINED
-    typedef struct PascalVar PascalVar;
-#endif /* PASCAL_PASCALVAR_DEFINED */
-
 struct PascalVar
 {
     const U8 *Str;
@@ -30,28 +21,28 @@ struct PascalVar
 
 
 
-typedef union VarLiteral 
+union VarLiteral 
 {
     U64 Int;
     F64 Flt;
     bool Bool;
     GenericPtr Ptr;
     PascalStr Str;
-} VarLiteral;
+};
 
-typedef struct VarRegister
+struct VarRegister 
 {
     UInt ID;
     bool Persistent;
-} VarRegister;
+};
 
-typedef struct VarMemory
+struct VarMemory 
 {
     U32 Location;
     VarRegister RegPtr;
-} VarMemory;
+};
 
-typedef struct VarSubroutine
+struct VarSubroutine
 {
     U32 Location;
 
@@ -67,7 +58,7 @@ typedef struct VarSubroutine
     bool HasReturnType;
     IntegralType ReturnType;
     PascalVartab Scope;
-} VarSubroutine;
+};
 
 typedef enum VarLocationType
 {
@@ -76,6 +67,7 @@ typedef enum VarLocationType
     VAR_REG,
     VAR_MEM,
     VAR_LIT,
+    VAR_BUILTIN,
     VAR_SUBROUTINE,
 } VarLocationType;
 
@@ -96,8 +88,14 @@ struct VarLocation
         VarRegister Register;
         VarSubroutine Subroutine;
         VarLiteral Literal;
+        VarBuiltinRoutine BuiltinSubroutine;
     } As;
 };
+
+
+#define VAR_LOCATION_LIT(Assignment, LitType) (VarLocation) {\
+    .As.Literal Assignment, .Type = LitType, .LocationType = VAR_LIT,\
+}
 
 
 

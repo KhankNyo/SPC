@@ -9,7 +9,7 @@
 #include "Memory.h"
 
 #include "PVM/PVM.h"
-#include "PVMCompiler.h"
+#include "Compiler/Compiler.h"
 
 
 static bool GetCommandLine(PascalVM *PVM, char *Buf, USize Bufsz);
@@ -37,7 +37,7 @@ int PascalRepl(void)
         CurrentSource[SourceLen] = '\0';
 
         PascalCompileFlags Flags = { 0 };
-        if (PVMCompile(CurrentSource, Flags, &Identifiers, &Chunk, &Permanent, stderr))
+        if (PascalCompile(CurrentSource, Flags, &Identifiers, &Permanent, stderr, &Chunk))
         {
             PVMRun(&PVM, &Chunk);
         }

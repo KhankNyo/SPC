@@ -8,17 +8,20 @@
 
 #define PSTR_MAX_LEN 255
 
-typedef union PascalStr 
+union PascalStr 
 {
     struct {
         U8 Buf[PSTR_MAX_LEN];
         U8 LenLeft;
     } FbString;
     U8 Data[PSTR_MAX_LEN + 1];
-} PascalStr;
+};
 
 
-
+#define PSTR_LITERAL(Literal) (PascalStr) {\
+    .FbString.Buf = Literal, \
+    .FbString.LenLeft = sizeof(Literal) - 1\
+}
 
 static inline bool PStrIsDyn(const PascalStr *PStr) { UNUSED(PStr, PStr); return false; }
 
