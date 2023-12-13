@@ -15,6 +15,12 @@ struct CompilerFrame
     VarSubroutine *Current; /* VarLocation never resizes, this is safe */
 };
 
+struct TmpIdentifiers
+{
+    Token Array[64];
+    U32 Count, Cap;
+};
+
 
 struct PVMCompiler 
 {
@@ -35,11 +41,8 @@ struct PVMCompiler
     } Builtins;
     Token EmptyToken;
 
-    struct {
-        /* TODO: dynamic */
-        Token Array[256];
-        U32 Count, Cap;
-    } Iden;
+    TmpIdentifiers Idens;
+
 
     struct {
         VarLocation **Location;
@@ -80,10 +83,12 @@ void CompilerPushSubroutine(PVMCompiler *Compiler, VarSubroutine *Subroutine);
 void CompilerPopSubroutine(PVMCompiler *Compiler);
 VarLocation *CompilerAllocateVarLocation(PVMCompiler *Compiler);
 
-void CompilerResetTmpIdentifier(PVMCompiler *Compiler);
-void CompilerPushTmpIdentifier(PVMCompiler *Compiler, Token Identifier);
-UInt CompilerGetTmpIdentifierCount(const PVMCompiler *Compiler);
-Token *CompilerGetTmpIdentifier(PVMCompiler *Compiler, UInt Idx);
+void CompilerResetTmp(PVMCompiler *Compiler);
+void CompilerPushTmp(PVMCompiler *Compiler, Token Identifier);
+TmpIdentifiers CompilerSaveTmp(PVMCompiler *Compiler);
+void CompilerUnsaveTmp(PVMCompiler *Compiler, const TmpIdentifiers *Save);
+UInt CompilerGetTmpCount(const PVMCompiler *Compiler);
+Token *CompilerGetTmp(PVMCompiler *Compiler, UInt Idx);
 
 void CompilerInitDebugInfo(PVMCompiler *Compiler, const Token *From);
 void CompilerEmitDebugInfo(PVMCompiler *Compiler, const Token *From);

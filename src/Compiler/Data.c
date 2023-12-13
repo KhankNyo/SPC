@@ -40,8 +40,8 @@ PVMCompiler CompilerInit(const U8 *Source,
             .Count = 0,
         },
         .Global = PredefinedIdentifiers,
-        .Iden = {
-            .Cap = STATIC_ARRAY_SIZE(Compiler.Iden.Array),
+        .Idens = {
+            .Cap = STATIC_ARRAY_SIZE(Compiler.Idens.Array),
             .Count = 0,
         },
         .Subroutine = { {0} },
@@ -265,29 +265,48 @@ void CompilerEmitDebugInfo(PVMCompiler *Compiler, const Token *From)
 
 
 
-void CompilerResetTmpIdentifier(PVMCompiler *Compiler)
+void CompilerResetTmp(PVMCompiler *Compiler)
 {
-    Compiler->Iden.Count = 0;
+    PASCAL_NONNULL(Compiler);
+    Compiler->Idens.Count = 0;
 }
 
-void CompilerPushTmpIdentifier(PVMCompiler *Compiler, Token Identifier)
+void CompilerPushTmp(PVMCompiler *Compiler, Token Identifier)
 {
-    if (Compiler->Iden.Count > Compiler->Iden.Cap)
+    PASCAL_NONNULL(Compiler);
+    if (Compiler->Idens.Count > Compiler->Idens.Cap)
     {
-        PASCAL_UNREACHABLE("TODO: allocator");
+        PASCAL_UNREACHABLE("TODO: allocator to tmp iden");
     }
-    Compiler->Iden.Array[Compiler->Iden.Count] = Identifier;
-    Compiler->Iden.Count++;
+    Compiler->Idens.Array[Compiler->Idens.Count] = Identifier;
+    Compiler->Idens.Count++;
 }
 
-UInt CompilerGetTmpIdentifierCount(const PVMCompiler *Compiler)
+TmpIdentifiers CompilerSaveTmp(PVMCompiler *Compiler)
 {
-    return Compiler->Iden.Count;
+    PASCAL_NONNULL(Compiler);
+    TmpIdentifiers Save = Compiler->Idens;
+    Compiler->Idens = (TmpIdentifiers) { .Cap = STATIC_ARRAY_SIZE(Save.Array) };
+    return Save;
 }
 
-Token *CompilerGetTmpIdentifier(PVMCompiler *Compiler, UInt Idx)
+void CompilerUnsaveTmp(PVMCompiler *Compiler, const TmpIdentifiers *Save)
 {
-    return &Compiler->Iden.Array[Idx];
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Save);
+    Compiler->Idens = *Save;
+}
+
+UInt CompilerGetTmpCount(const PVMCompiler *Compiler)
+{
+    PASCAL_NONNULL(Compiler);
+    return Compiler->Idens.Count;
+}
+
+Token *CompilerGetTmp(PVMCompiler *Compiler, UInt Idx)
+{
+    PASCAL_NONNULL(Compiler);
+    return &Compiler->Idens.Array[Idx];
 }
 
 

@@ -52,6 +52,21 @@ typedef enum Precedence
 typedef VarLocation (*InfixParseRoutine)(PVMCompiler *, VarLocation *);
 typedef VarLocation (*PrefixParseRoutine)(PVMCompiler *);
 
+
+#define INVALID_BINARY_OP(pOp, LType, RType) \
+    ErrorAt(Compiler, pOp, "Invalid operand for binary operator '%.*s': %s and %s", \
+            (pOp)->Len, (pOp)->Str, \
+            IntegralTypeToStr(LType), IntegralTypeToStr(RType)\
+    )
+#define INVALID_PREFIX_OP(pOp, Type) \
+    ErrorAt(Compiler, pOp, "Invalid operand for prefix operator '%.*s': %s", \
+            (pOp)->Len, (pOp)->Str, IntegralTypeToStr(Type)\
+    )
+#define INVALID_POSTFIX_OP(pOp, Type) \
+    ErrorAt(Compiler, pOp, "Invalid operand for postfix operator '%.*s': %s", \
+            (pOp)->Len, (pOp)->Str, IntegralTypeToStr(Type)\
+    )
+
 typedef struct PrecedenceRule
 {
     PrefixParseRoutine PrefixRoutine;
@@ -280,7 +295,8 @@ static bool JavascriptStrToBool(const PascalStr *Str)
 }
 
 
-static VarLiteral ConvertLiteralTypeExplicitly(PVMCompiler *Compiler, const Token *Converter, IntegralType To, const VarLiteral *Lit, IntegralType LitType)
+static VarLiteral ConvertLiteralTypeExplicitly(PVMCompiler *Compiler, 
+        const Token *Converter, IntegralType To, const VarLiteral *Lit, IntegralType LitType)
 {
     VarLiteral Converted = { 0 };
     PASCAL_NONNULL(Compiler);
@@ -359,7 +375,8 @@ InvalidTypeConversion:
     return *Lit;
 }
 
-static VarLocation ConvertTypeExplicitly(PVMCompiler *Compiler, const Token *Converter, IntegralType To, const VarLocation *Expr)
+static VarLocation ConvertTypeExplicitly(PVMCompiler *Compiler, 
+        const Token *Converter, IntegralType To, const VarLocation *Expr)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Expr);
@@ -417,9 +434,18 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
     {
         /* type casting */
         /* typename(expr) */
-        ConsumeOrError(Compiler, TOKEN_LEFT_PAREN, "Expected '(' after type name.");
-        VarLocation Expr = FactorGrouping(Compiler);
-        return ConvertTypeExplicitly(Compiler, &Identifier, Variable->Type, &Expr);
+        if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+        {
+            VarLocation Expr = FactorGrouping(Compiler);
+            return ConvertTypeExplicitly(Compiler, &Identifier, Variable->Type, &Expr);
+        }
+        /* returns the type itself for sizeof */
+        /* typename */
+        VarLocation Type = {
+            .Type = Variable->Type,
+            .LocationType = VAR_INVALID,
+        };
+        return Type;
     }
     if (TYPE_FUNCTION == Location->Type)
     {
@@ -510,9 +536,7 @@ static VarLocation NegateLiteral(PVMCompiler *Compiler,
     }
     else 
     {
-        ErrorAt(Compiler, OpToken, "Cannot be applied to value of type %s", 
-                IntegralTypeToStr(LiteralType)
-        );
+        INVALID_PREFIX_OP(OpToken, LiteralType);
     }
 
     Location.As.Literal = Literal;
@@ -538,9 +562,7 @@ static VarLocation NotLiteral(PVMCompiler *Compiler,
     }
     else
     {
-        ErrorAt(Compiler, OpToken, "Cannot be applied to value of type %s",
-                IntegralTypeToStr(LiteralType)
-        );
+        INVALID_PREFIX_OP(OpToken, LiteralType);
     }
     Location.As.Literal = Literal;
     return Location;
@@ -553,7 +575,13 @@ static VarLocation ExprUnary(PVMCompiler *Compiler)
     Token OpToken = Compiler->Curr;
     VarLocation Value = ParsePrecedence(Compiler, PREC_FACTOR);
 
-    if (VAR_LIT == Value.LocationType)
+    if (VAR_INVALID == Value.LocationType)
+    {
+        ErrorAt(Compiler, &OpToken, "unary operator '%.*s' cannot be applied to expression with no storage.",
+                OpToken.Len, OpToken.Str
+        );
+    }
+    else if (VAR_LIT == Value.LocationType)
     {
         switch (Operator)
         {
@@ -592,7 +620,7 @@ static VarLocation ExprUnary(PVMCompiler *Compiler)
     return Value;
 
 TypeMismatch:
-    ErrorAt(Compiler, &OpToken, "Operator is not valid for %s", IntegralTypeToStr(Value.Type));
+    INVALID_PREFIX_OP(&OpToken, Value.Type);
     return Value;
 
 Unreachable: 
@@ -639,8 +667,7 @@ static bool CompareStringOrder(TokenType CompareType, const PascalStr *s1, const
 
 
 static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken, 
-        VarLocation *Left, VarLocation *Right
-        )
+        VarLocation *Left, VarLocation *Right)
 {
 #define COMMON_BIN_OP(Operator)\
     do {\
@@ -680,6 +707,13 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
             Result.Type = TYPE_BOOLEAN;\
         }\
     } while (0)
+
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(OpToken);
+    PASCAL_NONNULL(Left);
+    PASCAL_NONNULL(Right);
+    PASCAL_ASSERT(VAR_INVALID != Left->LocationType, "Unreachable");
+    PASCAL_ASSERT(VAR_INVALID != Right->LocationType, "Unreachable");
 
     IntegralType Both = CoerceTypes(Compiler, OpToken, Left->Type, Right->Type);
     bool ConversionOk = ConvertTypeImplicitly(Compiler, Both, Left);
@@ -825,9 +859,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     }
 
 InvalidTypeConversion:
-    ErrorAt(Compiler, OpToken, "Invalid combination of type %s and %s", 
-            IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right->Type)
-    );
+    INVALID_BINARY_OP(OpToken, Left->Type, Right->Type);
     return *Left;
 #undef COMMON_BIN_OP
 #undef COMPARE_OP
@@ -835,12 +867,15 @@ InvalidTypeConversion:
 }
 
 
-static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken, VarLocation *Left, VarLocation *Right)
+static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, 
+        const Token *OpToken, VarLocation *Left, VarLocation *Right)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(OpToken);
     PASCAL_NONNULL(Left);
     PASCAL_NONNULL(Right);
+    PASCAL_ASSERT(VAR_INVALID != Left->LocationType, "Unreachable");
+    PASCAL_ASSERT(VAR_INVALID != Right->LocationType, "Unreachable");
 
     VarLocation Tmp = *Left;
     VarLocation Src = *Right;
@@ -857,9 +892,7 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
         && ConvertTypeImplicitly(Compiler, Type, &Src);
     if (!ConversionOk) 
     {
-        ErrorAt(Compiler, OpToken, "Invalid operands: %s and %s", 
-                IntegralTypeToStr(Tmp.Type), IntegralTypeToStr(Src.Type)
-        );
+        INVALID_BINARY_OP(OpToken, Tmp.Type, Src.Type);
         return *Left;
     }
 
@@ -913,7 +946,8 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, const Token *OpToken
         && VAR_LIT != Left->LocationType && VAR_LIT != Right->LocationType
         && (IntegralTypeIsSigned(Left->Type) != IntegralTypeIsSigned(Right->Type)))
         {
-            ErrorAt(Compiler, OpToken, "Comparison between integers of different sign (%s and %s) is not allowed.",
+            ErrorAt(Compiler, OpToken, 
+                    "Comparison between integers of different sign (%s and %s) is not allowed.",
                     IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right->Type)
             );
             return *Left;
@@ -949,20 +983,36 @@ static VarLocation ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
      *      not     (1 + (2 + 3)) 
      */
     VarLocation Right = ParsePrecedence(Compiler, OperatorRule->Prec + 1);
+    bool LeftInvalid = VAR_INVALID == Left->LocationType;
+    bool RightInvalid = VAR_INVALID == Right.LocationType;
 
-    if (VAR_LIT != Left->LocationType || VAR_LIT != Right.LocationType)
+    if (LeftInvalid || RightInvalid)
     {
-        return RuntimeExprBinary(Compiler, &OpToken, Left, &Right);
+        const char *Msg = "Expression on both sides of '%.*s' does not have a storage class.";
+        if (LeftInvalid && !RightInvalid)
+            Msg = "Expression on the left of '%.*s' does not have a storage class.";
+        else if (!LeftInvalid && RightInvalid)
+            Msg = "Expression on the right of '%.*s' does not have a storage class.";
+
+        ErrorAt(Compiler, &OpToken, Msg, OpToken.Len, OpToken.Str);
+        return *Left;
+    }
+    else if (VAR_LIT == Left->LocationType && VAR_LIT == Right.LocationType)
+    {
+        return LiteralExprBinary(Compiler, &OpToken, Left, &Right);
     }
     else 
     {
-        return LiteralExprBinary(Compiler, &OpToken, Left, &Right);
+        return RuntimeExprBinary(Compiler, &OpToken, Left, &Right);
     }
 }
 
 
 static VarLocation ExprAnd(PVMCompiler *Compiler, VarLocation *Left)
 {
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Left);
+
     VarLocation Right;
     Token OpToken = Compiler->Curr;
     if (TYPE_BOOLEAN == Left->Type)
@@ -996,21 +1046,22 @@ static VarLocation ExprAnd(PVMCompiler *Compiler, VarLocation *Left)
     }
     else 
     {
-        ErrorAt(Compiler, &OpToken, "Invalid left operand: %s",
+        ErrorAt(Compiler, &OpToken, "Invalid left operand for 'and': %s",
                 IntegralTypeToStr(Left->Type)
         );
     }
 
     return *Left;
 InvalidOperands:
-    ErrorAt(Compiler, &OpToken, "Invalid operands: %s and %s", 
-            IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right.Type)
-    );
+    INVALID_BINARY_OP(&OpToken, Left->Type, Right.Type);
     return *Left;
 }
 
 static VarLocation ExprOr(PVMCompiler *Compiler, VarLocation *Left)
 {
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Left);
+
     VarLocation Right;
     Token OpToken = Compiler->Curr;
     if (TYPE_BOOLEAN == Left->Type)
@@ -1044,16 +1095,14 @@ static VarLocation ExprOr(PVMCompiler *Compiler, VarLocation *Left)
     }
     else 
     {
-        ErrorAt(Compiler, &OpToken, "Invalid left operand: %s",
+        ErrorAt(Compiler, &OpToken, "Invalid left operand for 'or': %s",
                 IntegralTypeToStr(Left->Type)
         );
     }
 
     return *Left;
 InvalidOperands:
-    ErrorAt(Compiler, &OpToken, "Invalid operands: %s and %s", 
-            IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right.Type)
-    );
+    INVALID_BINARY_OP(&OpToken, Left->Type, Right.Type);
     return *Left;
 }
 
@@ -1165,7 +1214,7 @@ InvalidTypeCombo:
     }
     else
     {
-        ErrorAt(Compiler, Op, "Invalid combination of %s and %s",
+        ErrorAt(Compiler, Op, "Invalid combination of %s and %s.",
                 IntegralTypeToStr(Left), IntegralTypeToStr(Right)
         );
     }

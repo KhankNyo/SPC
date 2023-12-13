@@ -30,11 +30,13 @@ static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttri
         /* annonymous record */
         if (IsParameterList)
         {
-            ErrorAt(Compiler, &Compiler->Curr, "Record definition is not allowed here.");
+            ErrorAt(Compiler, &Compiler->Curr, "Record definition is not allowed in parameter list.");
             return false;
         }
 
+        TmpIdentifiers SaveList = CompilerSaveTmp(Compiler);
         PascalVar *Record = CompileRecordDefinition(Compiler, &Compiler->EmptyToken);
+        CompilerUnsaveTmp(Compiler, &SaveList);
         if (NULL == Record)
             return false;
 
@@ -46,7 +48,7 @@ static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttri
     }
     if (ConsumeIfNextIs(Compiler, TOKEN_ARRAY))
     {
-        PASCAL_UNREACHABLE("");
+        PASCAL_UNREACHABLE("TODO: array");
     }
     if (ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER))
     {
@@ -66,9 +68,18 @@ static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttri
             Out->Type = TYPE_RECORD;
             Out->Pointer.Record = Typename->Location->PointerTo.Record;
         }
-        else
+        else if (NULL == Typename->Location)
         {
             Out->Type = Typename->Type;
+        }
+        else
+        {
+            /* if the identifier has a location, ie Location is not NULL, 
+             * then it's not a type */
+            ErrorAt(Compiler, &Compiler->Curr, "'%.*s' is not a type name in this scope.", 
+                    Compiler->Curr.Len, Compiler->Curr.Str
+            );
+            return false;
         }
         return true;
     }
@@ -95,16 +106,24 @@ static bool ParseVarList(PVMCompiler *Compiler, bool IsParameterList, TypeAttrib
 
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Out);
-    PASCAL_ASSERT(NextTokenIs(Compiler, TOKEN_IDENTIFIER), "");
 
     /* a, b, c part first */
-    CompilerResetTmpIdentifier(Compiler);
+    CompilerResetTmp(Compiler);
+    const char *Type = "variable";
+    if (IsParameterList)
+        Type = "parameter";
+    int Count = 0;
     do {
-        ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected variable name.");
-        CompilerPushTmpIdentifier(Compiler, Compiler->Curr);
+        ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected %s name.", Type);
+        CompilerPushTmp(Compiler, Compiler->Curr);
+        Count++;
     } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
-    if (!ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' after variable name."))
+
+    if (!ConsumeOrError(Compiler, TOKEN_COLON, 
+    "Expected ':' and type name after %s%s.", Type, Count > 1 ? "s" : ""))
+    {
         return false;
+    }
 
     /* then parses typename */
     return ParseTypename(Compiler, IsParameterList, Out);
@@ -125,7 +144,7 @@ U32 CompileVarList(PVMCompiler *Compiler, U32 StartAddr, UInt Alignment, bool Gl
     if (!ParseVarList(Compiler, false, &Type))
         return StartAddr;
 
-    UInt VarCount = CompilerGetTmpIdentifierCount(Compiler);
+    UInt VarCount = CompilerGetTmpCount(Compiler);
     U32 AlignedSize = Type.Size;
     U32 Mask = ~(Alignment - 1);
     U32 EndAddr = StartAddr;
@@ -142,7 +161,7 @@ U32 CompileVarList(PVMCompiler *Compiler, U32 StartAddr, UInt Alignment, bool Gl
     {
         VarLocation *Location = CompilerAllocateVarLocation(Compiler);
         DefineIdentifier(Compiler, 
-                CompilerGetTmpIdentifier(Compiler, i),
+                CompilerGetTmp(Compiler, i),
                 Type.Type,
                 Location
         );
@@ -195,15 +214,19 @@ bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *Subroutine)
         /* parse the parameters */
         TypeAttribute Type;
         if (!ParseVarList(Compiler, true, &Type))
-            return false;
+        {
+            /* flushes temporary params and pretend nothing happened */
+            CompilerResetTmp(Compiler);
+            Compiler->Panic = false;
+        }
 
         /* define the parameters */
-        UInt VarCount = CompilerGetTmpIdentifierCount(Compiler);
+        UInt VarCount = CompilerGetTmpCount(Compiler);
         for (U32 i = 0; i < VarCount; i++)
         {
             VarLocation *Location = CompilerAllocateVarLocation(Compiler);
             PascalVar *Var = DefineIdentifier(Compiler, 
-                    CompilerGetTmpIdentifier(Compiler, i),
+                    CompilerGetTmp(Compiler, i),
                     Type.Type,
                     Location
             );
@@ -222,8 +245,17 @@ bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *Subroutine)
             if (Subroutine->ArgCount > PVM_ARGREG_COUNT)
                 Subroutine->StackArgSize += Type.Size;
         }
-    } while (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON));
-    return ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after parameter list.");
+
+        if (ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
+            return true;
+
+        if (ConsumeIfNextIs(Compiler, TOKEN_COMMA))
+            ErrorAt(Compiler, &Compiler->Curr, "Use ';' to separate parameters.");
+        else if (!ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after parameter list."))
+            return false;
+    } while (!IsAtEnd(Compiler));
+    /* something has gone gorribly wrong */
+    return false;
 }
 
 

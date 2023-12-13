@@ -92,6 +92,23 @@ PASCAL_BUILTIN(Write, Compiler, FnName)
     return None;
 }
 
+PASCAL_BUILTIN(SizeOf, Compiler, FnName)
+{
+    OptionalReturnValue Size = {.HasReturnValue = true};
+
+    ConsumeOrError(Compiler, TOKEN_LEFT_PAREN, "Expected '(' after '%.*s'.", FnName->Len, FnName->Str);
+    VarLocation Expr = CompileExpr(Compiler);
+    ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
+
+    Size.ReturnValue = (VarLocation){
+        .Type = TYPE_SIZE,
+        .LocationType = VAR_LIT,
+        .As.Literal.Int = CompilerGetSizeOfType(Compiler, Expr.Type, &Expr),
+    };
+    FreeExpr(Compiler, Expr);
+    return Size;
+}
+
 
 OptionalReturnValue CompileCallToBuiltin(PVMCompiler *Compiler, VarBuiltinRoutine BuiltinCallee)
 {
@@ -136,6 +153,7 @@ void DefineSystemSubroutines(PVMCompiler *Compiler)
 
     DEFINE_BUILTIN_FN(Scope, "WRITELN", sWriteln);
     DEFINE_BUILTIN_FN(Scope, "WRITE", sWrite);
+    DEFINE_BUILTIN_FN(Scope, "SIZEOF", sSizeOf);
     //DEFINE_BUILTIN_FN(Scope, "READLN", sReadln);
     //DEFINE_BUILTIN_FN(Scope, "READ", sRead);
 

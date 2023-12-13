@@ -72,30 +72,28 @@ static void CalmDownDog(PVMCompiler *Compiler)
 
 static void CalmDownAtBlock(PVMCompiler *Compiler)
 {
-    /* TODO: this skips too much */
     Compiler->Panic = false;
-    ConsumeToken(Compiler);
-    while (!IsAtEnd(Compiler))
-    {
-        switch (Compiler->Next.Type)
+    do {
+        if (TOKEN_SEMICOLON == Compiler->Curr.Type)
         {
-        case TOKEN_LABEL:
-        case TOKEN_CONST:
-        case TOKEN_TYPE:
-        case TOKEN_VAR:
-        case TOKEN_PROCEDURE:
-        case TOKEN_FUNCTION:
-        case TOKEN_BEGIN:
-        case TOKEN_END:
-            return;
+            switch (Compiler->Next.Type)
+            {
+            case TOKEN_LABEL:
+            case TOKEN_CONST:
+            case TOKEN_TYPE:
+            case TOKEN_VAR:
+            case TOKEN_PROCEDURE:
+            case TOKEN_FUNCTION:
+            case TOKEN_BEGIN:
+                return;
 
-        default: break;
+            default: break;
+            }
         }
+        
         ConsumeToken(Compiler);
-    }
+    } while (!IsAtEnd(Compiler));
 }
-
-
 
 
 
@@ -760,10 +758,9 @@ static void CompileVarBlock(PVMCompiler *Compiler)
         U32 Next = CompileVarList(Compiler, Base + TotalSize, Alignment, AtGlobalScope);
         if (Next == TotalSize)
         {
-            DBG_PRINT("Nex: %d", Next);
             return;
         }
-        TotalSize = Next;
+        TotalSize = Next - Base;
 
         /* TODO: initialization */
         if (ConsumeIfNextIs(Compiler, TOKEN_EQUAL))
@@ -779,7 +776,6 @@ static void CompileVarBlock(PVMCompiler *Compiler)
     }
     else
     {
-
         CompilerInitDebugInfo(Compiler, &Keyword);
         CompilerEmitDebugInfo(Compiler, &Keyword);
         PVMEmitStackAllocation(EMITTER(), TotalSize);

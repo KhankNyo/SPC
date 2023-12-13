@@ -20,6 +20,12 @@ typedef enum IntegralType
     TYPE_COUNT,
 } IntegralType;
 
+#if UINTPTR_MAX == UINT32_MAX
+#  define TYPE_SIZE TYPE_U32
+#else
+#  define TYPE_SIZE TYPE_U64
+#endif /* TYPE_SIZE */
+
 static inline const char *IntegralTypeToStr(IntegralType Type)
 {
     static const char *StrLut[] = {

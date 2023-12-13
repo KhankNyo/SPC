@@ -8,6 +8,7 @@ typedef struct PVMCompiler PVMCompiler;
 typedef struct PVMEmitter PVMEmitter;
 typedef struct PascalTokenizer PascalTokenizer;
 typedef struct CompilerFrame CompilerFrame;
+typedef struct TmpIdentifiers TmpIdentifiers;
 typedef struct Token Token;
 
 typedef struct VarLocation VarLocation;
