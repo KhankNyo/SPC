@@ -76,6 +76,15 @@ bool ConsumeOrError(PVMCompiler *Compiler, TokenType Expected, const char *ErrFm
     return true;
 }
 
+void ErrorTypeMismatch(PVMCompiler *Compiler, 
+        const Token *At, const char *Place, const char *ExpectedType, IntegralType Got)
+{
+    ErrorAt(Compiler, At, "Invalid type for %s, expected %s but got %s.",
+            Place, ExpectedType, IntegralTypeToStr(Got)
+    );
+
+}
+
 
 
 

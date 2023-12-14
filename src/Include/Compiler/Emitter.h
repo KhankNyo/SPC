@@ -32,6 +32,8 @@ struct PVMEmitter
         VarLocation Flag;
     } Reg;
 
+    bool ShouldEmit;
+
     VarLocation ReturnValue;
 #if PVM_ARGREG_COUNT == 0
     VarLocation *ArgReg;

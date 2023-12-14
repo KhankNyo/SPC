@@ -21,6 +21,13 @@
 
 #define EMITTER() (&Compiler->Emitter)
 
+typedef enum Condition 
+{
+    COND_FALSE,
+    COND_TRUE,
+    COND_UNKNOWN,
+} Condition;
+
 
 /*===============================================================================*/
 /*
@@ -195,6 +202,10 @@ static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
     CompilerInitDebugInfo(Compiler, &UntilKeyword);
 
     VarLocation Tmp = CompileExprIntoReg(Compiler);
+    if (TYPE_BOOLEAN != Tmp.Type)
+    {
+        ErrorTypeMismatch(Compiler, &UntilKeyword, "until loop condition", "boolean", Tmp.Type);
+    }
     PVMPatchBranch(EMITTER(), 
             PVMEmitBranchIfFalse(EMITTER(), &Tmp), 
             LoopHead,
@@ -227,7 +238,7 @@ static void CompileForStmt(PVMCompiler *Compiler)
     PASCAL_NONNULL(Counter->Location);
     if (!IntegralTypeIsInteger(Counter->Type))
     {
-        ErrorAt(Compiler, &Compiler->Curr, "Variable of type %s cannot be used as a counter",
+        ErrorAt(Compiler, &Compiler->Curr, "Variable of type %s cannot be used as a counter.",
                 IntegralTypeToStr(Counter->Type)
         );
         return;
@@ -261,7 +272,7 @@ static void CompileForStmt(PVMCompiler *Compiler)
     VarLocation StopCondition = CompileExprIntoReg(Compiler); 
     if (TYPE_INVALID == CoerceTypes(Compiler, &OpToken, i->Type, StopCondition.Type))
     {
-        ErrorAt(Compiler, &OpToken, "Incompatible types from %s %.*s %s.", 
+        ErrorAt(Compiler, &OpToken, "Incompatible types for 'for' loop: from %s %.*s %s.", 
                 IntegralTypeToStr(i->Type),
                 OpToken.Len, OpToken.Str, 
                 IntegralTypeToStr(StopCondition.Type)
@@ -309,7 +320,26 @@ static void CompileWhileStmt(PVMCompiler *Compiler)
     /* condition expression */
     U32 LoopHead = PVMMarkBranchTarget(EMITTER());
     VarLocation Tmp = CompileExpr(Compiler);
-    U32 LoopExit = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
+    if (TYPE_BOOLEAN != Tmp.Type)
+    {
+        ErrorTypeMismatch(Compiler, &Keyword, "while loop condition", "boolean", Tmp.Type);
+    }
+
+    Condition Cond = COND_UNKNOWN;
+    if (VAR_LIT == Tmp.LocationType)
+    {
+        Cond = COND_FALSE;
+        if (Tmp.As.Literal.Bool)
+            Cond = COND_TRUE;
+    }
+
+    bool Last = EMITTER()->ShouldEmit;
+    if (COND_FALSE == Cond)
+        EMITTER()->ShouldEmit = false;
+
+    U32 LoopExit = 0;
+    if (COND_UNKNOWN == Cond)
+        LoopExit = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
     FreeExpr(Compiler, Tmp);
     /* do */
     ConsumeOrError(Compiler, TOKEN_DO, "Expected 'do' after expression.");
@@ -322,8 +352,13 @@ static void CompileWhileStmt(PVMCompiler *Compiler)
 
     /* back to loophead */
     PVMEmitBranch(EMITTER(), LoopHead);
-    /* patch the exit branch */
-    PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_CONDITIONAL);
+    if (COND_UNKNOWN == Cond)
+    {
+        /* patch the exit branch */
+        PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_CONDITIONAL);
+    }
+
+    EMITTER()->ShouldEmit = Last;
 }
 
 
@@ -341,6 +376,18 @@ static void CompileIfStmt(PVMCompiler *Compiler)
     ConsumeOrError(Compiler, TOKEN_THEN, "Expected 'then' after expression.");
     CompilerEmitDebugInfo(Compiler, &Keyword);
 
+    if (TYPE_BOOLEAN != Tmp.Type)
+        ErrorTypeMismatch(Compiler, &Keyword, "if condition", "boolean", Tmp.Type);
+
+    Condition IfCond = COND_UNKNOWN;
+    if (VAR_LIT == Tmp.LocationType)
+    {
+        IfCond = COND_FALSE;
+        if (Tmp.As.Literal.Bool)
+            IfCond = COND_TRUE;
+    }
+
+    bool Last = EMITTER()->ShouldEmit;
     /* 
      * IF: 
      *      BEZ Tmp, ELSE 
@@ -350,24 +397,41 @@ static void CompileIfStmt(PVMCompiler *Compiler)
      *      Stmt...
      * DONE:
      * */
-    U32 FromIf = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
+    U32 FromIf = 0;
+    if (COND_FALSE == IfCond)
+        EMITTER()->ShouldEmit = false;
+
+    if (COND_UNKNOWN == IfCond)
+        FromIf = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
     FreeExpr(Compiler, Tmp);
+
     /* if body */
     CompileStmt(Compiler);
+    
+    EMITTER()->ShouldEmit = Last;
     if (ConsumeIfNextIs(Compiler, TOKEN_ELSE))
     {
-        U32 FromEndIf = PVMEmitBranch(EMITTER(), 0);
+        U32 FromEndIf = 0;
+        if (COND_TRUE == IfCond)
+            EMITTER()->ShouldEmit = false;
+        
+        if (COND_UNKNOWN == IfCond)
+            FromEndIf = PVMEmitBranch(EMITTER(), 0);
 
         PVMPatchBranchToCurrent(EMITTER(), FromIf, BRANCHTYPE_CONDITIONAL);
         CompilerInitDebugInfo(Compiler, &Compiler->Curr);
         CompilerEmitDebugInfo(Compiler, &Compiler->Curr);
+
         CompileStmt(Compiler);
-        PVMPatchBranchToCurrent(EMITTER(), FromEndIf, BRANCHTYPE_UNCONDITIONAL);
+
+        if (COND_UNKNOWN == IfCond)
+            PVMPatchBranchToCurrent(EMITTER(), FromEndIf, BRANCHTYPE_UNCONDITIONAL);
     }
-    else
+    else if (COND_UNKNOWN == IfCond)
     {
         PVMPatchBranchToCurrent(EMITTER(), FromIf, BRANCHTYPE_CONDITIONAL);
     }
+    EMITTER()->ShouldEmit = Last;
 }
 
 

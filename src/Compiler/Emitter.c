@@ -64,6 +64,7 @@ PVMEmitter PVMEmitterInit(PVMChunk *Chunk)
             .Type = TYPE_INVALID,
             .As.Register.ID = PVM_RETREG,
         },
+        .ShouldEmit = true,
     };
     for (int i = PVM_ARGREG_0; i < PVM_ARGREG_COUNT; i++)
     {
@@ -102,6 +103,7 @@ static PVMChunk *PVMCurrentChunk(PVMEmitter *Emitter)
 static U32 WriteOp16(PVMEmitter *Emitter, U16 Opcode)
 {
     PASCAL_NONNULL(Emitter);
+    if (!Emitter->ShouldEmit) return PVMCurrentChunk(Emitter)->Count;
     return ChunkWriteCode(PVMCurrentChunk(Emitter), Opcode);
 }
 
@@ -528,6 +530,8 @@ static void DerefIntoReg(PVMEmitter *Emitter,
 static void MoveLiteralIntoReg(PVMEmitter *Emitter, 
         VarRegister *Rd, IntegralType DstType, const VarLiteral *Literal)
 {
+    if (!Emitter->ShouldEmit)
+        return;
     if (TYPE_POINTER == DstType || IntegralTypeIsInteger(DstType))
     {
         ChunkWriteMovImm(PVMCurrentChunk(Emitter), 
@@ -837,6 +841,9 @@ U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To)
 void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMBranchType Type)
 {
     PASCAL_NONNULL(Emitter);
+    if (!Emitter->ShouldEmit) 
+        return;
+
     /* size of the branch instruction is 2 16 opcode word */
     U32 Offset = To - From - PVM_BRANCH_INS_SIZE;
     PVMCurrentChunk(Emitter)->Code[From] = 
