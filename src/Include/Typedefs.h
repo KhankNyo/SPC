@@ -19,7 +19,7 @@ typedef struct VarSubroutine VarSubroutine;
 
 typedef struct OptionalReturnValue OptionalReturnValue;
 typedef OptionalReturnValue (*VarBuiltinRoutine)(PVMCompiler *, const Token *);
-
+typedef struct SaveRegInfo SaveRegInfo;
 
 typedef union PascalStr PascalStr;
 typedef struct PascalVartab PascalVartab;

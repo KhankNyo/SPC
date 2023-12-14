@@ -830,10 +830,18 @@ void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
         fprintf(f, "[F%02d: %g|%g]", i, PVM->F[i].Double, PVM->F[i].Single);
     }
 
-    fprintf(f, "\n===================== STACK|GLOBAL ======================\n");
+    fprintf(f, "\n===================== STACK|GLOBAL ======================");
     for (PVMPTR Sp = PVM->Stack.Start; Sp.DWord <= PVM->R[PVM_REG_SP].Ptr.DWord; Sp.DWord++)
     {
-        fprintf(f, "S: %8p: [0x%08llx]\n", Sp.Raw, *Sp.DWord);
+        fprintf(f, "\nS: %8p: [0x%08llx]", Sp.Raw, *Sp.DWord);
+        int Pad = sizeof(" <- SP");
+        if (Sp.Raw == PVM->R[PVM_REG_SP].Ptr.Raw)
+        {
+            fprintf(f, " <- SP");
+            Pad = 1;
+        }
+        if (Sp.Raw == PVM->R[PVM_REG_FP].Ptr.Raw)
+            fprintf(f, "%*s<- FP", Pad, "");
     }
     fputc('\n', f);
 }

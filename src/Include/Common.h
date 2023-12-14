@@ -226,6 +226,17 @@ static inline U64 ArithmeticShiftRight(U64 n, U64 ShiftAmount)
     return n >> ShiftAmount;
 }
 
+static inline UInt BitCount(U64 n)
+{
+    UInt i = 0;
+    while (n)
+    {
+        i++;
+        n &= n - 1;
+    }
+    return i;
+}
+
 
 PASCAL_STATIC_ASSERT(sizeof(F64) == sizeof(U64), "Unsupported double size");
 

@@ -56,7 +56,7 @@ struct VarSubroutine
 	PascalVar *Args;
 
     bool HasReturnType;
-    IntegralType ReturnType;
+    PascalVar ReturnType;
     PascalVartab Scope;
 };
 

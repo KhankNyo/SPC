@@ -29,7 +29,7 @@ static U32 sNewlineConstHash = 0;
 
 static void CompileSysWrite(PVMCompiler *Compiler, bool Newline)
 {
-    PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
+    SaveRegInfo SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
     UInt ArgCount = 0;
     VarLocation File = VAR_LOCATION_LIT(.Ptr.As.Raw = stdout, TYPE_POINTER);
     if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
@@ -64,16 +64,24 @@ static void CompileSysWrite(PVMCompiler *Compiler, bool Newline)
     }
 
     /* arg count reg */
-    VarLocation ArgCountReg = PVMSetArgType(EMITTER(), 0, TYPE_U32);
+    VarLocation ArgCountReg = {
+        .Type = TYPE_U32,
+        .LocationType = VAR_REG,
+        .As.Register.ID = 0,
+    };
     PVMEmitMov(EMITTER(), &ArgCountReg, &VAR_LOCATION_LIT(.Int = ArgCount, ArgCountReg.Type));
 
     /* file ptr reg */
-    VarLocation FilePtrReg = PVMSetArgType(EMITTER(), 1, File.Type);
+    VarLocation FilePtrReg = {
+        .Type = TYPE_POINTER,
+        .LocationType = VAR_REG,
+        .As.Register.ID = 1,
+    };
     PVMEmitMov(EMITTER(), &FilePtrReg, &File);
 
     /* syscall */
     PVMEmitWrite(EMITTER());
-    PVMEmitUnsaveCallerRegs(EMITTER(), NO_RETURN_REG);
+    PVMEmitUnsaveCallerRegs(EMITTER(), NO_RETURN_REG, SaveRegs);
 }
 
 PASCAL_BUILTIN(Writeln, Compiler, FnName)

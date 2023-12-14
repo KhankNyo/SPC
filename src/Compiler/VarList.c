@@ -202,6 +202,7 @@ bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *Subroutine)
         return true;
 
     Subroutine->StackArgSize = 0;
+    I32 Base = 0;
     do {
         if (ConsumeIfNextIs(Compiler, TOKEN_VAR))
         {
@@ -231,18 +232,15 @@ bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *Subroutine)
                     Location
             );
 
-            *Location = PVMSetParamType(EMITTER(), Subroutine->ArgCount, Type.Type);
+            *Location = PVMSetParam(EMITTER(), Subroutine->ArgCount, Type.Type, Type.Size, &Base);
             /* arg will be freed when compilation of function is finished */
             PVMMarkArgAsOccupied(EMITTER(), Location);
-            Location->Type = Type.Type;
-            Location->Size = Type.Size;
-
             if (TYPE_RECORD == Type.Type)
                 Location->PointerTo.Record = Type.Pointer.Record;
             else Location->PointerTo.Var = Type.Pointer.Var;
 
             SubroutineDataPushParameter(Compiler->GlobalAlloc, Subroutine, Var);
-            if (Subroutine->ArgCount > PVM_ARGREG_COUNT)
+            //if (Subroutine->ArgCount >= PVM_ARGREG_COUNT)
                 Subroutine->StackArgSize += Type.Size;
         }
 
@@ -254,7 +252,7 @@ bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *Subroutine)
         else if (!ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after parameter list."))
             return false;
     } while (!IsAtEnd(Compiler));
-    /* something has gone gorribly wrong */
+
     return false;
 }
 
@@ -321,20 +319,19 @@ void CompileArgumentList(PVMCompiler *Compiler,
             "TODO: other calling convention"
     );
 
-    PVMEmitStackAllocation(EMITTER(), Subroutine->StackArgSize);
+    I32 Base = PVMStartArg(EMITTER(), Subroutine->StackArgSize);
     do {
         if (ArgCount < ExpectedArgCount)
         {
             const VarLocation *CurrentArg = Subroutine->Args[ArgCount].Location;
             PASCAL_NONNULL(CurrentArg);
 
-            VarLocation Arg = PVMSetArgType(EMITTER(), ArgCount, CurrentArg->Type);
+            VarLocation Arg = PVMSetArg(EMITTER(), ArgCount, CurrentArg->Type, CurrentArg->Size, &Base);
             if (CurrentArg->Type == TYPE_RECORD)
                 Arg.PointerTo.Record = CurrentArg->PointerTo.Record;
             else Arg.PointerTo.Var = CurrentArg->PointerTo.Var;
 
             CompileExprInto(Compiler, NULL, &Arg);
-            PVMMarkArgAsOccupied(EMITTER(), &Arg);
         }
         else
         {
@@ -364,28 +361,26 @@ void CompileSubroutineCall(PVMCompiler *Compiler,
     PASCAL_NONNULL(Name);
 
     U32 CallSite = 0;
-    /* calling a function */
+    UInt ReturnReg = NO_RETURN_REG;
+    SaveRegInfo SaveRegs = { 0 };
     if (NULL != ReturnValue)
     {
-        UInt ReturnReg = ReturnValue->As.Register.ID;
-
+        ReturnReg = ReturnValue->As.Register.ID;
         /* call the function */
-        PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
+        SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
         CompileArgumentList(Compiler, Name, Callee);
         CallSite = PVMEmitCall(EMITTER(), Callee);
 
         /* carefully move return reg into the return location */
         VarLocation Tmp = PVMSetReturnType(EMITTER(), ReturnValue->Type);
         PVMEmitMov(EMITTER(), ReturnValue, &Tmp);
-        PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg);
     }
-    /* calling a procedure, or function without caring about its return value */
     else
     {
-        PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
+        /* calling a procedure, or function without caring about its return value */
+        SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
         CompileArgumentList(Compiler, Name, Callee);
         CallSite = PVMEmitCall(EMITTER(), Callee);
-        PVMEmitUnsaveCallerRegs(EMITTER(), NO_RETURN_REG);
     }
 
     /* deallocate stack args */
@@ -393,6 +388,7 @@ void CompileSubroutineCall(PVMCompiler *Compiler,
     {
         PVMEmitStackAllocation(EMITTER(), -Callee->StackArgSize);
     }
+    PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg, SaveRegs);
     if (!Callee->Defined)
     {
         SubroutineDataPushRef(Compiler->GlobalAlloc, Callee, CallSite);

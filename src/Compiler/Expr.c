@@ -472,8 +472,13 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
         }
 
         /* setup return reg */
-        VarLocation ReturnValue = PVMAllocateRegister(EMITTER(), Callee->ReturnType);
+        VarLocation ReturnValue = PVMAllocateRegister(EMITTER(), Callee->ReturnType.Type);
         CompileSubroutineCall(Compiler, Callee, &Identifier, &ReturnValue);
+        if (TYPE_RECORD == Callee->ReturnType.Type)
+        {
+            PASCAL_NONNULL(Callee->ReturnType.Location);
+            ReturnValue.PointerTo.Record = Callee->ReturnType.Location->PointerTo.Record;
+        }
         return ReturnValue;
     }
     return *Location;
@@ -1279,6 +1284,8 @@ bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLocation *
     } break;
     case VAR_MEM:
     {
+        From->Type = To;
+        return true;
         if (To != From->Type)
         {
             Error(Compiler, "Cannot reinterpret memory of %s as %s.", 

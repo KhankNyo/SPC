@@ -139,7 +139,7 @@ static void CompileExitStmt(PVMCompiler *Compiler)
                 goto Done;
             }
 
-            VarLocation ReturnValue = PVMSetReturnType(EMITTER(), CurrentSubroutine->ReturnType);
+            VarLocation ReturnValue = PVMSetReturnType(EMITTER(), CurrentSubroutine->ReturnType.Type);
             CompileExprInto(Compiler, &Keyword, &ReturnValue);
         }
         else if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
@@ -669,7 +669,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
 
     /* begin subroutine scope */
     CompilerPushSubroutine(Compiler, Subroutine);
-    PVMEmitterBeginScope(EMITTER());
+    SaveRegInfo PrevScope = PVMEmitterBeginScope(EMITTER());
     /* param list */
     CompileParameterList(Compiler, Subroutine);
 
@@ -680,9 +680,11 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     {
         ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' before function return type.");
         ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected function return type.");
-        PascalVar *ReturnTypeInfo = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined return type.");
-        if (NULL != ReturnTypeInfo)
-            Subroutine->ReturnType = ReturnTypeInfo->Type;
+        PascalVar *ReturnType = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined return type.");
+        if (NULL != ReturnType)
+        {
+            Subroutine->ReturnType = *ReturnType;
+        }
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after return type.");
     }
     else
@@ -727,7 +729,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     }
 
     CompilerPopSubroutine(Compiler);
-    PVMEmitterEndScope(EMITTER());
+    PVMEmitterEndScope(EMITTER(), PrevScope);
 }
 
 

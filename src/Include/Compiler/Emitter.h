@@ -13,22 +13,31 @@
 
 #define PVM_MAX_CALL_IN_EXPR 32
 
+
+struct SaveRegInfo 
+{
+    U32 Size;
+    U32 Regs;
+};
+
 struct PVMEmitter 
 {
     PVMChunk *Chunk;
     U32 Reglist;
-    U32 NumSavelist;
-    U32 SavedRegisters[PVM_MAX_CALL_IN_EXPR];
 
     U32 SpilledRegCount;
-    U32 StackSpace, ArgSpace;
+    U32 StackSpace;
     struct {
         VarLocation SP, FP, GP;
         VarLocation Flag;
     } Reg;
 
     VarLocation ReturnValue;
+#if PVM_ARGREG_COUNT == 0
+    VarLocation *ArgReg;
+#else
     VarLocation ArgReg[PVM_ARGREG_COUNT];
+#endif
 };
 
 typedef enum PVMBranchType
@@ -44,9 +53,9 @@ PVMEmitter PVMEmitterInit(PVMChunk *Chunk);
 void PVMEmitterDeinit(PVMEmitter *Emitter);
 
 void PVMSetEntryPoint(PVMEmitter *Emitter, U32 EntryPoint);
-void PVMEmitterBeginScope(PVMEmitter *Emitter);
+SaveRegInfo PVMEmitterBeginScope(PVMEmitter *Emitter);
 void PVMEmitSaveFrame(PVMEmitter *Emitter);
-void PVMEmitterEndScope(PVMEmitter *Emitter);
+void PVMEmitterEndScope(PVMEmitter *Emitter, SaveRegInfo PrevScope);
 void PVMEmitDebugInfo(PVMEmitter *Emitter, 
         const U8 *Src, U32 Len, U32 LineNum
 );
@@ -122,9 +131,12 @@ VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op, const VarLocation 
 
 
 /* subroutine arguments */
-VarLocation PVMSetParamType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ParamType);
-VarLocation PVMSetArgType(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgType);
+VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ParamType, U32 ParamSize, I32 *Base);
+
+I32 PVMStartArg(PVMEmitter *Emitter, U32 ArgSize);
+VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgType, U32 ArgSize, I32 *Base);
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg);
+
 VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType);
 /* accepts Pointer to VarLocation as args */
 void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...);
@@ -144,10 +156,10 @@ VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
 
 /* call instructions */
 #define NO_RETURN_REG PVM_REG_COUNT
-void PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
+SaveRegInfo PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
 /* returns the location of the call instruction in case it needs a patch later on */
 U32 PVMEmitCall(PVMEmitter *Emitter, const VarSubroutine *Callee);
-void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
+void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID, SaveRegInfo Save);
 
 
 /* exit/return */
