@@ -10,6 +10,7 @@ VarLocation CompileVariableExpr(PVMCompiler *Compiler);
 void CompileExprInto(PVMCompiler *Compiler, 
         const Token *OpToken, VarLocation *Location
 );
+bool LiteralEqual(VarLiteral A, VarLiteral B, IntegralType Type);
 void FreeExpr(PVMCompiler *Compiler, VarLocation Expr);
 
 

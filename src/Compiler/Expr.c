@@ -419,6 +419,58 @@ static VarLocation ConvertTypeExplicitly(PVMCompiler *Compiler,
 }
 
 
+static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, PascalVar *Variable)
+{
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Identifier);
+    PASCAL_NONNULL(Variable);
+    PASCAL_NONNULL(Variable->Location);
+
+    VarLocation ReturnValue = { 0 };
+    VarLocation *Location = Variable->Location;
+
+    /* builtin function */
+    if (VAR_BUILTIN == Location->LocationType)
+    {
+        OptionalReturnValue Opt = CompileCallToBuiltin(Compiler, Variable->Location->As.BuiltinSubroutine);
+        if (!Opt.HasReturnValue)
+        {
+            ErrorAt(Compiler, Identifier, "Builtin procedure does not have a return value.");
+            return ReturnValue;
+        }
+        return Opt.ReturnValue;
+    }
+
+    /* function call */
+    VarSubroutine *Callee = &Location->As.Subroutine;
+    if (!Callee->HasReturnType)
+    {
+        ErrorAt(Compiler, Identifier, "Procedure '%.*s' does not have a return value.",
+                Identifier->Len, Identifier->Str 
+        );
+        return ReturnValue;
+    }
+
+    /* setup return reg */
+    if (TYPE_RECORD == Callee->ReturnType.Type)
+    {
+        PASCAL_UNREACHABLE("TODO: record return");
+    }
+    else
+    {
+        ReturnValue = PVMAllocateRegister(EMITTER(), Callee->ReturnType.Type);
+        CompileSubroutineCall(Compiler, Callee, Identifier, &ReturnValue);
+        if (TYPE_POINTER == ReturnValue.Type)
+        {
+            PASCAL_NONNULL(Callee->ReturnType.Location);
+            ReturnValue.PointerTo.Var = Callee->ReturnType.Location->PointerTo.Var;
+        }
+        return ReturnValue;
+    }
+    return ReturnValue;
+}
+
+
 static VarLocation FactorVariable(PVMCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
@@ -429,8 +481,7 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
     if (NULL == Variable)
         goto Error;
 
-    VarLocation *Location = Variable->Location;
-    if (NULL == Location)
+    if (NULL == Variable->Location)
     {
         /* type casting */
         /* typename(expr) */
@@ -447,41 +498,11 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
         };
         return Type;
     }
-    if (TYPE_FUNCTION == Location->Type)
+    if (TYPE_FUNCTION == Variable->Location->Type)
     {
-        /* builtin function */
-        if (VAR_BUILTIN == Location->LocationType)
-        {
-            OptionalReturnValue Opt = CompileCallToBuiltin(Compiler, Variable->Location->As.BuiltinSubroutine);
-            if (!Opt.HasReturnValue)
-            {
-                ErrorAt(Compiler, &Identifier, "Builtin procedure does not have a return value.");
-                goto Error;
-            }
-            return Opt.ReturnValue;
-        }
-
-        /* function call */
-        VarSubroutine *Callee = &Location->As.Subroutine;
-        if (!Callee->HasReturnType)
-        {
-            ErrorAt(Compiler, &Identifier, "Procedure '%.*s' does not have a return value.",
-                    Identifier.Len, Identifier.Str 
-            );
-            goto Error;
-        }
-
-        /* setup return reg */
-        VarLocation ReturnValue = PVMAllocateRegister(EMITTER(), Callee->ReturnType.Type);
-        CompileSubroutineCall(Compiler, Callee, &Identifier, &ReturnValue);
-        if (TYPE_RECORD == Callee->ReturnType.Type)
-        {
-            PASCAL_NONNULL(Callee->ReturnType.Location);
-            ReturnValue.PointerTo.Record = Callee->ReturnType.Location->PointerTo.Record;
-        }
-        return ReturnValue;
+        return FactorCall(Compiler, &Identifier, Variable);
     }
-    return *Location;
+    return *Variable->Location;
 Error:
     return (VarLocation) { 0 };
 }
@@ -671,6 +692,24 @@ static bool CompareStringOrder(TokenType CompareType, const PascalStr *s1, const
 }
 
 
+
+
+bool LiteralEqual(VarLiteral A, VarLiteral B, IntegralType Type)
+{
+    if (IntegralTypeIsFloat(Type)) 
+        return A.Flt == B.Flt;
+    if (IntegralTypeIsInteger(Type))
+        return A.Flt == B.Flt;
+    if (TYPE_POINTER == Type)
+        return A.Ptr.As.Raw == B.Ptr.As.Raw;
+    if (TYPE_STRING == Type) 
+        return CompareStringOrder(TOKEN_EQUAL, &A.Str, &B.Str);
+    if (Type == TYPE_BOOLEAN) 
+        return A.Bool == B.Bool;
+    return false;
+}
+
+
 static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken, 
         VarLocation *Left, VarLocation *Right)
 {
@@ -805,10 +844,18 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
         else goto InvalidTypeConversion;
     } break;
 
-    case TOKEN_EQUAL:           COMPARE_OP(==); break;
+    case TOKEN_EQUAL:           
+    {
+        Result.As.Literal.Bool = LiteralEqual(Left->As.Literal, Right->As.Literal, Both);
+        Result.Type = TYPE_BOOLEAN;
+    } break;
+    case TOKEN_LESS_GREATER:
+    {
+        Result.As.Literal.Bool = !LiteralEqual(Left->As.Literal, Right->As.Literal, Both);
+        Result.Type = TYPE_BOOLEAN;
+    } break;
     case TOKEN_LESS:            COMPARE_OP(<); break;
     case TOKEN_GREATER:         COMPARE_OP(>); break;
-    case TOKEN_LESS_GREATER:    COMPARE_OP(!=); break;
     case TOKEN_LESS_EQUAL:      COMPARE_OP(<=); break;
     case TOKEN_GREATER_EQUAL:   COMPARE_OP(>=); break;
 

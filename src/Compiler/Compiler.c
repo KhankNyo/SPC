@@ -458,6 +458,7 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token Name, PascalVar *
 static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignment, 
         VarLocation *Left, const VarLocation *Right)
 {
+    PASCAL_NONNULL(Compiler);
     VarLocation Dst = *Left;
     if (TOKEN_COLON_EQUAL == Assignment->Type)
     {
@@ -506,6 +507,7 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
 
 static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
 {
+    PASCAL_NONNULL(Compiler);
     /* iden consumed */
     CompilerInitDebugInfo(Compiler, &Identifier);
 
@@ -545,6 +547,7 @@ Exit:
 
 static void CompileIdenStmt(PVMCompiler *Compiler)
 {
+    PASCAL_NONNULL(Compiler);
     /* iden consumed */
     PascalVar *IdentifierInfo = GetIdenInfo(Compiler, &Compiler->Curr,
             "Undefined identifier."
@@ -582,9 +585,111 @@ static void CompileIdenStmt(PVMCompiler *Compiler)
 }
 
 
+static void CompileCaseStmt(PVMCompiler *Compiler)
+{
+    PASCAL_NONNULL(Compiler);
+    /* case consumed */
+    Token Keyword = Compiler->Curr;
+
+    /* expression */
+    CompilerInitDebugInfo(Compiler, &Keyword);
+    VarLocation Expr = CompileExpr(Compiler);
+    ConsumeOrError(Compiler, TOKEN_OF, "Expected 'of' after expression.");
+    CompilerEmitDebugInfo(Compiler, &Keyword);
+
+
+    bool Last = EMITTER()->ShouldEmit;
+    bool ExprIsConstant = VAR_LIT == Expr.LocationType;
+    bool Emitted = false;
+
+    U32 OutBranch[256];
+    U32 CaseCount = 0;
+    if (!NextTokenIs(Compiler, TOKEN_END) && !NextTokenIs(Compiler, TOKEN_ELSE))
+    {
+        do {
+            Token CaseConstant = Compiler->Next;
+            CompilerInitDebugInfo(Compiler, &CaseConstant);
+
+            /* don't need to free the expr here since 
+             * it is only evaluated at compile time and does not use any register */
+            VarLocation Constant = CompileExpr(Compiler);
+            if (VAR_LIT != Constant.LocationType) 
+            {
+                /* TODO: expression highlighter */
+                Error(Compiler, "Case expression cannot be evaluated at compile time.");
+            }
+            if (!ConvertTypeImplicitly(Compiler, Expr.Type, &Constant))
+            {
+                Error(Compiler, "Cannot convert from %s to %s in case expression.", 
+                        IntegralTypeToStr(Constant.Type), IntegralTypeToStr(Expr.Type)
+                );
+                Expr.Type = Constant.Type;
+            }
+ 
+            if (ExprIsConstant)
+                EMITTER()->ShouldEmit = false;
+
+            ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' after case entry.");
+            PVMEmitSetFlag(EMITTER(), TOKEN_EQUAL, &Expr, &Constant);
+            U32 NextCase = PVMEmitBranchOnFalseFlag(EMITTER());
+            CompilerEmitDebugInfo(Compiler, &CaseConstant);           
+
+            if (ExprIsConstant)
+            {
+                bool LiteralEqu = LiteralEqual(Expr.As.Literal, Constant.As.Literal, Expr.Type);
+                EMITTER()->ShouldEmit = LiteralEqu;
+                if (LiteralEqu)
+                    Emitted = true;
+            }
+
+            CompileStmt(Compiler);
+            if (ExprIsConstant)
+                EMITTER()->ShouldEmit = false;
+
+
+            /* end of statement */
+            OutBranch[CaseCount++] = PVMEmitBranch(EMITTER(), 0);
+            PVMPatchBranchToCurrent(EMITTER(), NextCase, BRANCHTYPE_CONDITIONAL);
+            EMITTER()->ShouldEmit = Last;
+
+            if (NextTokenIs(Compiler, TOKEN_END) || NextTokenIs(Compiler, TOKEN_ELSE))
+                break;
+            ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' between case statements.");
+        } while (!IsAtEnd(Compiler) && !NextTokenIs(Compiler, TOKEN_END) && !NextTokenIs(Compiler, TOKEN_ELSE));
+    }
+
+    if (ConsumeIfNextIs(Compiler, TOKEN_ELSE))
+    {
+        if (ExprIsConstant && Emitted)
+            EMITTER()->ShouldEmit = false;
+
+        /* for 'else' keyword */
+        CompilerInitDebugInfo(Compiler, &Compiler->Curr);
+        CompilerEmitDebugInfo(Compiler, &Compiler->Curr);
+        do {
+            CompileStmt(Compiler);
+            if (NextTokenIs(Compiler, TOKEN_END))
+                break;
+            ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' between statement.");
+        } while (!IsAtEnd(Compiler) && !NextTokenIs(Compiler, TOKEN_END));
+    }
+
+    if (!ExprIsConstant)
+    {
+        for (U32 i = 0; i < CaseCount; i++)
+            PVMPatchBranchToCurrent(EMITTER(), OutBranch[i], BRANCHTYPE_UNCONDITIONAL);
+    }
+
+    ConsumeOrError(Compiler, TOKEN_END, "Expected 'end' after statement.");
+    FreeExpr(Compiler, Expr);
+    EMITTER()->ShouldEmit = Last;
+}
+
+
 
 static void CompileStmt(PVMCompiler *Compiler)
 {
+    PASCAL_NONNULL(Compiler);
     switch (Compiler->Next.Type)
     {
     case TOKEN_GOTO:
@@ -615,7 +720,7 @@ static void CompileStmt(PVMCompiler *Compiler)
     case TOKEN_CASE:
     {
         ConsumeToken(Compiler);
-        PASCAL_UNREACHABLE("TODO: case");
+        CompileCaseStmt(Compiler);
     } break;
     case TOKEN_IF:
     {
@@ -739,6 +844,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
 
 
 
+    /* TODO: record return value */
     /* return type and semicolon */
     if (Subroutine->HasReturnType)
     {
@@ -748,6 +854,10 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
         if (NULL != ReturnType)
         {
             Subroutine->ReturnType = *ReturnType;
+            if (TYPE_RECORD == ReturnType->Type)
+            {
+                PASCAL_UNREACHABLE("TODO: record return type in SubroutineBlock");
+            }
         }
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after return type.");
     }
@@ -756,7 +866,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
         if (ConsumeIfNextIs(Compiler, TOKEN_COLON) 
         && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
         {
-            Error(Compiler, "Procedure does not have a return type.");
+            Error(Compiler, "Procedure cannot return a value.");
         }
         else
         {

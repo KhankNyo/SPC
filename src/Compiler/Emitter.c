@@ -2,6 +2,7 @@
 #include <stdarg.h>
 
 #include "Compiler/Emitter.h"
+#include "Compiler/Data.h"
 #include "PVM/Isa.h"
 
 
@@ -1689,6 +1690,8 @@ VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op, const VarLocation 
     PASCAL_NONNULL(Left);
     PASCAL_NONNULL(Right);
     PASCAL_ASSERT(Left->Type == Right->Type, "Left and Right must have the same type");
+    if (!Emitter->ShouldEmit) 
+        return (VarLocation) {.Type = TYPE_BOOLEAN, .LocationType = VAR_LIT, .As.Literal.Bool = false};
 
     VarLocation Rd, Rs;
     bool OwningRd = PVMEmitIntoReg(Emitter, &Rd, Left);
@@ -1868,7 +1871,6 @@ void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...)
         {
             PVMFreeRegister(Emitter, Reg.As.Register);
         }
-        Emitter->StackSpace += sizeof(PVMGPR);
     }
     va_end(Args);
 }
