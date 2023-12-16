@@ -1910,6 +1910,79 @@ U32 PVMGetGlobalOffset(PVMEmitter *Emitter)
     return PVMCurrentChunk(Emitter)->Global.Count;
 }
 
+void PVMInitializeGlobal(PVMEmitter *Emitter, 
+        const VarLocation *Global, const VarLiteral *Data, USize Size, IntegralType Type)
+{
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Global);
+    PASCAL_NONNULL(Data);
+
+    U32 Location = Global->As.Memory.Location;
+    PVMChunk *Chunk = PVMCurrentChunk(Emitter);
+    PASCAL_ASSERT(Global->Type == Type, "Types must be equal");
+    PASCAL_ASSERT(Global->LocationType == VAR_MEM, "Invalid location");
+    PASCAL_ASSERT(Location < Chunk->Global.Count, "Invalid location");
+    PASCAL_ASSERT(Location + Size <= Chunk->Global.Count, "Invalid size");
+
+    switch (Type)
+    {
+    case TYPE_BOOLEAN:
+    case TYPE_U8:
+    case TYPE_I8:
+    {
+        U8 Byte = Data->Int;
+        ChunkWriteGlobalDataAt(Chunk, Location, &Byte, sizeof Byte);
+    } break;
+    case TYPE_U16:
+    case TYPE_I16:
+    {
+        U16 u16 = Data->Int;
+        ChunkWriteGlobalDataAt(Chunk, Location, &u16, u16);
+    } break;
+    case TYPE_POINTER:
+    {
+        void *Ptr = Data->Ptr.As.Raw;
+        ChunkWriteGlobalDataAt(Chunk, Location, &Ptr, sizeof Ptr);
+    } break;
+    case TYPE_U32:
+    case TYPE_I32:
+    {
+        U32 u32 = Data->Int;
+        ChunkWriteGlobalDataAt(Chunk, Location, &u32, sizeof u32);
+    } break;
+    case TYPE_U64:
+    case TYPE_I64:
+    {
+        U64 u64 = Data->Int;
+        ChunkWriteGlobalDataAt(Chunk, Location, &u64, sizeof u64);
+    } break;
+
+    case TYPE_F32:
+    {
+        F32 f32 = Data->Flt;
+        ChunkWriteGlobalDataAt(Chunk, Location, &f32, sizeof f32);
+    } break;
+    case TYPE_F64:
+    {
+        F64 f64 = Data->Flt;
+        ChunkWriteGlobalDataAt(Chunk, Location, &f64, sizeof f64);
+    } break;
+    case TYPE_STRING:
+    {
+        PASCAL_STATIC_ASSERT(offsetof(PascalStr, FbString.Len) == 0, "??");
+        ChunkWriteGlobalDataAt(Chunk, Location, Data->Str.Data, PStrGetLen(&Data->Str) + 1);
+    } break;
+
+    case TYPE_FUNCTION:
+    case TYPE_INVALID:
+    case TYPE_RECORD:
+    case TYPE_COUNT:
+    {
+        PASCAL_UNREACHABLE("Invalid type");
+    } break;
+    }
+}
+
 VarMemory PVMEmitGlobalData(PVMEmitter *Emitter, const void *Data, U32 Size)
 {
     PASCAL_NONNULL(Emitter);

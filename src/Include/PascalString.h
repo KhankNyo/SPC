@@ -12,7 +12,7 @@ union PascalStr
 {
     struct {
         U8 Len;
-        U8 Buf[PSTR_MAX_LEN + 1];
+        U8 Buf[PSTR_MAX_LEN + 1]; /* for the null terminator */
     } FbString;
     U8 Data[PSTR_MAX_LEN + 2];
 };

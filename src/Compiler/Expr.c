@@ -128,10 +128,13 @@ void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLocation *L
         {
             if (NULL == OpToken)
                 OpToken = &Compiler->Curr;
+
             ErrorAt(Compiler, OpToken, "Cannot assign %s pointer to %s pointer.", 
                     IntegralTypeToStr(Expr.PointerTo.Var.Type),
                     IntegralTypeToStr(Location->PointerTo.Var.Type)
             );
+
+            return;
         }
     }
     PVMEmitMov(EMITTER(), Location, &Expr);

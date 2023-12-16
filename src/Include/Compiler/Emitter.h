@@ -151,6 +151,8 @@ void PVMEmitStackAllocation(PVMEmitter *Emitter, I32 Size);
 
 /* global instructions */
 U32 PVMGetGlobalOffset(PVMEmitter *Emitter);
+/* note: data must've already been allocated */
+void PVMInitializeGlobal(PVMEmitter *Emitter, const VarLocation *Global, const VarLiteral *Data, USize Size, IntegralType Type);
 VarMemory PVMEmitGlobalData(PVMEmitter *Emitter, const void *Data, U32 Size);
 VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
 #define PVMEmitGlobalAllocation(pEmitter, U32Size) PVMEmitGlobalSpace(pEmitter, U32Size)

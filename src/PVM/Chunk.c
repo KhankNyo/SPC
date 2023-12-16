@@ -29,6 +29,7 @@ PVMChunk ChunkInit(U32 InitialCap)
 
 void ChunkDeinit(PVMChunk *Chunk)
 {
+    PASCAL_NONNULL(Chunk);
     MemDeallocateArray(Chunk->Code);
     MemDeallocate(Chunk->Global.Data.As.Raw);
     *Chunk = (PVMChunk){ 0 };
@@ -36,6 +37,7 @@ void ChunkDeinit(PVMChunk *Chunk)
 
 void ChunkReset(PVMChunk *Chunk, bool PreserveFunctions)
 {
+    PASCAL_NONNULL(Chunk);
     if (PreserveFunctions)
     {
         Chunk->Count = Chunk->EntryPoint;
@@ -65,6 +67,7 @@ void ChunkReset(PVMChunk *Chunk, bool PreserveFunctions)
 
 U32 ChunkWriteCode(PVMChunk *Chunk, U16 Opcode)
 {
+    PASCAL_NONNULL(Chunk);
     if (Chunk->Count + 1 > Chunk->Cap)
     {
         Chunk->Cap *= PVM_CHUNK_GROW_RATE;
@@ -79,6 +82,7 @@ U32 ChunkWriteCode(PVMChunk *Chunk, U16 Opcode)
 
 U32 ChunkWriteMovImm(PVMChunk *Chunk, UInt Reg, U64 Imm)
 {
+    PASCAL_NONNULL(Chunk);
     U32 Addr = 0;
     int Count = 0;
     if (IS_SMALL_IMM(Imm))
@@ -133,6 +137,7 @@ U32 ChunkWriteMovImm(PVMChunk *Chunk, UInt Reg, U64 Imm)
 
 U32 ChunkWriteGlobalData(PVMChunk *Chunk, const void *Data, U32 Size)
 {
+    PASCAL_NONNULL(Chunk);
     if (Chunk->Global.Count + Size > Chunk->Global.Cap)
     {
         Chunk->Global.Cap = Chunk->Global.Cap * PVM_CHUNK_GROW_RATE + Size;
@@ -158,10 +163,19 @@ U32 ChunkWriteGlobalData(PVMChunk *Chunk, const void *Data, U32 Size)
 }
 
 
+void ChunkWriteGlobalDataAt(PVMChunk *Chunk, U32 At, const void *Data, U32 Size)
+{
+    PASCAL_NONNULL(Chunk);
+    PASCAL_NONNULL(Data);
+    memcpy(&Chunk->Global.Data.As.u8[At], Data, Size);
+}
+
+
 
 
 void ChunkWriteDebugInfo(PVMChunk *Chunk, const U8 *Src, U32 SrcLen, U32 Line)
 {    
+    PASCAL_NONNULL(Chunk);
     /* diff src mapped to the same instruction */
     if (Chunk->Debug.Count > 0 && Chunk->Debug.Info[Chunk->Debug.Count - 1].StreamOffset == Chunk->Count)
     {

@@ -785,7 +785,8 @@ static bool CompileBlock(PVMCompiler *Compiler);
 
 static void CompileBeginBlock(PVMCompiler *Compiler)
 {
-    Compiler->EntryPoint = PVMGetCurrentLocation(EMITTER());
+    if (IsAtGlobalScope(Compiler))
+        Compiler->EntryPoint = PVMGetCurrentLocation(EMITTER());
     CompileBeginStmt(Compiler);
 }
 
@@ -918,7 +919,7 @@ static void CompileVarBlock(PVMCompiler *Compiler)
     Token Keyword = Compiler->Curr;
     if (!NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
-        Error(Compiler, "Var block must have at least 1 declaration.");
+        Error(Compiler, "Expected variable name.");
         return;
     }
 
@@ -931,19 +932,61 @@ static void CompileVarBlock(PVMCompiler *Compiler)
 
     while (!IsAtEnd(Compiler) && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
+        Token VariableName = Compiler->Next;
         U32 Next = CompileVarList(Compiler, Base + TotalSize, Alignment, AtGlobalScope);
         if (Next == TotalSize)
         {
+            /* Error encountered */
             return;
         }
         TotalSize = Next - Base;
 
-        /* TODO: initialization */
+        /* initialization */
         if (ConsumeIfNextIs(Compiler, TOKEN_EQUAL))
         {
+            PascalVar *Variable = FindIdentifier(Compiler, &VariableName);
+            Token EqualSign = Compiler->Curr;
+            if (CompilerGetTmpCount(Compiler) > 1)
+            {
+                ErrorAt(Compiler, &EqualSign, "Only one variable can be initialized.");
+            }
+            PASCAL_NONNULL(Variable);
+            PASCAL_NONNULL(Variable->Location);
+
+            if (!IsAtGlobalScope(Compiler))
+            {
+                CompileExprInto(Compiler, &EqualSign, Variable->Location);
+            }
+            else 
+            {
+                VarLocation Constant = CompileExpr(Compiler);
+                if (VAR_LIT != Constant.LocationType)
+                    ErrorAt(Compiler, &EqualSign, "Can only initialize global variable with constant expression.");
+                if (TYPE_INVALID == CoerceTypes(Compiler, &EqualSign, Variable->Location->Type, Constant.Type))
+                    continue; /* error reported */
+                PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, Variable->Location->Type, &Constant), "Unreachable");
+                if (TYPE_RECORD == Constant.Type)
+                {
+                    ErrorAt(Compiler, &EqualSign, "Record cannot be initialized at compile time.");
+                    continue;
+                }
+
+                PVMEmitGlobalAllocation(EMITTER(), TotalSize);
+                TotalSize = 0;
+                PVMInitializeGlobal(EMITTER(), 
+                        Variable->Location, 
+                        &Constant.As.Literal, 
+                        CompilerGetSizeOfType(Compiler, Constant.Type, &Constant), Constant.Type
+                );
+            }
         }
 
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after variable declaration.");
+        if (ConsumeIfNextIs(Compiler, TOKEN_VAR) && !NextTokenIs(Compiler, TOKEN_IDENTIFIER))
+        {
+            Error(Compiler, "Expected variable name.");
+            return;
+        }
     }
 
     if (AtGlobalScope)
