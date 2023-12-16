@@ -309,7 +309,7 @@ do {\
 #ifdef PVM_DEBUGGER
         if (PVM->SingleStepMode)
         {
-            PVMDebugPause(PVM, Chunk, IP, SP().Ptr, FP().Ptr);
+            PVMDebugPause(PVM, Chunk, IP);
         }
 #endif /* PVM_DEBUGGER */
 
@@ -416,8 +416,7 @@ do {\
             GET_SEX_IMM(Imm, PVM_GET_RS(Opcode), IP);
             PVM->R[PVM_GET_RD(Opcode)].Word.First += Imm;
         } break;
-
-
+        
         case OP_SADD: 
         {
             PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;

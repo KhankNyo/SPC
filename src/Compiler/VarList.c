@@ -61,6 +61,7 @@ static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttri
         {
             Out->Type = TYPE_POINTER;
             Out->Pointer.Var = *Typename;
+            Out->Size = sizeof(void*);
         }
         else if (TYPE_RECORD == Typename->Type)
         {
@@ -68,14 +69,14 @@ static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttri
             Out->Type = TYPE_RECORD;
             Out->Pointer.Record = Typename->Location->PointerTo.Record;
         }
+        /* a type name */
         else if (NULL == Typename->Location)
         {
             Out->Type = Typename->Type;
         }
+        /* not a typename, report error */
         else
         {
-            /* if the identifier has a location, ie Location is not NULL, 
-             * then it's not a type */
             ErrorAt(Compiler, &Compiler->Curr, "'%.*s' is not a type name in this scope.", 
                     Compiler->Curr.Len, Compiler->Curr.Str
             );

@@ -21,7 +21,7 @@ if "%1"=="cl" (
     set "CC=%1"
 
     :: STFU gcc you piece of shit 
-    set "CCF= -Ofast -std=c99 -Wall -Wextra -Wpedantic -Wno-missing-braces -Wno-format-zero-length -I%INCPATH%"
+    set "CCF=-DDEBUG -std=c99 -Wall -Wextra -Wpedantic -Wno-missing-braces -Wno-format-zero-length -I%INCPATH%"
     set "LDF="
     set "LIBS= "
     set "OBJ_SWITCH=-o "
