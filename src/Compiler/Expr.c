@@ -257,6 +257,7 @@ static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
     }
 
     /* member offset + record offset = location */
+    VarLocation Value = *Member;
     if (VAR_MEM == Left->LocationType)
     {
         VarLocation Value = *Member;
@@ -266,25 +267,13 @@ static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
     }
     else if (VAR_REG == Left->LocationType)
     {
-        VarLocation Location = {
-            .Type = Member->Type,
-            .LocationType = VAR_MEM,
-            .Size = Member->Size,
-            .As.Memory.RegPtr = Left->As.Register,
-            .As.Memory.Location = Member->As.Memory.Location,
-        };
-
-        if (TYPE_POINTER == Member->Type)
-        {
-            Location.PointerTo.Var = Member->PointerTo.Var;
-        }
-        else if (TYPE_RECORD == Member->Type)
-        {
-            Location.PointerTo.Record = Member->PointerTo.Record;
-        }
-        return Location;
+        Value.As.Memory.RegPtr = Left->As.Register;
     }
-    PASCAL_UNREACHABLE("Invalid location type: %d\n", Left->LocationType);
+    else 
+    {
+        PASCAL_UNREACHABLE("Invalid location type: %d\n", Left->LocationType);
+    }
+    return Value;
 }
 
 
