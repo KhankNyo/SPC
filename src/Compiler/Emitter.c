@@ -877,13 +877,24 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
     {
     case VAR_LIT:
     case VAR_INVALID:
-    case VAR_FLAG:
     case VAR_BUILTIN:
     case VAR_SUBROUTINE:
     {
         PASCAL_UNREACHABLE("Are you crazy???");
     } break;
 
+    case VAR_FLAG:
+    {
+        if (Src->LocationType == VAR_FLAG)
+            return;
+
+        VarLocation Rs;
+        bool Owning = PVMEmitIntoReg(Emitter, &Rs, Src);
+        PASCAL_ASSERT(Src->Type == TYPE_BOOLEAN, "Src must be boolean");
+        WriteOp16(Emitter, PVM_OP(SETFLAG, Src->As.Register.ID, 0));
+        if (Owning)
+            PVMFreeRegister(Emitter, Rs.As.Register);
+    } break;
     case VAR_REG:
     {
         VarRegister *Rd = &Dst->As.Register;
@@ -912,9 +923,7 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
                 Tmp.As.Register, Tmp.Type
         );
         if (Owning)
-        {
             PVMFreeRegister(Emitter, Tmp.As.Register);
-        }
     } break;
     }
 }
@@ -1614,6 +1623,54 @@ void PVMEmitDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 }
 
 
+void PVMEmitNot(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
+{
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
+    PASCAL_ASSERT(Dst->Type == Src->Type, "Dst and Src type must be the same");
+    if (Dst->Type == TYPE_BOOLEAN)
+    {
+        if (VAR_FLAG == Dst->LocationType && VAR_FLAG == Src->LocationType)
+        {
+            WriteOp16(Emitter, PVM_OP(NEGFLAG, 0, 0));
+            return;
+        }
+        VarLocation Rs;
+        bool Owning = PVMEmitIntoReg(Emitter, &Rs, Src);
+        if (VAR_REG == Dst->LocationType)
+        {
+            WriteOp16(Emitter, PVM_OP(SETEZ, Dst->As.Register.ID, Rs.As.Register.ID));
+        }
+        else if (VAR_FLAG == Dst->LocationType)
+        {
+            WriteOp16(Emitter, PVM_OP(SETNFLAG, 0, Rs.As.Register.ID));
+        }
+        if (Owning)
+            PVMFreeRegister(Emitter, Rs.As.Register);
+    }
+    else if (IntegralTypeIsInteger(Dst->Type))
+    {
+        PASCAL_ASSERT(Dst->LocationType == VAR_REG, "Dst can only be a register");
+        VarLocation Rs;
+        bool Owning = PVMEmitIntoReg(Emitter, &Rs, Src);
+        if (TYPE_U64 == Dst->Type || TYPE_I64 == Dst->Type)
+        {
+            WriteOp16(Emitter, PVM_OP(NOT64, Dst->As.Register.ID, Rs.As.Register.ID));
+        }
+        else
+        {
+            WriteOp16(Emitter, PVM_OP(NOT, Dst->As.Register.ID, Rs.As.Register.ID));
+        }
+        if (Owning)
+            PVMFreeRegister(Emitter, Rs.As.Register);
+    }
+    else
+    {
+        PASCAL_UNREACHABLE("Invalid type");
+    }
+}
+
 
 
 
@@ -1622,7 +1679,7 @@ void PVMEmitDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 /* kill me */
 DEFINE_GENERIC_BINARY_OP(PVMEmitNeg, NEG);
 
-DEFINE_INTEGER_BINARY_OP(PVMEmitNot, NOT);
+//DEFINE_INTEGER_BINARY_OP(PVMEmitNot, NOT);
 DEFINE_INTEGER_BINARY_OP(PVMEmitAnd, AND);
 DEFINE_INTEGER_BINARY_OP(PVMEmitOr, OR);
 DEFINE_INTEGER_BINARY_OP(PVMEmitXor, XOR);

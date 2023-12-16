@@ -43,7 +43,6 @@ struct PVMCompiler
 
     TmpIdentifiers Idens;
 
-
     struct {
         VarLocation **Location;
         U32 Count, Cap;
@@ -52,6 +51,9 @@ struct PVMCompiler
     /* TODO: dynamic */
     CompilerFrame Subroutine[PVM_MAX_SCOPE_COUNT];
 
+    U32 Breaks[256];
+    U32 BreakCount;
+    bool InLoop;
 
     I32 Scope;
     U32 EntryPoint;

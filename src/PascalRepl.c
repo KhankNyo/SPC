@@ -26,6 +26,9 @@ int PascalRepl(void)
     PVMChunk Chunk = ChunkInit(1024);
     PascalVartab Identifiers = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);
     
+    PascalCompileFlags Flags = { 
+        .CompMode = COMPMODE_REPL,
+    };
 
     int RetVal = PASCAL_EXIT_SUCCESS;
     static char Tmp[1024] = { 0 };
@@ -36,7 +39,6 @@ int PascalRepl(void)
         memcpy(CurrentSource, Tmp, SourceLen);
         CurrentSource[SourceLen] = '\0';
 
-        PascalCompileFlags Flags = { 0 };
         if (PascalCompile(CurrentSource, Flags, &Identifiers, &Permanent, stderr, &Chunk))
         {
             PVMRun(&PVM, &Chunk);

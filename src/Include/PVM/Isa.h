@@ -91,6 +91,9 @@ typedef enum PVMOp
     OP_FSLE64,
 
     OP_GETFLAG,
+    OP_SETFLAG,
+    OP_SETNFLAG,
+    OP_NEGFLAG,
 
 
     OP_SCPY,
@@ -294,7 +297,7 @@ typedef enum PVMImmType
 #define PVM_REG_GP 13
 #define PVM_REG_FP 14
 #define PVM_REG_SP 15
-#define PVM_ARGREG_COUNT 0
+#define PVM_ARGREG_COUNT 4
 typedef enum PVMArgReg 
 {
     PVM_ARGREG_0,

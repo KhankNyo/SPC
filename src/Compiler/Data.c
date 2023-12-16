@@ -44,6 +44,11 @@ PVMCompiler CompilerInit(const U8 *Source,
             .Cap = STATIC_ARRAY_SIZE(Compiler.Idens.Array),
             .Count = 0,
         },
+
+        .Breaks = { 0 },
+        .BreakCount = 0,
+        .InLoop = false,
+
         .Subroutine = { {0} },
         .Emitter = PVMEmitterInit(Chunk),
     };

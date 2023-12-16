@@ -588,7 +588,11 @@ do {\
         case OP_FSGT64: FLOAT_SET_IF(>, Opcode, .Double); break;
         case OP_FSLE64: FLOAT_SET_IF(<=, Opcode, .Double); break;
         case OP_FSGE64: FLOAT_SET_IF(>=, Opcode, .Double); break;
+
         case OP_GETFLAG: PVM->R[PVM_GET_RD(Opcode)].Word.First = PVM->Condition; break;
+        case OP_SETFLAG: PVM->Condition = 0 != PVM->R[PVM_GET_RD(Opcode)].Word.First; break;
+        case OP_SETNFLAG: PVM->Condition = 0 == PVM->R[PVM_GET_RD(Opcode)].Word.First; break;
+        case OP_NEGFLAG: PVM->Condition = !PVM->Condition; break;
 
 
         case OP_MOV32:       MOVE_INTEGER(Opcode, .Word.First, .Word.First); break;

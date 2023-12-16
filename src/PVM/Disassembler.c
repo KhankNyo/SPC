@@ -66,6 +66,11 @@ void PVMDisasm(FILE *f, const PVMChunk *Chunk, const char *Name)
 }
 
 
+static int Print2Bytes(FILE *f, U16 Pair)
+{
+    return fprintf(f, "%02x %02x ", Pair >> 8, Pair & 0xFF);
+}
+
 
 static void PrintPaddedMnemonic(FILE *f, int Pad, const char *Mnemonic)
 {
@@ -87,7 +92,7 @@ static void DisasmRdRs(FILE *f, const char *Mnemonic, const char *RegSet[], U16 
     const char *Rd = RegSet[PVM_GET_RD(Opcode)];
     const char *Rs = RegSet[PVM_GET_RS(Opcode)];
 
-    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    int Pad = Print2Bytes(f, Opcode);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     fprintf(f, "%s, %s\n", Rd, Rs);
 }
@@ -97,7 +102,7 @@ static void DisasmInter(FILE *f, const char *Mnemonic, const char **RdSet, const
     const char *Rd = RdSet[PVM_GET_RD(Opcode)];
     const char *Rs = RsSet[PVM_GET_RS(Opcode)];
 
-    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    int Pad = Print2Bytes(f, Opcode);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     fprintf(f, "%s, %s\n", Rd, Rs);
 }
@@ -107,7 +112,7 @@ static void DisasmFscc(FILE *f, const char *Mnemonic, U16 Opcode)
     const char *Fd = sFltReg[PVM_GET_RD(Opcode)];
     const char *Fs = sFltReg[PVM_GET_RS(Opcode)];
 
-    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    int Pad = Print2Bytes(f, Opcode);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     fprintf(f, "%s, %s\n", Fd, Fs);
 }
@@ -120,10 +125,8 @@ static U32 DisasmBcc(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *
             PVM_BCC_OFFSET_SIZE - 1
     );
 
-    int Pad = fprintf(f, "%02x %02x %02x %02x", 
-            Opcode >> 8, Opcode & 0xFF, 
-            Chunk->Code[Addr + 1] >> 8, Chunk->Code[Addr + 1] & 0xFF
-    );
+    int Pad = Print2Bytes(f, Opcode);
+    Pad += Print2Bytes(f, Chunk->Code[Addr + 1]);
     Addr += 2;
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     fprintf(f, "%s, [%u]\n", Rd, Addr + BrOffset);
@@ -138,10 +141,8 @@ static U32 DisasmBr(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *C
             PVM_BR_OFFSET_SIZE - 1
     );
 
-    int Pad = fprintf(f, "%02x %02x %02x %02x", 
-            Opcode >> 8, Opcode & 0xFF, Chunk->Code[Addr + 1] >> 8, Chunk->Code[Addr + 1] & 0xFF
-    );
-
+    int Pad = Print2Bytes(f, Opcode);
+    Pad += Print2Bytes(f, Chunk->Code[Addr + 1]);
     Addr += 2;
     U32 SubroutineLocation = Addr + BrOffset;
     const LineDebugInfo *SubroutineInfo = ChunkGetConstDebugInfo(Chunk, SubroutineLocation);
@@ -166,10 +167,9 @@ static U32 DisasmBri(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *
 {
     I32 BrOffset = (I16)Chunk->Code[Addr + 1];
 
-    int Pad = fprintf(f, "%02x %02x %02x %02x",
-            Opcode >> 8, Opcode & 0xFF, Chunk->Code[Addr + 1] >> 8, Chunk->Code[Addr + 1] & 0xFF
-    );
 
+    int Pad = Print2Bytes(f, Opcode);
+    Pad += Print2Bytes(f, Chunk->Code[Addr + 1]);
     Addr += 2;
     U32 Location = Addr + BrOffset;
     const LineDebugInfo *Info = ChunkGetConstDebugInfo(Chunk, Location);
@@ -190,7 +190,7 @@ static U32 DisasmBri(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *
 
 static void DisasmMnemonic(FILE *f, const char *Mnemonic, U16 Opcode)
 {
-    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    int Pad = Print2Bytes(f, Opcode);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     fputc('\n', f);
 }
@@ -260,7 +260,7 @@ static void DisasmReglist(FILE *f, const char *Mnemonic, U16 Opcode, bool UpperR
     }
 #undef REGISTER_SELECTED
 
-    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    int Pad = Print2Bytes(f, Opcode);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     fprintf(f, "{ %s }\n", RegisterListStr);
 }
@@ -295,19 +295,19 @@ static ImmediateInfo GetImmFromImmType(const PVMChunk *Chunk, U32 Addr, PVMImmTy
     return Info;
 }
 
+
+/* note: this function does not display the topmost 16 bytes */
 static void DisplayImmBytes(FILE *f, const ImmediateInfo Info)
 {
     /* display hex dump of immediate as how it is represented in memory */
-    for (UInt i = 0; i < Info.Count; i++)
+    for (UInt i = 1; i < Info.Count; i++)
     {
-        if (i % 2 == 0)
+        if (i && ((i - 1) % 2 == 0))
         {
             fprintf(f, "\n%*s  ", sAddrPad, "");
         }
         UInt BitIndex = 16*(Info.Count - i - 1);
-        U8 High = Info.Imm >> (BitIndex + 8);
-        U8 Lo = (Info.Imm >> BitIndex) & 0xFF;
-        fprintf(f, "%02x %02x ", High, Lo);
+        Print2Bytes(f, (Info.Imm >> BitIndex) & 0xFFFF);
     }
     fputc('\n', f);
 }
@@ -323,7 +323,8 @@ static U32 DisasmRdImm(FILE *f, const char *Mnemonic, const PVMChunk *Chunk, U32
 
     /* display instruction */
     const char *Rd = sIntReg[PVM_GET_RD(Opcode)];
-    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    int Pad = Print2Bytes(f, Opcode);
+    Pad += Print2Bytes(f, (Info.Imm >> (16*(Info.Count - 1))) & 0xFFFF);
 
     PrintPaddedMnemonic(f, Pad, LongMnemonic);
     Pad = fprintf(f, "%s, 0x%llx", Rd, Info.Imm);
@@ -340,7 +341,9 @@ static U32 DisasmMem(FILE *f,
 
     const char *Rd = RegSet[PVM_GET_RD(Opcode)];
     const char *Rs = sIntReg[PVM_GET_RS(Opcode)];
-    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    int Pad = Print2Bytes(f, Opcode);
+    Pad += Print2Bytes(f, (Info.Imm >> (16*(Info.Count - 1))) & 0xFFFF);
+
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     fprintf(f, "%s, [%s + %lld]", Rd, Rs, (I64)Info.Imm);
 
@@ -351,7 +354,7 @@ static U32 DisasmMem(FILE *f,
 static void DisasmRdSmallImm(FILE *f, const char *Mnemonic, U16 Opcode, bool IsSigned)
 {
     const char *Rd = sIntReg[PVM_GET_RD(Opcode)];
-    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    int Pad = Print2Bytes(f, Opcode);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     if (IsSigned)
     {
@@ -366,7 +369,7 @@ static void DisasmRdSmallImm(FILE *f, const char *Mnemonic, U16 Opcode, bool IsS
 static void DisasmSingleOperand(FILE *f, const char *Mnemonic, U16 Opcode)
 {
     const char *Rd = sIntReg[PVM_GET_RD(Opcode)];
-    int Pad = fprintf(f, "%02x %02x", Opcode >> 8, Opcode & 0xFF);
+    int Pad = Print2Bytes(f, Opcode);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     fprintf(f, "%s\n", Rd);
 }
@@ -522,6 +525,9 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_FSGE64: DisasmFscc(f, "fsge64", Opcode); break;
 
     case OP_GETFLAG: DisasmSingleOperand(f, "getflag", Opcode); break;
+    case OP_SETFLAG: DisasmSingleOperand(f, "setflag", Opcode); break;
+    case OP_SETNFLAG: DisasmSingleOperand(f, "setnflag", Opcode); break;
+    case OP_NEGFLAG: DisasmMnemonic(f, "negflag", Opcode); break;
 
 
 

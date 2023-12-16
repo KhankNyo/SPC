@@ -181,6 +181,30 @@ static void CompileBeginStmt(PVMCompiler *Compiler)
     ConsumeOrError(Compiler, TOKEN_END, "Expected 'end'.");
 }
 
+
+
+static UInt CompileLoopBody(PVMCompiler *Compiler)
+{
+    UInt PrevBreakCount = Compiler->BreakCount;
+    bool WasInLoop = Compiler->InLoop;
+    Compiler->InLoop = true;
+
+    CompileStmt(Compiler);
+
+    Compiler->InLoop = WasInLoop;
+    return PrevBreakCount;
+}
+
+static void CompilerPatchBreaks(PVMCompiler *Compiler, UInt PrevBreakCount)
+{
+    for (UInt i = PrevBreakCount; i < Compiler->BreakCount; i++)
+    {
+        PVMPatchBranchToCurrent(EMITTER(), Compiler->Breaks[i], BRANCHTYPE_UNCONDITIONAL);
+    }
+    Compiler->BreakCount = PrevBreakCount;
+}
+
+
 static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
 {
     /* 'repeat' consumed */
@@ -206,11 +230,9 @@ static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
     {
         ErrorTypeMismatch(Compiler, &UntilKeyword, "until loop condition", "boolean", Tmp.Type);
     }
-    PVMPatchBranch(EMITTER(), 
-            PVMEmitBranchIfFalse(EMITTER(), &Tmp), 
-            LoopHead,
-            BRANCHTYPE_CONDITIONAL
-    );
+
+    U32 ToHead = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
+    PVMPatchBranch(EMITTER(), ToHead, LoopHead, BRANCHTYPE_CONDITIONAL);
     FreeExpr(Compiler, Tmp);
 
     CompilerEmitDebugInfo(Compiler, &UntilKeyword);
@@ -229,10 +251,11 @@ static void CompileForStmt(PVMCompiler *Compiler)
     Token Keyword = Compiler->Curr;
     CompilerInitDebugInfo(Compiler, &Keyword);
 
-
     /* for loop variable */
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected variable name.");
     PascalVar *Counter = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined variable.");
+    /* TODO: these returns make error messages bad, 
+     * bc the body of the for loop is not parsed correctly */
     if (NULL == Counter)
         return;
     PASCAL_NONNULL(Counter->Location);
@@ -293,13 +316,15 @@ static void CompileForStmt(PVMCompiler *Compiler)
 
     /* loop body */
     /* TODO: what if the body try to write to the loop variable */
-    CompileStmt(Compiler);
-
+    UInt BreakCountBeforeBody = CompileLoopBody(Compiler);
 
     /* loop increment */
     PVMEmitBranchAndInc(EMITTER(), i->As.Register, Inc, LoopHead);
-    PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_FLAG);
 
+    /* loop end */
+    PVMEmitDebugInfo(EMITTER(), Compiler->Curr.Str, Compiler->Curr.Len, Compiler->Curr.Line);
+    PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_FLAG);
+    CompilerPatchBreaks(Compiler, BreakCountBeforeBody);
 
     /* move the result of the counter variable */
     PVMEmitMov(EMITTER(), &CounterSave, i);
@@ -337,9 +362,7 @@ static void CompileWhileStmt(PVMCompiler *Compiler)
     if (COND_FALSE == Cond)
         EMITTER()->ShouldEmit = false;
 
-    U32 LoopExit = 0;
-    if (COND_UNKNOWN == Cond)
-        LoopExit = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
+    U32 LoopExit = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
     FreeExpr(Compiler, Tmp);
     /* do */
     ConsumeOrError(Compiler, TOKEN_DO, "Expected 'do' after expression.");
@@ -347,16 +370,14 @@ static void CompileWhileStmt(PVMCompiler *Compiler)
 
 
     /* loop body */
-    CompileStmt(Compiler);
+    UInt BreakCountBeforeBody = CompileLoopBody(Compiler);
 
 
     /* back to loophead */
     PVMEmitBranch(EMITTER(), LoopHead);
-    if (COND_UNKNOWN == Cond)
-    {
-        /* patch the exit branch */
-        PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_CONDITIONAL);
-    }
+    /* patch the exit branch */
+    PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_CONDITIONAL);
+    CompilerPatchBreaks(Compiler, BreakCountBeforeBody);
 
     EMITTER()->ShouldEmit = Last;
 }
@@ -686,6 +707,25 @@ static void CompileCaseStmt(PVMCompiler *Compiler)
 }
 
 
+static void CompileBreakStmt(PVMCompiler *Compiler)
+{
+    /* break; */
+    /* break consumed */
+    const Token *Keyword = &Compiler->Curr;
+
+    if (!Compiler->InLoop)
+    {
+        ErrorAt(Compiler, &Compiler->Curr, "Break statment is only allowed in loops.");
+    }
+    if (Compiler->BreakCount >= STATIC_ARRAY_SIZE(Compiler->Breaks))
+    {
+        PASCAL_UNREACHABLE("TODO: dynamic array of breaks.");
+    }
+
+    CompilerInitDebugInfo(Compiler, Keyword);
+    Compiler->Breaks[Compiler->BreakCount++] = PVMEmitBranch(EMITTER(), 0);
+    CompilerEmitDebugInfo(Compiler, Keyword);
+}
 
 static void CompileStmt(PVMCompiler *Compiler)
 {
@@ -701,6 +741,11 @@ static void CompileStmt(PVMCompiler *Compiler)
     {
         ConsumeToken(Compiler);
         PASCAL_UNREACHABLE("TODO: with");
+    } break;
+    case TOKEN_BREAK:
+    {
+        ConsumeToken(Compiler);
+        CompileBreakStmt(Compiler);
     } break;
     case TOKEN_FOR:
     {
@@ -1107,7 +1152,11 @@ static bool CompileHeadlessBlock(PVMCompiler *Compiler)
     {
         switch (Compiler->Next.Type)
         {
-        case TOKEN_BEGIN: return true;
+        case TOKEN_BEGIN: 
+        {
+            ConsumeToken(Compiler); 
+            return true;
+        }
         case TOKEN_FUNCTION:
         {
             ConsumeToken(Compiler);
@@ -1140,7 +1189,11 @@ static bool CompileHeadlessBlock(PVMCompiler *Compiler)
         } break;
         default: 
         {
-            Error(Compiler, "A block cannot start with '%.*s'.", Compiler->Next.Len, Compiler->Next.Str);
+            if (COMPMODE_REPL != Compiler->Flags.CompMode)
+            {
+                Error(Compiler, "A block cannot start with '%.*s'.", Compiler->Next.Len, Compiler->Next.Str);
+            }
+            return false;
         } break;
         }
 
@@ -1218,15 +1271,43 @@ bool PascalCompile(const U8 *Source,
     PVMCompiler Compiler = CompilerInit(Source, Flags, PredefinedIdentifiers, Chunk, GlobalAlloc, LogFile);
     ConsumeToken(&Compiler);
 
-    if (ConsumeIfNextIs(&Compiler, TOKEN_PROGRAM))
+    switch (Compiler.Next.Type)
     {
+    case TOKEN_PROGRAM:
+    {
+        ConsumeToken(&Compiler);
         CompileProgram(&Compiler);
-    }
-    else if (CompileHeadlessBlock(&Compiler))
+    } break;
+    case TOKEN_UNIT:
     {
-        CompileBeginBlock(&Compiler);
+        PASCAL_UNREACHABLE("TODO: Unit");
+    } break;
+    default:
+    {
+        if (COMPMODE_REPL != Flags.CompMode)
+        {
+            Error(&Compiler, "Expected 'Program' or 'Unit' at the beginning of file.");
+            goto Out;
+        }
+
+        if (CompileHeadlessBlock(&Compiler))
+        {
+            CompileBeginBlock(&Compiler);
+        }
+        else 
+        {
+            Compiler.EntryPoint = PVMGetCurrentLocation(&Compiler.Emitter);
+            while (!IsAtEnd(&Compiler))
+            {
+                CompileStmt(&Compiler);
+                if (!IsAtEnd(&Compiler))
+                    ConsumeOrError(&Compiler, TOKEN_SEMICOLON, "Expected ';' between statement.");
+            }
+        }
+    } break;
     }
 
+Out:
     CompilerDeinit(&Compiler);
     return !Compiler.Error;
 }

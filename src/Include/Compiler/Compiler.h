@@ -20,9 +20,16 @@ typedef enum PVMCallConv
     CALLCONV_MSX64,
 } PVMCallConv;
 
+typedef enum PascalCompileMode 
+{
+    COMPMODE_PROGRAM = 0,
+    COMPMODE_REPL,
+} PascalCompileMode;
+
 typedef struct PascalCompileFlags 
 {
     PVMCallConv CallConv;
+    PascalCompileMode CompMode;
 } PascalCompileFlags;
 
 /* Returns true on success, false on failure and logs error to log file */

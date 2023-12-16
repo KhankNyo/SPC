@@ -876,7 +876,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     case TOKEN_SHR:
     case TOKEN_GREATER_GREATER:
     {
-        if (IntegralTypeIsInteger(Left->Type) && IntegralTypeIsInteger(Right->Type))
+        if (IntegralTypeIsInteger(Both))
         {
             /* sign bit */
             if (Left->As.Literal.Int >> 63)
@@ -892,11 +892,29 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
         else goto InvalidTypeConversion;
     } break;
 
-    case TOKEN_AND: INT_AND_BOOL_OP(&); break;
-    case TOKEN_OR:  INT_AND_BOOL_OP(|); break;
+    case TOKEN_AND:
+    {
+        PASCAL_ASSERT(TYPE_BOOLEAN != Both, "Unreachable");
+        if (IntegralTypeIsInteger(Both))
+        {
+            Result.As.Literal.Int = Left->As.Literal.Int & Right->As.Literal.Int;
+            Result.Type = Both;
+        }
+        else goto InvalidTypeConversion;
+    } break;
+    case TOKEN_OR:
+    {
+        PASCAL_ASSERT(TYPE_BOOLEAN != Both, "Unreachable");
+        if (IntegralTypeIsInteger(Both))
+        {
+            Result.As.Literal.Int = Left->As.Literal.Int | Right->As.Literal.Int;
+            Result.Type = Both;
+        }
+        else goto InvalidTypeConversion;
+    } break;
     case TOKEN_XOR:
     {
-        if (IntegralTypeIsInteger(Left->Type) && IntegralTypeIsInteger(Right->Type))
+        if (IntegralTypeIsInteger(Both))
         {
             Result.As.Literal.Int = Left->As.Literal.Int ^ Right->As.Literal.Int;
         }
@@ -1012,7 +1030,14 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler,
         FreeExpr(Compiler, Src);
         return Cond;
     } break;
-
+    case TOKEN_AND:
+    {
+        PVMEmitAnd(EMITTER(), &Dst, &Src);
+    } break;
+    case TOKEN_OR:
+    {
+        PVMEmitOr(EMITTER(), &Dst, &Src);
+    } break;
     case TOKEN_XOR:
     {
         PVMEmitXor(EMITTER(), &Dst, &Src);
@@ -1072,32 +1097,29 @@ static VarLocation ExprAnd(PVMCompiler *Compiler, VarLocation *Left)
     Token OpToken = Compiler->Curr;
     if (TYPE_BOOLEAN == Left->Type)
     {
-        U32 FromFalse = PVMEmitBranchIfFalse(EMITTER(), Left);
-        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
+        bool WasEmit = EMITTER()->ShouldEmit;
+        if (VAR_LIT == Left->LocationType && !Left->As.Literal.Bool)
+        {
+            /* false and ...: don't emit right */
+            EMITTER()->ShouldEmit = false;
+        }
 
+        U32 FromLeft = PVMEmitBranchIfFalse(EMITTER(), Left);
+
+        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
         IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
         if (TYPE_INVALID == ResultType)
             goto InvalidOperands;
         PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
         PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type, "");
 
-        PVMEmitAnd(EMITTER(), Left, &Right);
-        PVMPatchBranchToCurrent(EMITTER(), FromFalse, BRANCHTYPE_CONDITIONAL);
+        PVMPatchBranchToCurrent(EMITTER(), FromLeft, BRANCHTYPE_CONDITIONAL);
+
+        EMITTER()->ShouldEmit = WasEmit;
     }
     else if (IntegralTypeIsInteger(Left->Type))
     {
-        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
-        if (!IntegralTypeIsInteger(Right.Type))
-        {
-            goto InvalidOperands;
-        }
-        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
-        PASCAL_ASSERT(TYPE_INVALID != ResultType, "");
-        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, Left), "");
-        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, &Right), "");
-
-        PVMEmitAnd(EMITTER(), Left, &Right);
-        FreeExpr(Compiler, Right);
+        return ExprBinary(Compiler, Left);
     }
     else 
     {
@@ -1117,36 +1139,34 @@ static VarLocation ExprOr(PVMCompiler *Compiler, VarLocation *Left)
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Left);
 
+
     VarLocation Right;
     Token OpToken = Compiler->Curr;
     if (TYPE_BOOLEAN == Left->Type)
     {
-        U32 FromTrue = PVMEmitBranchIfTrue(EMITTER(), Left);
-        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
+        bool WasEmit = EMITTER()->ShouldEmit;
+        if (VAR_LIT == Left->LocationType && Left->As.Literal.Bool)
+        {
+            /* true or ...: don't emit right */
+            EMITTER()->ShouldEmit = false;
+        }
 
+        U32 FromTrue = PVMEmitBranchIfTrue(EMITTER(), Left);
+
+        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
         IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
         if (TYPE_INVALID == ResultType)
             goto InvalidOperands;
         PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
         PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type, "");
 
-        PVMEmitOr(EMITTER(), Left, &Right);
         PVMPatchBranchToCurrent(EMITTER(), FromTrue, BRANCHTYPE_CONDITIONAL);
+
+        EMITTER()->ShouldEmit = WasEmit;
     }
     else if (IntegralTypeIsInteger(Left->Type))
     {
-        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
-        if (!IntegralTypeIsInteger(Right.Type))
-        {
-            goto InvalidOperands;
-        }
-        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
-        PASCAL_ASSERT(TYPE_INVALID != ResultType, "");
-        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, Left), "");
-        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, ResultType, &Right), "");
-
-        PVMEmitOr(EMITTER(), Left, &Right);
-        FreeExpr(Compiler, Right);
+        return ExprBinary(Compiler, Left);
     }
     else 
     {
