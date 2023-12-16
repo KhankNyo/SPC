@@ -256,12 +256,35 @@ static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
         return *Left;
     }
 
-    VarLocation Value = *Member;
     /* member offset + record offset = location */
-    PASCAL_ASSERT(VAR_MEM == Left->LocationType, "TODO: offset by register");
-    Value.As.Memory.Location += Left->As.Memory.Location;
-    Value.As.Memory.RegPtr = Left->As.Memory.RegPtr;
-    return Value;
+    if (VAR_MEM == Left->LocationType)
+    {
+        VarLocation Value = *Member;
+        Value.As.Memory.Location += Left->As.Memory.Location;
+        Value.As.Memory.RegPtr = Left->As.Memory.RegPtr;
+        return Value;
+    }
+    else if (VAR_REG == Left->LocationType)
+    {
+        VarLocation Location = {
+            .Type = Member->Type,
+            .LocationType = VAR_MEM,
+            .Size = Member->Size,
+            .As.Memory.RegPtr = Left->As.Register,
+            .As.Memory.Location = Member->As.Memory.Location,
+        };
+
+        if (TYPE_POINTER == Member->Type)
+        {
+            Location.PointerTo.Var = Member->PointerTo.Var;
+        }
+        else if (TYPE_RECORD == Member->Type)
+        {
+            Location.PointerTo.Record = Member->PointerTo.Record;
+        }
+        return Location;
+    }
+    PASCAL_UNREACHABLE("Invalid location type: %d\n", Left->LocationType);
 }
 
 
