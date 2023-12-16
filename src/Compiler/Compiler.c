@@ -281,13 +281,13 @@ static void CompileForStmt(PVMCompiler *Compiler)
 
     /* for loop inc/dec */
     U32 LoopHead = 0;
-    TokenType Op = TOKEN_GREATER;
+    TokenType Op = TOKEN_GREATER_EQUAL;
     Token OpToken = Compiler->Next;
     int Inc = 1;
     if (!ConsumeIfNextIs(Compiler, TOKEN_TO))
     {
         ConsumeOrError(Compiler, TOKEN_DOWNTO, "Expected 'to' or 'downto' after expression.");
-        Op = TOKEN_LESS;
+        Op = TOKEN_LESS_EQUAL;
         Inc = -1;
     }
     /* stop condition expr */
