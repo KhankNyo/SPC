@@ -192,7 +192,7 @@ VarLocation *CompilerAllocateVarLocation(PVMCompiler *Compiler)
         U32 OldCap = Compiler->Var.Cap;
         Compiler->Var.Cap *= 2;
         Compiler->Var.Location = GPAReallocateArray(&Compiler->InternalAlloc, 
-                Compiler->Var.Location, *Compiler->Var.Location, 
+                Compiler->Var.Location, VarLocation, 
                 Compiler->Var.Cap
         );
         for (U32 i = OldCap; i < Compiler->Var.Cap; i++)

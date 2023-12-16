@@ -6,7 +6,7 @@ OBJDIR="${PWD}/obj"
 BINDIR="${PWD}/bin"
 INCPATH="${SRCDIR}/Include"
 
-CC="gcc"
+CC="$1"
 CCFLAGS="-DPVM_DEBUGGER \
     -Ofast -flto\
     -Wno-missing-braces -Wno-format\
@@ -14,14 +14,14 @@ CCFLAGS="-DPVM_DEBUGGER \
 LDFLAGS="-flto"
 LIBS=""
 
-ARG="$1"
-
-SRCS="${SRCDIR}/PVMCompiler.c ${SRCDIR}/PVMEmitter.c ${SRCDIR}/Vartab.c \
-    ${SRCDIR}/PascalFile.c ${SRCDIR}/PascalRepl.c ${SRCDIR}/Pascal.c \
-    ${SRCDIR}/main.c ${SRCDIR}/Tokenizer.c ${SRCDIR}/Memory.c \
-    ${SRCDIR}/PascalString.c"
-SRCS="${SRCS} ${SRCDIR}/PVM/PVM.c ${SRCDIR}/PVM/Chunk.c ${SRCDIR}/PVM/Disassembler.c \
-    ${SRCDIR}/PVM/Debugger.c"
+SRCS="${SRCDIR}/main.c ${SRCDIR}/Pascal.c ${SRCDIR}/PascalFile.c ${SRCDIR}/PascalRepl.c \
+    ${SRCDIR}/PascalString.c ${SRCDIR}/Memory.c ${SRCDIR}/Vartab.c \
+    ${SRCDIR}/Tokenizer.c \
+    ${SRCDIR}/Compiler/Compiler.c ${SRCDIR}/Compiler/Data.c ${SRCDIR}/Compiler/Builtins.c \
+    ${SRCDIR}/Compiler/Expr.c ${SRCDIR}/Compiler/Emitter.c ${SRCDIR}/Compiler/VarList.c \
+    ${SRCDIR}/Compiler/Error.c \
+    ${SRCDIR}/PVM/Chunk.c ${SRCDIR}/PVM/Debugger.c ${SRCDIR}/PVM/Disassembler.c ${SRCDIR}/PVM/PVM.c"
+UNITY="${SRCDIR}/UnityBuild.c"
 OUTPUT="./bin/pascal"
 
 
@@ -33,7 +33,7 @@ PrintMessage () {
 }
 
 
-if [ "$ARG" = "clean" ];
+if [ "$1" = "clean" ];
 then
     if [ -d "${BINDIR}" ]; 
     then 
@@ -46,7 +46,14 @@ then
         rmdir "${OBJDIR}"
     fi
     PrintMessage "  Removed build artifacts"
-else
+elif [ "$2" = "unity" ]; 
+then
+    echo $CC $LDFLAGS $CCFLAGS -o $OUTPUT $UNITY $LIBS
+    $CC $LDFLAGS $CCFLAGS -o $OUTPUT $UNITY $LIBS
+
+    PrintMessage "  Build finished"
+else 
+
     OBJS=""
     if [ ! -d "${BINDIR}" ]; 
     then 

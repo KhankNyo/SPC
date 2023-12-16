@@ -64,7 +64,7 @@ static void *sMemAllocate(USize ByteCount)
     void *Pointer = malloc(ByteCount);
     if (NULL == Pointer)
     {
-        fprintf(stderr, "Out of memory while requesting %llu bytes\n", ByteCount);
+        fprintf(stderr, "Out of memory while requesting %zu bytes\n", ByteCount);
         exit(PASCAL_EXIT_FAILURE);
     }
     return Pointer;
