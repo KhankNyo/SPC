@@ -16,6 +16,7 @@ PascalVM PVMInit(U32 StackSize, UInt RetStackSize)
     PascalVM PVM = {
         .F = { 0 },
         .R = { 0 },
+        .Condition = false,
         .Stack.Start.Raw = MemAllocateArray(PVM.Stack.Start.DWord[0], StackSize),
         .RetStack.Start = MemAllocateArray(PVM.RetStack.Start[0], RetStackSize),
         .RetStack.SizeLeft = RetStackSize,
@@ -23,7 +24,7 @@ PascalVM PVMInit(U32 StackSize, UInt RetStackSize)
         .LogFile = stderr,
         .Error = { 0 }, 
         .SingleStepMode = false,
-        .Condition = false,
+        .Disassemble = false,
     };
     PVM.Stack.End.Raw = PVM.Stack.Start.DWord + StackSize;
     PVM.RetStack.Val = PVM.RetStack.Start;
@@ -133,20 +134,20 @@ static const PascalStr *RuntimeTypeToStr(IntegralType Type, PVMGPR Data)
 
 bool PVMRun(PascalVM *PVM, PVMChunk *Chunk)
 {
-#ifdef DEBUG
-    PVMDisasm(PVM->LogFile, Chunk, "Compiled Code");
-    fprintf(PVM->LogFile, "Press Enter to execute...\n");
-    getc(stdin);
-#endif /* DEBUG */
+    if (PVM->Disassemble)
+    {
+        PVMDisasm(PVM->LogFile, Chunk, "Compiled Code");
+        fprintf(PVM->LogFile, "Press Enter to execute...\n");
+        getc(stdin);
+    }
 
     bool NoError = false;
     double Start = clock();
     PVMReturnValue Ret = PVMInterpret(PVM, Chunk);
     double End = clock();
 
-#ifdef DEBUG
-    PVMDumpState(PVM->LogFile, PVM, 4);
-#endif /* DEBUG */
+    if (PVM->Disassemble)
+        PVMDumpState(PVM->LogFile, PVM, 4);
 
 
     if (NULL != PVM->LogFile)
@@ -306,12 +307,10 @@ do {\
 
     while (1)
     {
-#ifdef PVM_DEBUGGER
         if (PVM->SingleStepMode)
         {
             PVMDebugPause(PVM, Chunk, IP);
         }
-#endif /* PVM_DEBUGGER */
 
         UInt Opcode = *IP++;
         switch (PVM_GET_OP(Opcode))
@@ -833,7 +832,7 @@ void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
         fprintf(f, "[F%02d: %g|%g]", i, PVM->F[i].Double, PVM->F[i].Single);
     }
 
-    fprintf(f, "\n===================== STACK|GLOBAL ======================");
+    fprintf(f, "\n===================== STACK ======================");
     for (PVMPTR Sp = PVM->Stack.Start; Sp.DWord <= PVM->R[PVM_REG_SP].Ptr.DWord; Sp.DWord++)
     {
         fprintf(f, "\nS: %8p: [0x%08llx]", Sp.Raw, *Sp.DWord);

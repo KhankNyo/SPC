@@ -33,7 +33,7 @@ typedef struct PascalVM
         int SizeLeft;
     } RetStack;
 
-    bool SingleStepMode;
+    bool SingleStepMode, Disassemble;
     FILE *LogFile;
     struct {
         int Line;

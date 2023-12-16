@@ -56,9 +56,10 @@ int PascalRepl(void)
 
 static bool GetCommandLine(PascalVM *PVM, char *Buf, USize Bufsz)
 {
+    FILE *Out = stdout, *In = stdin;
     do {
         printf("\n>> ");
-        if (NULL == fgets(Buf, Bufsz, stdin))
+        if (NULL == fgets(Buf, Bufsz, In))
             return false;
 
         if ('.' == Buf[0])
@@ -68,19 +69,27 @@ static bool GetCommandLine(PascalVM *PVM, char *Buf, USize Bufsz)
             if (STREQU(&Buf[1], "Debug"))
             {
                 if (PVM->SingleStepMode)
-                    fprintf(stdout, "Disabled debug mode.\n");
+                    fprintf(Out, "Disabled debug mode.\n");
                 else 
-                    fprintf(stdout, "Enabled debug mode.\n");
+                    fprintf(Out, "Enabled debug mode.\n");
                 PVM->SingleStepMode = !PVM->SingleStepMode;
             }
             else if (STREQU(&Buf[1], "Quit"))
             {
-                fprintf(stdout, "Quitting...\n");
+                fprintf(Out, "Quitting...\n");
                 return false;
+            }
+            else if (STREQU(&Buf[1], "Disasm"))
+            {
+                if (PVM->Disassemble)
+                    fprintf(Out, "Disabled disassembly.\n");
+                else 
+                    fprintf(Out, "Enabled disassembly.\n");
+                PVM->Disassemble = !PVM->Disassemble;
             }
             else 
             {
-                fprintf(stdout, "Unknown Repl command: '%s'\n", &Buf[1]);
+                fprintf(Out, "Unknown Repl command: '%s'\n", &Buf[1]);
             }
             Buf[0] = '\n';
         }
