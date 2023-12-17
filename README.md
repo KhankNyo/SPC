@@ -25,4 +25,9 @@
 # Supported functions:
 - None yet
 
+# TODO:
+- enter instruction that allocates stack space for upon entry into a non-nested begin block
+- struct return value (caller side)
+- reconsider stack allocation (after adding enter instruction)
+
 
