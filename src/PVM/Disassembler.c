@@ -297,7 +297,7 @@ static ImmediateInfo GetImmFromImmType(const PVMChunk *Chunk, U32 Addr, PVMImmTy
 
 
 /* note: this function does not display the topmost 16 bytes */
-static void DisplayImmBytes(FILE *f, const ImmediateInfo Info)
+static void PrintImmBytes(FILE *f, const ImmediateInfo Info)
 {
     /* display hex dump of immediate as how it is represented in memory */
     for (UInt i = 1; i < Info.Count; i++)
@@ -329,7 +329,7 @@ static U32 DisasmRdImm(FILE *f, const char *Mnemonic, const PVMChunk *Chunk, U32
     PrintPaddedMnemonic(f, Pad, LongMnemonic);
     Pad = fprintf(f, "%s, 0x%llx", Rd, Info.Imm);
     PrintComment(f, Pad, "decimal %lld", Info.Imm);
-    DisplayImmBytes(f, Info);
+    PrintImmBytes(f, Info);
     return Info.Addr;
 }
 
@@ -347,7 +347,7 @@ static U32 DisasmMem(FILE *f,
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     fprintf(f, "%s, [%s + %lld]", Rd, Rs, (I64)Info.Imm);
 
-    DisplayImmBytes(f, Info);
+    PrintImmBytes(f, Info);
     return Info.Addr;
 }
 
@@ -364,6 +364,21 @@ static void DisasmRdSmallImm(FILE *f, const char *Mnemonic, U16 Opcode, bool IsS
     {
         fprintf(f, "%s, %d\n", Rd, PVM_GET_RS(Opcode));
     }
+}
+
+static U32 DisasmRdRsImm32(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *Chunk, U32 Addr)
+{
+    ImmediateInfo Info = GetImmFromImmType(Chunk, Addr + 1, IMMTYPE_U32);
+
+    int Pad = Print2Bytes(f, Opcode);
+    Pad += Print2Bytes(f, Info.Imm >> 16);
+    PrintPaddedMnemonic(f, Pad, Mnemonic);
+
+    fprintf(f, "%s, %s, %u", 
+            sIntReg[PVM_GET_RD(Opcode)], sIntReg[PVM_GET_RS(Opcode)], (U32)Info.Imm
+    );
+    PrintImmBytes(f, Info);
+    return Info.Addr;
 }
 
 static void DisasmSingleOperand(FILE *f, const char *Mnemonic, U16 Opcode)
@@ -425,6 +440,8 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_STRGT: DisasmRdRs(f, "strgt", sIntReg, Opcode); break;
     case OP_STREQU:DisasmRdRs(f, "strequ", sIntReg, Opcode); break;
     case OP_SCPY:  DisasmRdRs(f, "scpy", sIntReg, Opcode); break;
+    case OP_MEMCPY: return DisasmRdRsImm32(f, "memcpy", Opcode, Chunk, Addr);
+
     case OP_SEQ: DisasmRdRs(f, "seq", sIntReg, Opcode); break;
     case OP_SNE: DisasmRdRs(f, "sne", sIntReg, Opcode); break;
     case OP_SLT: DisasmRdRs(f, "slt", sIntReg, Opcode); break;

@@ -97,6 +97,8 @@ typedef enum PVMOp
 
 
     OP_SCPY,
+    OP_MEMCPY,
+
     OP_MOV32,
     OP_MOVZEX32_8,
     OP_MOVZEX32_16,

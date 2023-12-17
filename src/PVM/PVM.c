@@ -197,8 +197,6 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
     BitSex32Safe(*IP++ | (((U32)(Opc) & 0xFF) << 16), PVM_BR_OFFSET_SIZE - 1)
 #define GET_BCC_IMM(Opc, IP) \
     BitSex32Safe(*IP++ | (((U32)(Opc) & 0xF) << 16), PVM_BCC_OFFSET_SIZE - 1)
-#define GET_LONG_IMM(Opc, IP) \
-    (*IP++ | (((U32)(Opc) & 0xF) << 16))
 
 #define FLOAT_BINARY_OP(Operator, Opc, RegType)\
     PVM->F[PVM_GET_RD(Opc)]RegType GLUE(Operator,=) PVM->F[PVM_GET_RS(Opc)]RegType
@@ -446,6 +444,14 @@ do {\
             {
                 PStrCopyInto(Dst, Src);
             }
+        } break;
+        case OP_MEMCPY:
+        {
+            void *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
+            const void *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
+            U32 Size = 0;
+            GET_SEX_IMM(Size, IMMTYPE_U32, IP);
+            memcpy(Dst, Src, Size);
         } break;
         case OP_STRLT:
         {

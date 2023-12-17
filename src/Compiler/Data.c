@@ -318,7 +318,7 @@ Token *CompilerGetTmp(PVMCompiler *Compiler, UInt Idx)
 
 
 
-void SubroutineDataPushParameter(PascalGPA *Allocator, VarSubroutine *Subroutine, PascalVar *Param)
+void SubroutineDataPushParameter(PascalGPA *Allocator, VarSubroutine *Subroutine, const PascalVar *Param)
 {
     if (Subroutine->ArgCount == Subroutine->Cap)
     {

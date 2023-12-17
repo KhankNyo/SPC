@@ -142,9 +142,18 @@ static void PVMEmitPushReg(PVMEmitter *Emitter, UInt Reg)
     {
         WriteOp16(Emitter, PVM_REGLIST(PSHL, 1 << Reg));
     }
-    else
+    else if (Reg < PVM_REG_COUNT)
     {
         WriteOp16(Emitter, PVM_REGLIST(PSHH, 1 << Reg));
+    }
+    /* floating point reg */
+    else if (Reg < PVM_REG_COUNT * 3/2)
+    {
+        WriteOp16(Emitter, PVM_REGLIST(FPSHL, 1 << (Reg - PVM_REG_COUNT)));
+    }
+    else 
+    {
+        WriteOp16(Emitter, PVM_REGLIST(FPSHH, 1 << (Reg - PVM_REG_COUNT)));
     }
     Emitter->StackSpace += sizeof(PVMGPR);
 }
@@ -156,9 +165,18 @@ static void PVMEmitPop(PVMEmitter *Emitter, UInt Reg)
     {
         WriteOp16(Emitter, PVM_REGLIST(POPL, 1 << Reg));
     }
-    else
+    else if (Reg < PVM_REG_COUNT)
     {
         WriteOp16(Emitter, PVM_REGLIST(POPH, 1 << Reg));
+    }
+    /* floating point reg */
+    else if (Reg < PVM_REG_COUNT * 3/2)
+    {
+        WriteOp16(Emitter, PVM_REGLIST(FPSHL, 1 << (Reg - PVM_REG_COUNT)));
+    }
+    else 
+    {
+        WriteOp16(Emitter, PVM_REGLIST(FPSHH, 1 << (Reg - PVM_REG_COUNT)));
     }
     Emitter->StackSpace -= sizeof(PVMGPR);
 }
@@ -925,6 +943,33 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
         if (Owning)
             PVMFreeRegister(Emitter, Tmp.As.Register);
     } break;
+    }
+}
+
+
+void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src)
+{
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Dst);
+    PASCAL_NONNULL(Src);
+
+    PASCAL_ASSERT(Dst->LocationType == VAR_REG, "Dst must be a register");
+    PASCAL_ASSERT(Dst->Type == Src->Type, "Unreachable");
+    PASCAL_ASSERT(Dst->Size == Src->Size, "Unreachable");
+    PASCAL_ASSERT(Dst->Type == TYPE_RECORD || Src->Type == TYPE_STRING, "Unhandled case: %s", 
+            IntegralTypeToStr(Dst->Type)
+    );
+    PASCAL_ASSERT(Dst->Size <= UINT32_MAX, "record too big");
+
+    VarLocation SrcPtr;
+    bool OwningSrcPtr = PVMEmitIntoReg(Emitter, &SrcPtr, Src);
+
+    WriteOp16(Emitter, PVM_OP(MEMCPY, Dst->As.Register.ID, SrcPtr.As.Register.ID));
+    WriteOp32(Emitter, Dst->Size, Dst->Size >> 16);
+
+    if (OwningSrcPtr)
+    {
+        PVMFreeRegister(Emitter, SrcPtr.As.Register);
     }
 }
 
@@ -1921,7 +1966,6 @@ void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...)
         PASCAL_NONNULL(Location);
 
         bool Owning = PVMEmitIntoReg(Emitter, &Reg, Location);
-
         PVMEmitPushReg(Emitter, Reg.As.Register.ID);
 
         if (Owning)

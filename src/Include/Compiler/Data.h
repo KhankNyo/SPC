@@ -95,7 +95,7 @@ Token *CompilerGetTmp(PVMCompiler *Compiler, UInt Idx);
 void CompilerInitDebugInfo(PVMCompiler *Compiler, const Token *From);
 void CompilerEmitDebugInfo(PVMCompiler *Compiler, const Token *From);
 
-void SubroutineDataPushParameter(PascalGPA *Allocator, VarSubroutine *Subroutine, PascalVar *Param);
+void SubroutineDataPushParameter(PascalGPA *Allocator, VarSubroutine *Subroutine, const PascalVar *Param);
 void SubroutineDataPushRef(PascalGPA *Allocator, VarSubroutine *Subroutine, U32 CallSite);
 void CompilerResolveSubroutineCalls(PVMCompiler *Compiler, 
         VarSubroutine *Subroutine, U32 SubroutineLocation

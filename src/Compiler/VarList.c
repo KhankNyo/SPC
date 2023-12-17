@@ -241,7 +241,7 @@ bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *Subroutine)
             else Location->PointerTo.Var = Type.Pointer.Var;
 
             SubroutineDataPushParameter(Compiler->GlobalAlloc, Subroutine, Var);
-            //if (Subroutine->ArgCount >= PVM_ARGREG_COUNT)
+            if (Subroutine->ArgCount >= PVM_ARGREG_COUNT)
                 Subroutine->StackArgSize += Type.Size;
         }
 
