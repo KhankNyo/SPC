@@ -11,7 +11,7 @@ bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *CurrentFunction)
 
 /* returns the same addr passed in on error, else returns the next addr,
  * Alignment must be a power of 2 */
-U32 CompileVarList(PVMCompiler *Compiler, U32 StartAddr, UInt Alignment, bool Global);
+U32 CompileVarList(PVMCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U32 Alignment);
 
 /* returns the record, or NULL on error */
 PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Name);

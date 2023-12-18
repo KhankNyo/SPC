@@ -54,17 +54,17 @@ typedef VarLocation (*PrefixParseRoutine)(PVMCompiler *);
 
 
 #define INVALID_BINARY_OP(pOp, LType, RType) \
-    ErrorAt(Compiler, pOp, "Invalid operand for binary operator '%.*s': %s and %s", \
-            (pOp)->Len, (pOp)->Str, \
+    ErrorAt(Compiler, pOp, "Invalid operand for binary operator '"STRVIEW_FMT"': %s and %s", \
+            STRVIEW_FMT_ARG(&(pOp)->Lexeme), \
             IntegralTypeToStr(LType), IntegralTypeToStr(RType)\
     )
 #define INVALID_PREFIX_OP(pOp, Type) \
-    ErrorAt(Compiler, pOp, "Invalid operand for prefix operator '%.*s': %s", \
-            (pOp)->Len, (pOp)->Str, IntegralTypeToStr(Type)\
+    ErrorAt(Compiler, pOp, "Invalid operand for prefix operator '"STRVIEW_FMT"': %s", \
+            STRVIEW_FMT_ARG(&(pOp)->Lexeme), IntegralTypeToStr(Type)\
     )
 #define INVALID_POSTFIX_OP(pOp, Type) \
-    ErrorAt(Compiler, pOp, "Invalid operand for postfix operator '%.*s': %s", \
-            (pOp)->Len, (pOp)->Str, IntegralTypeToStr(Type)\
+    ErrorAt(Compiler, pOp, "Invalid operand for postfix operator '"STRVIEW_FMT"': %s", \
+            STRVIEW_FMT_ARG(&(pOp)->Lexeme), IntegralTypeToStr(Type)\
     )
 
 typedef struct PrecedenceRule
@@ -83,9 +83,13 @@ void FreeExpr(PVMCompiler *Compiler, VarLocation Expr)
 {
     PASCAL_NONNULL(Compiler);
 
-    if (VAR_REG == Expr.LocationType && !Expr.As.Register.Persistent)
+    if (VAR_REG == Expr.Location && !Expr.As.Register.Persistent)
     {
         PVMFreeRegister(EMITTER(), Expr.As.Register);
+    }
+    else if (VAR_MEM == Expr.Location && !Expr.As.Memory.RegPtr.Persistent)
+    {
+        PVMFreeRegister(EMITTER(), Expr.As.Memory.RegPtr);
     }
 }
 
@@ -98,13 +102,10 @@ VarLocation CompileExpr(PVMCompiler *Compiler)
 VarLocation CompileExprIntoReg(PVMCompiler *Compiler)
 {
     VarLocation Expr = CompileExpr(Compiler);
-    if (VAR_REG != Expr.LocationType)
-    {
-        VarLocation Reg = PVMAllocateRegister(EMITTER(), Expr.Type);
-        PVMEmitMov(EMITTER(), &Reg, &Expr);
-        return Reg;
-    }
-    return Expr;
+    VarLocation Reg;
+    PVMEmitIntoReg(EMITTER(), &Reg, false, &Expr); 
+    /* ownership is transfered */
+    return Reg;
 }
 
 VarLocation CompileVariableExpr(PVMCompiler *Compiler)
@@ -118,20 +119,20 @@ void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLocation *L
     if (Compiler->Error)
         return;
 
-    CoerceTypes(Compiler, OpToken, Location->Type, Expr.Type);
-    if (Expr.LocationType != VAR_MEM)
-        ConvertTypeImplicitly(Compiler, Location->Type, &Expr);
+    CoerceTypes(Compiler, OpToken, Location->Type.Integral, Expr.Type.Integral);
+    if (Expr.Location != VAR_MEM)
+        ConvertTypeImplicitly(Compiler, Location->Type.Integral, &Expr);
 
-    if (TYPE_POINTER == Location->Type && TYPE_POINTER == Expr.Type)
+    if (TYPE_POINTER == Location->Type.Integral && TYPE_POINTER == Expr.Type.Integral)
     {
-        if (Location->PointerTo.Var.Type != Expr.PointerTo.Var.Type)
+        if (VarTypeEqual(&Location->Type, &Expr.Type))
         {
             if (NULL == OpToken)
                 OpToken = &Compiler->Curr;
 
             ErrorAt(Compiler, OpToken, "Cannot assign %s pointer to %s pointer.", 
-                    IntegralTypeToStr(Expr.PointerTo.Var.Type),
-                    IntegralTypeToStr(Location->PointerTo.Var.Type)
+                    VarTypeToStr(Expr.Type),
+                    VarTypeToStr(Location->Type)
             );
 
             return;
@@ -145,14 +146,24 @@ void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLocation *L
 
 
 
+static VarType TypeOfIntLit(U64 Int)
+{
+    if (IN_I32(Int))
+        return VarTypeInit(TYPE_I32, 4);
+    return VarTypeInit(TYPE_I64, 8);
+}
 
-
-
+static VarType TypeOfUIntLit(U64 UInt)
+{
+    if (IN_U32(UInt))
+        return VarTypeInit(TYPE_U32, 4);
+    return VarTypeInit(TYPE_U64, 8);
+}
 
 static VarLocation FactorLiteral(PVMCompiler *Compiler)
 {
     VarLocation Location = {
-        .LocationType = VAR_LIT,
+        .Location = VAR_LIT,
     };
     PASCAL_NONNULL(Compiler);
 
@@ -160,23 +171,24 @@ static VarLocation FactorLiteral(PVMCompiler *Compiler)
     {
     case TOKEN_INTEGER_LITERAL:
     {
-        Location.Type = TypeOfIntLit(Compiler->Curr.Literal.Int);
-        Location.As.Literal.Int = Compiler->Curr.Literal.Int;
+        U64 Int = Compiler->Curr.Literal.Int;
+        Location.As.Literal.Int = Int;
+        Location.Type = TypeOfIntLit(Int);
     } break;
     case TOKEN_NUMBER_LITERAL:
     {
-        Location.Type = TYPE_F64;
+        Location.Type = VarTypeInit(TYPE_F64, sizeof(F64));
         Location.As.Literal.Flt = Compiler->Curr.Literal.Real;
     } break;
     case TOKEN_TRUE:
     case TOKEN_FALSE:
     {
-        Location.Type = TYPE_BOOLEAN;
+        Location.Type = VarTypeInit(TYPE_BOOLEAN, 1);
         Location.As.Literal.Bool = Compiler->Curr.Type != TOKEN_FALSE;
     } break;
     case TOKEN_STRING_LITERAL:
     {
-        Location.Type = TYPE_STRING;
+        Location.Type = VarTypeInit(TYPE_STRING, PStrGetLen(&Compiler->Curr.Literal.Str));
         Location.As.Literal.Str = Compiler->Curr.Literal.Str;
     } break;
     default:
@@ -196,24 +208,20 @@ static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
     PASCAL_NONNULL(Variable);
 
     Token Caret = Compiler->Curr;
-    if (TYPE_POINTER != Variable->Type)
+    if (TYPE_POINTER != Variable->Type.Integral)
     {
         ErrorAt(Compiler, &Caret, "%s is not dereferenceable.", 
-                IntegralTypeToStr(Variable->Type)
+                VarTypeToStr(Variable->Type)
         );
         return *Variable;
     }
 
 
-    VarLocation Ptr = PVMAllocateRegister(EMITTER(), TYPE_POINTER);
-
+    VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), VarTypeInit(TYPE_POINTER, sizeof(void*)));
     PVMEmitMov(EMITTER(), &Ptr, Variable);
-    Ptr.Type = Variable->Type;
-    Ptr.LocationType = VAR_MEM;
-
     VarLocation Memory = {
-        .LocationType = VAR_MEM,
-        .Type = Variable->PointerTo.Var.Type,
+        .Location = VAR_MEM,
+        .Type = Variable->Type,
         .As.Memory = {
             .RegPtr = Ptr.As.Register,
             .Location = 0,
@@ -227,8 +235,8 @@ static VarLocation *FindRecordMember(PascalVartab *Record, const Token *MemberNa
     PASCAL_NONNULL(Record);
     PASCAL_NONNULL(MemberName);
 
-    U32 Hash = VartabHashStr(MemberName->Str, MemberName->Len);
-    PascalVar *Member = VartabFindWithHash(Record, MemberName->Str, MemberName->Len, Hash);
+    U32 Hash = VartabHashStr(MemberName->Lexeme.Str, MemberName->Lexeme.Len);
+    PascalVar *Member = VartabFindWithHash(Record, MemberName->Lexeme.Str, MemberName->Lexeme.Len, Hash);
     if (NULL == Member)
         return NULL;
     return Member->Location;
@@ -242,38 +250,40 @@ static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
     /* identifier consumed */
     Token Dot = Compiler->Curr;
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected member name.");
-    if (TYPE_RECORD != Left->Type)
+    if (TYPE_RECORD != Left->Type.Integral)
     {
-        ErrorAt(Compiler, &Dot, "%s does not have a member.", IntegralTypeToStr(Left->Type));
+        ErrorAt(Compiler, &Dot, "%s does not have a member.", VarTypeToStr(Left->Type));
         return *Left;
     }
 
     Token Name = Compiler->Curr;
-    VarLocation *Member = FindRecordMember(&Left->PointerTo.Record, &Name);
+    VarLocation *Member = FindRecordMember(&Left->Type.As.Record.Field, &Name);
     if (NULL == Member)
     {
-        ErrorAt(Compiler, &Name, "'%.*s' is not a member.");
+        ErrorAt(Compiler, &Name, "'"STRVIEW_FMT"' is not a member of record '"STRVIEW_FMT"'.", 
+                STRVIEW_FMT_ARG(&Name.Lexeme), STRVIEW_FMT_ARG(&Left->Type.As.Record.Name)
+        );
         return *Left;
     }
 
     /* member offset + record offset = location */
-    VarLocation Value = *Member;
-    if (VAR_MEM == Left->LocationType)
+    VarLocation Location = *Member;
+    if (VAR_MEM == Left->Location)
     {
         VarLocation Value = *Member;
         Value.As.Memory.Location += Left->As.Memory.Location;
         Value.As.Memory.RegPtr = Left->As.Memory.RegPtr;
         return Value;
     }
-    else if (VAR_REG == Left->LocationType)
+    else if (VAR_REG == Left->Location)
     {
-        Value.As.Memory.RegPtr = Left->As.Register;
+        Location.As.Memory.RegPtr = Left->As.Register;
     }
     else 
     {
-        PASCAL_UNREACHABLE("Invalid location type: %d\n", Left->LocationType);
+        PASCAL_UNREACHABLE("Invalid location type: %d\n", Left->Location);
     }
-    return Value;
+    return Location;
 }
 
 
@@ -396,14 +406,14 @@ static VarLocation ConvertTypeExplicitly(PVMCompiler *Compiler,
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Expr);
     PASCAL_NONNULL(Converter);
-    if (To == Expr->Type)
+
+    if (To == Expr->Type.Integral)
         return *Expr;
 
     VarLocation Converted = { 
-        .Type = TYPE_INVALID,
-        .LocationType = Expr->LocationType,
+        .Location = Expr->Location,
     };
-    switch (Expr->LocationType)
+    switch (Expr->Location)
     {
     case VAR_INVALID:
     case VAR_BUILTIN:
@@ -423,10 +433,16 @@ static VarLocation ConvertTypeExplicitly(PVMCompiler *Compiler,
     } break;
     case VAR_LIT:
     {
+        if (TYPE_RECORD == To)
+        {
+            PASCAL_UNREACHABLE("Record literal????");
+        }
+
         Converted.As.Literal = ConvertLiteralTypeExplicitly(Compiler, Converter, 
-                To, &Expr->As.Literal, Expr->Type
+                To, &Expr->As.Literal, Expr->Type.Integral
         );
-        Converted.Type = To;
+        Converted.Type.Integral = To;
+        Converted.Type = VarTypeInit(To, IntegralTypeSize(To));
     } break;
     }
 
@@ -445,7 +461,7 @@ static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, Pa
     VarLocation *Location = Variable->Location;
 
     /* builtin function */
-    if (VAR_BUILTIN == Location->LocationType)
+    if (VAR_BUILTIN == Location->Location)
     {
         OptionalReturnValue Opt = CompileCallToBuiltin(Compiler, Variable->Location->As.BuiltinSubroutine);
         if (!Opt.HasReturnValue)
@@ -460,25 +476,39 @@ static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, Pa
     VarSubroutine *Callee = &Location->As.Subroutine;
     if (!Callee->HasReturnType)
     {
-        ErrorAt(Compiler, Identifier, "Procedure '%.*s' does not have a return value.",
-                Identifier->Len, Identifier->Str 
+        ErrorAt(Compiler, Identifier, "Procedure '"STRVIEW_FMT"' does not have a return value.",
+                STRVIEW_FMT_ARG(&Identifier->Lexeme)
         );
         return ReturnValue;
     }
 
     /* setup return reg */
-    if (TYPE_RECORD == Callee->ReturnType.Type)
+    if (TYPE_RECORD == Callee->ReturnType.Integral)
     {
-        PASCAL_UNREACHABLE("TODO: record return");
+        if (TYPE_RECORD != Compiler->Lhs.Type.Integral)
+        {
+            /* allocate tmp space */
+            PASCAL_UNREACHABLE("TODO: not using record return type");
+        }
+
+        /* TODO: unhack this */
+        VarLocation Ret = PVMSetReturnType(EMITTER(), Callee->ReturnType);
+        VarRegister Arg = Ret.As.Memory.RegPtr;
+        PASCAL_ASSERT(VAR_MEM == Compiler->Lhs.Location, "");
+
+        PVMEmitLoadAddr(EMITTER(), Arg, Compiler->Lhs.As.Memory);
+        PVMMarkRegisterAsAllocated(EMITTER(), Arg.ID);
+
+        CompileSubroutineCall(Compiler, Callee, Identifier, &Ret);
+        return Ret;
     }
     else
     {
-        ReturnValue = PVMAllocateRegister(EMITTER(), Callee->ReturnType.Type);
+        ReturnValue = PVMAllocateRegisterLocation(EMITTER(), Callee->ReturnType);
         CompileSubroutineCall(Compiler, Callee, Identifier, &ReturnValue);
-        if (TYPE_POINTER == ReturnValue.Type)
+        if (TYPE_POINTER == ReturnValue.Type.Integral)
         {
-            PASCAL_NONNULL(Callee->ReturnType.Location);
-            ReturnValue.PointerTo.Var = Callee->ReturnType.Location->PointerTo.Var;
+            ReturnValue.Type.As.Pointee = Callee->ReturnType.As.Pointee;
         }
         return ReturnValue;
     }
@@ -503,17 +533,17 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
         if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
         {
             VarLocation Expr = FactorGrouping(Compiler);
-            return ConvertTypeExplicitly(Compiler, &Identifier, Variable->Type, &Expr);
+            return ConvertTypeExplicitly(Compiler, &Identifier, Variable->Type.Integral, &Expr);
         }
         /* returns the type itself for sizeof */
         /* typename */
         VarLocation Type = {
             .Type = Variable->Type,
-            .LocationType = VAR_INVALID,
+            .Location = VAR_INVALID,
         };
         return Type;
     }
-    if (TYPE_FUNCTION == Variable->Location->Type)
+    if (TYPE_FUNCTION == Variable->Type.Integral)
     {
         return FactorCall(Compiler, &Identifier, Variable);
     }
@@ -542,17 +572,17 @@ static VarLocation VariableAddrOf(PVMCompiler *Compiler)
     }
     VarLocation *Location = Variable->Location;
     PASCAL_NONNULL(Location);
-    PASCAL_ASSERT(Variable->Type == Location->Type, "");
-
-
-    VarLocation Ptr = PVMAllocateRegister(EMITTER(), TYPE_POINTER);
-    Ptr.PointerTo.Var = *Variable;
-    if (VAR_MEM != Location->LocationType)
+    PASCAL_ASSERT(VarTypeEqual(&Variable->Type, &Location->Type), "Unreachable");
+    if (VAR_MEM != Location->Location)
     {
         ErrorAt(Compiler, &AtSign, "Cannot take the address of this type of variable.");
         return *Location;
     }
-    PVMEmitLoadAddr(EMITTER(), &Ptr, Location);
+
+    VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), 
+            VarTypePtr(CompilerCopyType(Compiler, Variable->Type))
+    );
+    PVMEmitLoadAddr(EMITTER(), Ptr.As.Register, Location->As.Memory);
     return Ptr;
 }
 
@@ -562,8 +592,7 @@ static VarLocation NegateLiteral(PVMCompiler *Compiler,
         const Token *OpToken, VarLiteral Literal, IntegralType LiteralType)
 {
     VarLocation Location = {
-        .LocationType = VAR_LIT,
-        .Type = TYPE_INVALID,
+        .Location = VAR_LIT,
     };
     if (IntegralTypeIsInteger(LiteralType))
     {
@@ -573,7 +602,8 @@ static VarLocation NegateLiteral(PVMCompiler *Compiler,
     else if (IntegralTypeIsFloat(LiteralType))
     {
         Literal.Flt = -Literal.Flt;
-        Location.Type = TYPE_F64;
+        Location.Type.Integral = TYPE_F64;
+        Location.Type.Size = sizeof(F64);
     }
     else 
     {
@@ -588,13 +618,12 @@ static VarLocation NotLiteral(PVMCompiler *Compiler,
         const Token *OpToken, VarLiteral Literal, IntegralType LiteralType)
 {
     VarLocation Location = {
-        .LocationType = VAR_LIT,
-        .Type = TYPE_INVALID,
+        .Location = VAR_LIT,
     };
     if (TYPE_BOOLEAN == LiteralType)
     {
         Literal.Bool = !Literal.Bool;
-        Location.Type = TYPE_BOOLEAN;
+        Location.Type = VarTypeInit(TYPE_BOOLEAN, 1);
     }
     else if (IntegralTypeIsInteger(LiteralType))
     {
@@ -616,24 +645,25 @@ static VarLocation ExprUnary(PVMCompiler *Compiler)
     Token OpToken = Compiler->Curr;
     VarLocation Value = ParsePrecedence(Compiler, PREC_FACTOR);
 
-    if (VAR_INVALID == Value.LocationType)
+    if (VAR_INVALID == Value.Location)
     {
-        ErrorAt(Compiler, &OpToken, "unary operator '%.*s' cannot be applied to expression with no storage.",
-                OpToken.Len, OpToken.Str
+        ErrorAt(Compiler, &OpToken, 
+                "unary operator '"STRVIEW_FMT"' cannot be applied to expression with no storage.",
+                STRVIEW_FMT_ARG(&OpToken.Lexeme)
         );
     }
-    else if (VAR_LIT == Value.LocationType)
+    else if (VAR_LIT == Value.Location)
     {
         switch (Operator)
         {
         case TOKEN_PLUS: break;
         case TOKEN_NOT:
         {
-            Value = NotLiteral(Compiler, &OpToken, Value.As.Literal, Value.Type);
+            Value = NotLiteral(Compiler, &OpToken, Value.As.Literal, Value.Type.Integral);
         } break;
         case TOKEN_MINUS:
         {
-            Value = NegateLiteral(Compiler, &OpToken, Value.As.Literal, Value.Type);
+            Value = NegateLiteral(Compiler, &OpToken, Value.As.Literal, Value.Type.Integral);
         } break;
         default: goto Unreachable;
         }
@@ -645,14 +675,18 @@ static VarLocation ExprUnary(PVMCompiler *Compiler)
         case TOKEN_PLUS: break;
         case TOKEN_MINUS:
         {
-            if (!IntegralTypeIsFloat(Value.Type) && !IntegralTypeIsInteger(Value.Type))
+            if (!IntegralTypeIsFloat(Value.Type.Integral) 
+            && !IntegralTypeIsInteger(Value.Type.Integral))
                 goto TypeMismatch;
+
             PVMEmitNeg(EMITTER(), &Value, &Value);
         } break;
         case TOKEN_NOT:
         {
-            if (!IntegralTypeIsInteger(Value.Type) && TYPE_BOOLEAN != Value.Type)
+            if (!IntegralTypeIsInteger(Value.Type.Integral) 
+            && TYPE_BOOLEAN != Value.Type.Integral)
                 goto TypeMismatch;
+
             PVMEmitNot(EMITTER(), &Value, &Value);
         } break;
         default: goto Unreachable;
@@ -661,7 +695,7 @@ static VarLocation ExprUnary(PVMCompiler *Compiler)
     return Value;
 
 TypeMismatch:
-    INVALID_PREFIX_OP(&OpToken, Value.Type);
+    INVALID_PREFIX_OP(&OpToken, Value.Type.Integral);
     return Value;
 
 Unreachable: 
@@ -732,14 +766,11 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     do {\
         if (IntegralTypeIsFloat(Both)) {\
             Result.As.Literal.Flt = Left->As.Literal.Flt Operator Right->As.Literal.Flt;\
+            Result.Type = VarTypeInit(Both, IntegralTypeSize(Both));\
         } else if (IntegralTypeIsInteger(Both)) {\
             Result.As.Literal.Int = Left->As.Literal.Int Operator Right->As.Literal.Int;\
-        } else if (TYPE_POINTER == Both) {\
-            Result.As.Literal.Ptr.As.UInt = \
-            Left->As.Literal.Ptr.As.UInt\
-            Operator Right->As.Literal.Ptr.As.UInt;\
+            Result.Type = TypeOfIntLit(Result.As.Literal.Int);\
         } else break;\
-        Result.Type = Both;\
     } while (0)
 
 #define COMPARE_OP(Operator) \
@@ -753,28 +784,17 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
         } else if (TYPE_STRING == Both) {\
             Result.As.Literal.Bool = CompareStringOrder(OpToken->Type, &Left->As.Literal.Str, &Right->As.Literal.Str);\
         }\
-        Result.Type = TYPE_BOOLEAN;\
-    } while (0)
-
-#define INT_AND_BOOL_OP(Operator) \
-    do {\
-        if (IntegralTypeIsInteger(Both)) {\
-            Result.As.Literal.Int = Left->As.Literal.Int Operator Right->As.Literal.Int;\
-            Result.Type = Both;\
-        } else if (TYPE_BOOLEAN == Both) {\
-            Result.As.Literal.Bool = Left->As.Literal.Bool Operator Right->As.Literal.Bool;\
-            Result.Type = TYPE_BOOLEAN;\
-        }\
+        Result.Type = VarTypeInit(TYPE_BOOLEAN, 1);\
     } while (0)
 
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(OpToken);
     PASCAL_NONNULL(Left);
     PASCAL_NONNULL(Right);
-    PASCAL_ASSERT(VAR_INVALID != Left->LocationType, "Unreachable");
-    PASCAL_ASSERT(VAR_INVALID != Right->LocationType, "Unreachable");
+    PASCAL_ASSERT(VAR_LIT == Left->Location, "left is not a literal in %s", __func__);
+    PASCAL_ASSERT(VAR_LIT == Right->Location, "right is not a literal in %s", __func__);
 
-    IntegralType Both = CoerceTypes(Compiler, OpToken, Left->Type, Right->Type);
+    IntegralType Both = CoerceTypes(Compiler, OpToken, Left->Type.Integral, Right->Type.Integral);
     bool ConversionOk = ConvertTypeImplicitly(Compiler, Both, Left);
     ConversionOk = ConversionOk && ConvertTypeImplicitly(Compiler, Both, Right);
     if (!ConversionOk)
@@ -783,11 +803,9 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     }
 
     VarLocation Result = {
-        .Type = TYPE_INVALID,
-        .LocationType = VAR_LIT,
+        .Location = VAR_LIT,
+        .Type = VarTypeInit(Both, IntegralTypeSize(Both)),
     };
-    PASCAL_ASSERT(VAR_LIT == Left->LocationType, "left is not a literal in %s", __func__);
-    PASCAL_ASSERT(VAR_LIT == Right->LocationType, "right is not a literal in %s", __func__);
 
     switch (OpToken->Type)
     {
@@ -801,26 +819,35 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
             PascalStr RightStr = Right->As.Literal.Str;
             PStrAppendStr(&Result.As.Literal.Str, PStrGetPtr(&RightStr), PStrGetLen(&RightStr));
 
-            /* TODO: should we free the right string? */
-            //PStrDeinit(&RightStr);
-            Result.Type = Both;
+            /* free the right string since it is a tmp literal */
+            PStrDeinit(&RightStr);
         }
     } break;
     case TOKEN_MINUS: 
     {
+        if (!IntegralTypeIsInteger(Both) || !IntegralTypeIsFloat(Both))
+            goto InvalidTypeConversion;
+
         COMMON_BIN_OP(-);
     } break;
     case TOKEN_STAR:
     {
         if (IntegralTypeIsInteger(Both))
         {
-            Result.As.Literal.Int = Left->As.Literal.Int * Right->As.Literal.Int;
-            Result.Type = Both;
+            if (IntegralTypeIsSigned(Both))
+            {
+                Result.As.Literal.Int = (I64)Left->As.Literal.Int * (I64)Right->As.Literal.Int;
+                Result.Type = TypeOfIntLit(Result.As.Literal.Int);
+            }
+            else 
+            {
+                Result.As.Literal.Int = Left->As.Literal.Int * Right->As.Literal.Int;
+                Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
+            }
         }
         else if (IntegralTypeIsFloat(Both))
         {
             Result.As.Literal.Flt = Left->As.Literal.Flt * Right->As.Literal.Flt;
-            Result.Type = Both;
         } 
         else goto InvalidTypeConversion;
     } break;
@@ -834,13 +861,21 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
                 ErrorAt(Compiler, OpToken, "Integer division by 0");
                 break;
             }
-            Result.As.Literal.Int = Left->As.Literal.Int / Right->As.Literal.Int;
-            Result.Type = Both;
+
+            if (IntegralTypeIsSigned(Both))
+            {
+                Result.As.Literal.Int = (I64)Left->As.Literal.Int / (I64)Right->As.Literal.Int;
+                Result.Type = TypeOfIntLit(Result.As.Literal.Int);
+            }
+            else 
+            {
+                Result.As.Literal.Int = Left->As.Literal.Int / Right->As.Literal.Int;
+                Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
+            }
         }
         else if (IntegralTypeIsFloat(Both))
         {
             Result.As.Literal.Flt = Left->As.Literal.Flt / Right->As.Literal.Flt;
-            Result.Type = Both;
         } 
         else goto InvalidTypeConversion;
     } break;
@@ -853,8 +888,17 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
                 ErrorAt(Compiler, OpToken, "Integer modulo by 0");
                 break;
             }
-            Result.As.Literal.Int = Left->As.Literal.Int % Right->As.Literal.Int;
-            Result.Type = Both;
+
+            if (IntegralTypeIsSigned(Both))
+            {
+                Result.As.Literal.Int = (I64)Left->As.Literal.Int % (I64)Right->As.Literal.Int;
+                Result.Type = TypeOfIntLit(Result.As.Literal.Int);
+            }
+            else 
+            {
+                Result.As.Literal.Int = Left->As.Literal.Int % Right->As.Literal.Int;
+                Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
+            }
         }
         else goto InvalidTypeConversion;
     } break;
@@ -862,12 +906,12 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     case TOKEN_EQUAL:           
     {
         Result.As.Literal.Bool = LiteralEqual(Left->As.Literal, Right->As.Literal, Both);
-        Result.Type = TYPE_BOOLEAN;
+        Result.Type = VarTypeInit(TYPE_BOOLEAN, 1);
     } break;
     case TOKEN_LESS_GREATER:
     {
         Result.As.Literal.Bool = !LiteralEqual(Left->As.Literal, Right->As.Literal, Both);
-        Result.Type = TYPE_BOOLEAN;
+        Result.Type = VarTypeInit(TYPE_BOOLEAN, 1);
     } break;
     case TOKEN_LESS:            COMPARE_OP(<); break;
     case TOKEN_GREATER:         COMPARE_OP(>); break;
@@ -881,7 +925,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
         if (IntegralTypeIsInteger(Both))
         {
             Result.As.Literal.Int = Left->As.Literal.Int << Right->As.Literal.Int;
-            Result.Type = TypeOfIntLit(Result.As.Literal.Int);
+            Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
         }
         else goto InvalidTypeConversion;
     } break;
@@ -894,12 +938,13 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
             if (Left->As.Literal.Int >> 63)
             {
                 Result.As.Literal.Int = ArithmeticShiftRight(Left->As.Literal.Int, Right->As.Literal.Int);
+                Result.Type = TypeOfIntLit(Result.As.Literal.Int);
             }
             else
             {
                 Result.As.Literal.Int = Left->As.Literal.Int >> Right->As.Literal.Int;
+                Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
             }
-            Result.Type = TypeOfIntLit(Result.As.Literal.Int);
         }
         else goto InvalidTypeConversion;
     } break;
@@ -910,7 +955,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
         if (IntegralTypeIsInteger(Both))
         {
             Result.As.Literal.Int = Left->As.Literal.Int & Right->As.Literal.Int;
-            Result.Type = Both;
+            Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
         }
         else goto InvalidTypeConversion;
     } break;
@@ -920,7 +965,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
         if (IntegralTypeIsInteger(Both))
         {
             Result.As.Literal.Int = Left->As.Literal.Int | Right->As.Literal.Int;
-            Result.Type = Both;
+            Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
         }
         else goto InvalidTypeConversion;
     } break;
@@ -929,6 +974,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
         if (IntegralTypeIsInteger(Both))
         {
             Result.As.Literal.Int = Left->As.Literal.Int ^ Right->As.Literal.Int;
+            Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
         }
         else goto InvalidTypeConversion;
     } break;
@@ -938,17 +984,16 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     } break;
     }
 
-    if (TYPE_INVALID != Result.Type)
+    if (TYPE_INVALID != Result.Type.Integral)
     {
         return Result;
     }
 
 InvalidTypeConversion:
-    INVALID_BINARY_OP(OpToken, Left->Type, Right->Type);
+    INVALID_BINARY_OP(OpToken, Left->Type.Integral, Right->Type.Integral);
     return *Left;
 #undef COMMON_BIN_OP
 #undef COMPARE_OP
-#undef INT_AND_BOOL_OP
 }
 
 
@@ -959,30 +1004,30 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler,
     PASCAL_NONNULL(OpToken);
     PASCAL_NONNULL(Left);
     PASCAL_NONNULL(Right);
-    PASCAL_ASSERT(VAR_INVALID != Left->LocationType, "Unreachable");
-    PASCAL_ASSERT(VAR_INVALID != Right->LocationType, "Unreachable");
+    PASCAL_ASSERT(VAR_INVALID != Left->Location, "Unreachable");
+    PASCAL_ASSERT(VAR_INVALID != Right->Location, "Unreachable");
 
     VarLocation Tmp = *Left;
     VarLocation Src = *Right;
-    if (VAR_LIT == Left->LocationType)
+    if (VAR_LIT == Left->Location)
     {
         Tmp = *Right;
         Src = *Left;
     }
 
     /* typecheck */
-    IntegralType Type = CoerceTypes(Compiler, OpToken, Left->Type, Right->Type);
+    IntegralType Type = CoerceTypes(Compiler, OpToken, Left->Type.Integral, Right->Type.Integral);
     bool ConversionOk = 
         ConvertTypeImplicitly(Compiler, Type, &Tmp) 
         && ConvertTypeImplicitly(Compiler, Type, &Src);
     if (!ConversionOk) 
     {
-        INVALID_BINARY_OP(OpToken, Tmp.Type, Src.Type);
+        INVALID_BINARY_OP(OpToken, Tmp.Type.Integral, Src.Type.Integral);
         return *Left;
     }
 
-    VarLocation Dst = PVMAllocateRegister(EMITTER(), Tmp.Type);
-    PVMEmitMov(EMITTER(), &Dst, &Tmp);
+    VarLocation Dst;
+    PVMEmitIntoReg(EMITTER(), &Dst, false, &Tmp);
     switch (OpToken->Type)
     {
     case TOKEN_PLUS: 
@@ -1027,13 +1072,13 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler,
     case TOKEN_LESS_GREATER:
     case TOKEN_EQUAL:
     {
-        if (IntegralTypeIsInteger(Dst.Type) 
-        && VAR_LIT != Left->LocationType && VAR_LIT != Right->LocationType
-        && (IntegralTypeIsSigned(Left->Type) != IntegralTypeIsSigned(Right->Type)))
+        if (IntegralTypeIsInteger(Dst.Type.Integral) 
+        && VAR_LIT != Left->Location && VAR_LIT != Right->Location
+        && (IntegralTypeIsSigned(Left->Type.Integral) != IntegralTypeIsSigned(Right->Type.Integral)))
         {
             ErrorAt(Compiler, OpToken, 
                     "Comparison between integers of different sign (%s and %s) is not allowed.",
-                    IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right->Type)
+                    VarTypeToStr(Left->Type), VarTypeToStr(Right->Type)
             );
             return *Left;
         }
@@ -1055,10 +1100,9 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler,
         PVMEmitXor(EMITTER(), &Dst, &Src);
     } break;
 
-    default: PASCAL_UNREACHABLE("Unhandled binary op: %.*s", OpToken->Len, OpToken->Str); break;
+    default: PASCAL_UNREACHABLE("Unhandled binary op: "STRVIEW_FMT, STRVIEW_FMT_ARG(&OpToken->Lexeme)); break;
     }
 
-    Dst.Type = Type;
     FreeExpr(Compiler, Src);
     return Dst;
 }
@@ -1075,21 +1119,24 @@ static VarLocation ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
      *      not     (1 + (2 + 3)) 
      */
     VarLocation Right = ParsePrecedence(Compiler, OperatorRule->Prec + 1);
-    bool LeftInvalid = VAR_INVALID == Left->LocationType;
-    bool RightInvalid = VAR_INVALID == Right.LocationType;
+    bool LeftInvalid = VAR_INVALID == Left->Location;
+    bool RightInvalid = VAR_INVALID == Right.Location;
 
     if (LeftInvalid || RightInvalid)
     {
-        const char *Msg = "Expression on both sides of '%.*s' does not have a storage class.";
+        const char *Msg = "Expression on both sides of '"STRVIEW_FMT"' does not have a storage class.";
         if (LeftInvalid && !RightInvalid)
-            Msg = "Expression on the left of '%.*s' does not have a storage class.";
+            Msg = "Expression on the left of '"STRVIEW_FMT"' does not have a storage class.";
         else if (!LeftInvalid && RightInvalid)
-            Msg = "Expression on the right of '%.*s' does not have a storage class.";
+            Msg = "Expression on the right of '"STRVIEW_FMT"' does not have a storage class.";
 
-        ErrorAt(Compiler, &OpToken, Msg, OpToken.Len, OpToken.Str);
-        return *Left;
+        ErrorAt(Compiler, &OpToken, Msg, STRVIEW_FMT_ARG(&OpToken.Lexeme));
     }
-    else if (VAR_LIT == Left->LocationType && VAR_LIT == Right.LocationType)
+    else if (TYPE_RECORD == Left->Type.Integral)
+    {
+        PASCAL_UNREACHABLE("No binary op on record type.");
+    }
+    else if (VAR_LIT == Left->Location && VAR_LIT == Right.Location)
     {
         return LiteralExprBinary(Compiler, &OpToken, Left, &Right);
     }
@@ -1097,6 +1144,7 @@ static VarLocation ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
     {
         return RuntimeExprBinary(Compiler, &OpToken, Left, &Right);
     }
+    return *Left;
 }
 
 
@@ -1107,10 +1155,10 @@ static VarLocation ExprAnd(PVMCompiler *Compiler, VarLocation *Left)
 
     VarLocation Right;
     Token OpToken = Compiler->Curr;
-    if (TYPE_BOOLEAN == Left->Type)
+    if (TYPE_BOOLEAN == Left->Type.Integral)
     {
         bool WasEmit = EMITTER()->ShouldEmit;
-        if (VAR_LIT == Left->LocationType && !Left->As.Literal.Bool)
+        if (VAR_LIT == Left->Location && !Left->As.Literal.Bool)
         {
             /* false and ...: don't emit right */
             EMITTER()->ShouldEmit = false;
@@ -1119,30 +1167,30 @@ static VarLocation ExprAnd(PVMCompiler *Compiler, VarLocation *Left)
         U32 FromLeft = PVMEmitBranchIfFalse(EMITTER(), Left);
 
         Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
-        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
+        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type.Integral, Right.Type.Integral);
         if (TYPE_INVALID == ResultType)
             goto InvalidOperands;
         PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
-        PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type, "");
+        PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type.Integral, "");
 
         PVMPatchBranchToCurrent(EMITTER(), FromLeft, BRANCHTYPE_CONDITIONAL);
 
         EMITTER()->ShouldEmit = WasEmit;
     }
-    else if (IntegralTypeIsInteger(Left->Type))
+    else if (IntegralTypeIsInteger(Left->Type.Integral))
     {
         return ExprBinary(Compiler, Left);
     }
     else 
     {
         ErrorAt(Compiler, &OpToken, "Invalid left operand for 'and': %s",
-                IntegralTypeToStr(Left->Type)
+                VarTypeToStr(Left->Type)
         );
     }
 
     return *Left;
 InvalidOperands:
-    INVALID_BINARY_OP(&OpToken, Left->Type, Right.Type);
+    INVALID_BINARY_OP(&OpToken, Left->Type.Integral, Right.Type.Integral);
     return *Left;
 }
 
@@ -1154,10 +1202,10 @@ static VarLocation ExprOr(PVMCompiler *Compiler, VarLocation *Left)
 
     VarLocation Right;
     Token OpToken = Compiler->Curr;
-    if (TYPE_BOOLEAN == Left->Type)
+    if (TYPE_BOOLEAN == Left->Type.Integral)
     {
         bool WasEmit = EMITTER()->ShouldEmit;
-        if (VAR_LIT == Left->LocationType && Left->As.Literal.Bool)
+        if (VAR_LIT == Left->Location && Left->As.Literal.Bool)
         {
             /* true or ...: don't emit right */
             EMITTER()->ShouldEmit = false;
@@ -1166,30 +1214,30 @@ static VarLocation ExprOr(PVMCompiler *Compiler, VarLocation *Left)
         U32 FromTrue = PVMEmitBranchIfTrue(EMITTER(), Left);
 
         Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
-        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type, Right.Type);
+        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type.Integral, Right.Type.Integral);
         if (TYPE_INVALID == ResultType)
             goto InvalidOperands;
         PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
-        PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type, "");
+        PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type.Integral, "");
 
         PVMPatchBranchToCurrent(EMITTER(), FromTrue, BRANCHTYPE_CONDITIONAL);
 
         EMITTER()->ShouldEmit = WasEmit;
     }
-    else if (IntegralTypeIsInteger(Left->Type))
+    else if (IntegralTypeIsInteger(Left->Type.Integral))
     {
         return ExprBinary(Compiler, Left);
     }
     else 
     {
         ErrorAt(Compiler, &OpToken, "Invalid left operand for 'or': %s",
-                IntegralTypeToStr(Left->Type)
+                VarTypeToStr(Left->Type)
         );
     }
 
     return *Left;
 InvalidOperands:
-    INVALID_BINARY_OP(&OpToken, Left->Type, Right.Type);
+    INVALID_BINARY_OP(&OpToken, Left->Type.Integral, Right.Type.Integral);
     return *Left;
 }
 
@@ -1244,14 +1292,14 @@ static const PrecedenceRule *GetPrecedenceRule(TokenType CurrentTokenType)
 
 static VarLocation ParseAssignmentLhs(PVMCompiler *Compiler, Precedence Prec)
 {
-    const PrefixParseRoutine PrefixRoutine = GetPrecedenceRule(Compiler->Curr.Type)->PrefixRoutine;
+    const PrefixParseRoutine PrefixRoutine = 
+        GetPrecedenceRule(Compiler->Curr.Type)->PrefixRoutine;
     if (NULL == PrefixRoutine)
     {
         ErrorAt(Compiler, &Compiler->Curr, "Expected expression.");
-        return (VarLocation) {
-            .LocationType = VAR_INVALID,
-        };
+        return (VarLocation) { 0 };
     }
+
 
     VarLocation Left = PrefixRoutine(Compiler);
 
@@ -1259,10 +1307,14 @@ static VarLocation ParseAssignmentLhs(PVMCompiler *Compiler, Precedence Prec)
     /* only parse next op if they have the same or lower precedence */
     while (Prec <= GetPrecedenceRule(Compiler->Next.Type)->Prec)
     {
-        ConsumeToken(Compiler); /* the operator */
         const InfixParseRoutine InfixRoutine = 
-            GetPrecedenceRule(Compiler->Curr.Type)->InfixRoutine;
-
+            GetPrecedenceRule(Compiler->Next.Type)->InfixRoutine;
+        if (NULL == InfixRoutine)
+        {
+            Error(Compiler, "Expected infix operator.");
+            return (VarLocation) { 0 };
+        }
+        ConsumeToken(Compiler); /* the operator */
         PASCAL_NONNULL(InfixRoutine);
         Left = InfixRoutine(Compiler, &Left);
     }
@@ -1288,11 +1340,11 @@ IntegralType CoerceTypes(PVMCompiler *Compiler, const Token *Op, IntegralType Le
         PASCAL_UNREACHABLE("Invalid types");
 
     IntegralType CommonType = sCoercionRules[Left][Right];
-    if (TYPE_INVALID == CommonType)
-        goto InvalidTypeCombo;
+    if (TYPE_INVALID != CommonType)
+    {
+        return CommonType;
+    }
 
-    return CommonType;
-InvalidTypeCombo:
     if (NULL == Op)
     {
         Error(Compiler, "Invalid combination of %s and %s.", 
@@ -1311,22 +1363,22 @@ InvalidTypeCombo:
 
 bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLocation *From)
 {
-    if (To == From->Type)
+    if (To == From->Type.Integral)
     {
         return true;
     }
-    switch (From->LocationType)
+    switch (From->Location)
     {
     case VAR_LIT:
     {
-        if (IntegralTypeIsInteger(To) && IntegralTypeIsInteger(From->Type))
+        if (IntegralTypeIsInteger(To) && IntegralTypeIsInteger(From->Type.Integral))
             break;
 
         if (IntegralTypeIsFloat(To))
         {
-            if (IntegralTypeIsFloat(From->Type))
+            if (IntegralTypeIsFloat(From->Type.Integral))
                 break;
-            if (IntegralTypeIsInteger(From->Type))
+            if (IntegralTypeIsInteger(From->Type.Integral))
             {
                 From->As.Literal.Flt = From->As.Literal.Int;
                 break;
@@ -1337,48 +1389,46 @@ bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLocation *
     } break;
     case VAR_REG:
     {
-        if (IntegralTypeIsInteger(To) && IntegralTypeIsInteger(From->Type))
+        if (IntegralTypeIsInteger(To) && IntegralTypeIsInteger(From->Type.Integral))
         {
-            PVMEmitIntegerTypeConversion(EMITTER(), From->As.Register, To, From->As.Register, From->Type);
-            From->Type = To;
+            PVMEmitIntegerTypeConversion(EMITTER(), From->As.Register, To, From->As.Register, From->Type.Integral);
             break;
         }
         if (IntegralTypeIsFloat(To))
         {
-            if (IntegralTypeIsFloat(From->Type))
+            if (IntegralTypeIsFloat(From->Type.Integral))
             {
-                PVMEmitFloatTypeConversion(EMITTER(), From->As.Register, To, From->As.Register, From->Type);
+                PVMEmitFloatTypeConversion(EMITTER(), From->As.Register, To, From->As.Register, From->Type.Integral);
             }
-            else if (IntegralTypeIsInteger(From->Type))
+            else if (IntegralTypeIsInteger(From->Type.Integral))
             {
-                VarLocation FloatReg = PVMAllocateRegister(EMITTER(), To);
+                VarRegister FloatReg = PVMAllocateRegister(EMITTER(), To);
                 PVMEmitIntToFltTypeConversion(EMITTER(), 
-                        FloatReg.As.Register, To, From->As.Register, From->Type
+                        FloatReg, To, From->As.Register, From->Type.Integral
                 );
                 PVMFreeRegister(EMITTER(), From->As.Register);
-                From->As.Register.ID = FloatReg.As.Register.ID;
+                From->As.Register.ID = FloatReg.ID;
             }
             else goto InvalidTypeConversion;
-            From->Type = To;
             break;
         }
         goto InvalidTypeConversion;
     } break;
     case VAR_MEM:
     {
-        From->Type = To;
+        From->Type.Integral = To;
         return true;
-        if (To != From->Type)
+        if (To != From->Type.Integral)
         {
             Error(Compiler, "Cannot reinterpret memory of %s as %s.", 
-                    IntegralTypeToStr(From->Type), IntegralTypeToStr(To)
+                    VarTypeToStr(From->Type), IntegralTypeToStr(To)
             );
             return false;
         }
     } break;
     case VAR_FLAG:
     {
-        if (TYPE_BOOLEAN != To)
+        if (TYPE_BOOLEAN != To || TYPE_BOOLEAN != From->Type.Integral)
             goto InvalidTypeConversion;
     } break;
     case VAR_INVALID:
@@ -1389,10 +1439,10 @@ bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLocation *
     } break;
     }
 
-    From->Type = To;
+    From->Type = VarTypeInit(To, IntegralTypeSize(To));
     return true;
 InvalidTypeConversion:
-    Error(Compiler, "Cannot convert from %s to %s.", IntegralTypeToStr(From->Type), IntegralTypeToStr(To));
+    Error(Compiler, "Cannot convert from %s to %s.", VarTypeToStr(From->Type), IntegralTypeToStr(To));
     return false;
 }
 

@@ -136,7 +136,7 @@ static void CompileExitStmt(PVMCompiler *Compiler)
             if (ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
                 goto Done;
 
-            VarLocation ReturnValue = PVMSetReturnType(EMITTER(), TYPE_I32);
+            VarLocation ReturnValue = PVMSetReturnType(EMITTER(), VarTypeInit(TYPE_I32, sizeof(I32)));
             CompileExprInto(Compiler, &Keyword, &ReturnValue);
         }
         else if (CurrentSubroutine->HasReturnType)
@@ -148,22 +148,19 @@ static void CompileExitStmt(PVMCompiler *Compiler)
                 ErrorAt(Compiler, &Keyword, "Function must return a value.");
                 goto Done;
             }
-            const VarLocation *ReturnType = CurrentSubroutine->ReturnType.Location;
-            PASCAL_NONNULL(ReturnType);
 
             VarLocation ReturnValue = PVMSetReturnType(EMITTER(), 
-                    CurrentSubroutine->ReturnType.Type
+                    CurrentSubroutine->ReturnType
             );
-            ReturnValue.Size = ReturnType->Size;
-            if (TYPE_RECORD == ReturnValue.Type)
+            if (TYPE_RECORD == ReturnValue.Type.Integral)
             {
-                VarLocation RecordAddr = CompileExprIntoReg(Compiler);
-                ReturnValue.PointerTo.Record = ReturnType->PointerTo.Record;
+                VarLocation RecordAddr = CompileExpr(Compiler);
+                ReturnValue.Location = VAR_MEM;
+                PASCAL_ASSERT(RecordAddr.Location == VAR_MEM, "Record ret");
                 PVMEmitCopy(EMITTER(), &ReturnValue, &RecordAddr);
             }
             else 
             {
-                ReturnValue.PointerTo.Var = ReturnType->PointerTo.Var;
                 CompileExprInto(Compiler, &Keyword, &ReturnValue);
             }
         }
@@ -244,9 +241,9 @@ static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
     CompilerInitDebugInfo(Compiler, &UntilKeyword);
 
     VarLocation Tmp = CompileExprIntoReg(Compiler);
-    if (TYPE_BOOLEAN != Tmp.Type)
+    if (TYPE_BOOLEAN != Tmp.Type.Integral)
     {
-        ErrorTypeMismatch(Compiler, &UntilKeyword, "until loop condition", "boolean", Tmp.Type);
+        ErrorTypeMismatch(Compiler, &UntilKeyword, "until loop condition", "boolean", Tmp.Type.Integral);
     }
 
     U32 ToHead = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
@@ -277,10 +274,10 @@ static void CompileForStmt(PVMCompiler *Compiler)
     if (NULL == Counter)
         return;
     PASCAL_NONNULL(Counter->Location);
-    if (!IntegralTypeIsInteger(Counter->Type))
+    if (!IntegralTypeIsInteger(Counter->Type.Integral))
     {
         ErrorAt(Compiler, &Compiler->Curr, "Variable of type %s cannot be used as a counter.",
-                IntegralTypeToStr(Counter->Type)
+                VarTypeToStr(Counter->Type)
         );
         return;
     }
@@ -288,7 +285,7 @@ static void CompileForStmt(PVMCompiler *Compiler)
     /* FPC does not allow the address of a counter variable to be taken */
     VarLocation CounterSave = *Counter->Location;
     VarLocation *i = Counter->Location;
-    *i = PVMAllocateRegister(EMITTER(), Counter->Type);
+    *i = PVMAllocateRegisterLocation(EMITTER(), CounterSave.Type);
     i->As.Register.Persistent = true;
 
     /* init expression */
@@ -311,17 +308,17 @@ static void CompileForStmt(PVMCompiler *Compiler)
     /* stop condition expr */
     U32 LoopExit = 0;
     VarLocation StopCondition = CompileExprIntoReg(Compiler); 
-    if (TYPE_INVALID == CoerceTypes(Compiler, &OpToken, i->Type, StopCondition.Type))
+    if (TYPE_INVALID == CoerceTypes(Compiler, &OpToken, i->Type.Integral, StopCondition.Type.Integral))
     {
-        ErrorAt(Compiler, &OpToken, "Incompatible types for 'for' loop: from %s %.*s %s.", 
-                IntegralTypeToStr(i->Type),
-                OpToken.Len, OpToken.Str, 
-                IntegralTypeToStr(StopCondition.Type)
+        ErrorAt(Compiler, &OpToken, "Incompatible types for 'for' loop: from %s "STRVIEW_FMT" %s.", 
+                VarTypeToStr(i->Type),
+                STRVIEW_FMT_ARG(&OpToken.Lexeme),
+                VarTypeToStr(StopCondition.Type)
         );
     }
     else
     {
-        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, i->Type, &StopCondition), "");
+        PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, i->Type.Integral, &StopCondition), "");
 
         LoopHead = PVMMarkBranchTarget(EMITTER());
         PVMEmitSetFlag(EMITTER(), Op, &StopCondition, i);
@@ -340,7 +337,7 @@ static void CompileForStmt(PVMCompiler *Compiler)
     PVMEmitBranchAndInc(EMITTER(), i->As.Register, Inc, LoopHead);
 
     /* loop end */
-    PVMEmitDebugInfo(EMITTER(), Compiler->Curr.Str, Compiler->Curr.Len, Compiler->Curr.Line);
+    PVMEmitDebugInfo(EMITTER(), Compiler->Curr.Lexeme.Str, Compiler->Curr.Lexeme.Len, Compiler->Curr.Line);
     PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_FLAG);
     CompilerPatchBreaks(Compiler, BreakCountBeforeBody);
 
@@ -363,13 +360,13 @@ static void CompileWhileStmt(PVMCompiler *Compiler)
     /* condition expression */
     U32 LoopHead = PVMMarkBranchTarget(EMITTER());
     VarLocation Tmp = CompileExpr(Compiler);
-    if (TYPE_BOOLEAN != Tmp.Type)
+    if (TYPE_BOOLEAN != Tmp.Type.Integral)
     {
-        ErrorTypeMismatch(Compiler, &Keyword, "while loop condition", "boolean", Tmp.Type);
+        ErrorTypeMismatch(Compiler, &Keyword, "while loop condition", "boolean", Tmp.Type.Integral);
     }
 
     Condition Cond = COND_UNKNOWN;
-    if (VAR_LIT == Tmp.LocationType)
+    if (VAR_LIT == Tmp.Location)
     {
         Cond = COND_FALSE;
         if (Tmp.As.Literal.Bool)
@@ -415,11 +412,11 @@ static void CompileIfStmt(PVMCompiler *Compiler)
     ConsumeOrError(Compiler, TOKEN_THEN, "Expected 'then' after expression.");
     CompilerEmitDebugInfo(Compiler, &Keyword);
 
-    if (TYPE_BOOLEAN != Tmp.Type)
-        ErrorTypeMismatch(Compiler, &Keyword, "if condition", "boolean", Tmp.Type);
+    if (TYPE_BOOLEAN != Tmp.Type.Integral)
+        ErrorTypeMismatch(Compiler, &Keyword, "if condition", "boolean", Tmp.Type.Integral);
 
     Condition IfCond = COND_UNKNOWN;
-    if (VAR_LIT == Tmp.LocationType)
+    if (VAR_LIT == Tmp.Location)
     {
         IfCond = COND_FALSE;
         if (Tmp.As.Literal.Bool)
@@ -481,7 +478,7 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token Name, PascalVar *
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(IdenInfo);
     PASCAL_NONNULL(IdenInfo->Location);
-    PASCAL_ASSERT(TYPE_FUNCTION == IdenInfo->Type, "Unreachable, IdenInfo is not a subroutine");
+    PASCAL_ASSERT(TYPE_FUNCTION == IdenInfo->Type.Integral, "Unreachable, IdenInfo is not a subroutine");
 
     /* iden consumed */
     CompilerInitDebugInfo(Compiler, &Name);
@@ -505,9 +502,10 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
         return;
     }
 
-    if (VAR_REG != Left->LocationType)
+    bool OwningLeft = false;
+    if (VAR_REG != Left->Location)
     {
-        PVMEmitIntoReg(EMITTER(), Left, Left);
+        PVMEmitIntoReg(EMITTER(), Left, false, Left);
     }
     switch (Assignment->Type)
     {
@@ -517,14 +515,14 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
     case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), Left, Right); break;
     case TOKEN_PERCENT_EQUAL: 
     {
-        if (IntegralTypeIsInteger(Left->Type) && IntegralTypeIsInteger(Right->Type))
+        if (VarTypeToStr(Left->Type) && VarTypeToStr(Right->Type))
         {
             PVMEmitMod(EMITTER(), Left, Right);
         }
         else 
         {
             ErrorAt(Compiler, Assignment, "Cannot perform modulo between %s and %s.",
-                    IntegralTypeToStr(Left->Type), IntegralTypeToStr(Right->Type)
+                    VarTypeToStr(Left->Type), VarTypeToStr(Right->Type)
             );
         }
     } break;
@@ -536,8 +534,7 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
 
 
     PVMEmitMov(EMITTER(), &Dst, Left);
-    /* value of left is in register, TODO: this is a hack */
-    if (memcmp(&Dst, Left, sizeof Dst) != 0)
+    if (OwningLeft)
     {
         FreeExpr(Compiler, *Left);
     }
@@ -550,35 +547,42 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
     /* iden consumed */
     CompilerInitDebugInfo(Compiler, &Identifier);
 
-    VarLocation Dst = CompileVariableExpr(Compiler);
-    PASCAL_ASSERT(VAR_INVALID != Dst.LocationType, "Invalid location in AssignStmt.");
+
+    /* no nested assignment is possible, this is ok */
+    Compiler->Lhs = CompileVariableExpr(Compiler);
+    VarLocation *Dst = &Compiler->Lhs;
+    PASCAL_ASSERT(VAR_INVALID != Dst->Location, "Invalid location");
+
 
     const Token Assignment = Compiler->Next;
     ConsumeToken(Compiler); /* assignment type */
 
+
     VarLocation Right = CompileExpr(Compiler);
-    if (TYPE_INVALID == CoerceTypes(Compiler, &Assignment, Dst.Type, Right.Type)
-    || !ConvertTypeImplicitly(Compiler, Dst.Type, &Right))
+    if (TYPE_INVALID == CoerceTypes(Compiler, &Assignment, Dst->Type.Integral, Right.Type.Integral)
+    || !ConvertTypeImplicitly(Compiler, Dst->Type.Integral, &Right))
     {
         ErrorAt(Compiler, &Assignment, "Cannot assign expression of type %s to %s.", 
-                IntegralTypeToStr(Right.Type), IntegralTypeToStr(Dst.Type)
+                VarTypeToStr(Right.Type), VarTypeToStr(Dst->Type)
         );
-        goto Exit;
     }
-    if (TYPE_POINTER == Dst.Type && TYPE_POINTER == Right.Type 
-    && Dst.PointerTo.Var.Type != Right.PointerTo.Var.Type)
+    else if (TYPE_RECORD == Dst->Type.Integral)
     {
-        ErrorAt(Compiler, &Assignment, "Cannot assign %s pointer to %s pointer.", 
-                IntegralTypeToStr(Right.PointerTo.Var.Type),
-                IntegralTypeToStr(Dst.PointerTo.Var.Type)
-        );
-        goto Exit;
+        if (!VarTypeEqual(&Dst->Type, &Right.Type))
+        {
+            ErrorAt(Compiler, &Assignment, "Cannot assign record '"STRVIEW_FMT"' to record '"STRVIEW_FMT"'",
+                    STRVIEW_FMT_ARG(&Dst->Type.As.Record.Name), STRVIEW_FMT_ARG(&Right.Type.As.Record.Name)
+            );
+        }
+    }
+    else
+    {
+        /* emit the assignment */
+        CompilerEmitAssignment(Compiler, &Assignment, Dst, &Right);
     }
 
-    /* emit the assignment */
-    CompilerEmitAssignment(Compiler, &Assignment, &Dst, &Right);
 
-Exit:
+    Compiler->Lhs.Location = VAR_INVALID;
     FreeExpr(Compiler, Right);
     CompilerEmitDebugInfo(Compiler, &Identifier);
 }
@@ -594,12 +598,12 @@ static void CompileIdenStmt(PVMCompiler *Compiler)
     if (NULL == IdentifierInfo)
         return;
     
-    if (TYPE_FUNCTION == IdentifierInfo->Type)
+    if (TYPE_FUNCTION == IdentifierInfo->Type.Integral)
     {
         Token Callee = Compiler->Curr;
         /* Pascal's weird return statement */
-        if (IdentifierInfo->Len == Callee.Len 
-        && TokenEqualNoCase(IdentifierInfo->Str, Callee.Str, Callee.Len) 
+        if (IdentifierInfo->Str.Len == Callee.Lexeme.Len
+        && TokenEqualNoCase(IdentifierInfo->Str.Str, Callee.Lexeme.Str, Callee.Lexeme.Len) 
         && ConsumeIfNextIs(Compiler, TOKEN_COLON_EQUAL))
         {
             PASCAL_UNREACHABLE("TODO: return by assigning to function name");
@@ -607,7 +611,7 @@ static void CompileIdenStmt(PVMCompiler *Compiler)
 
         PASCAL_NONNULL(IdentifierInfo->Location);
         const VarLocation *Location = IdentifierInfo->Location;
-        if (VAR_BUILTIN == Location->LocationType)
+        if (VAR_BUILTIN == Location->Location)
         {
             CompileCallToBuiltin(Compiler, Location->As.BuiltinSubroutine);
         }
@@ -638,7 +642,7 @@ static void CompileCaseStmt(PVMCompiler *Compiler)
 
 
     bool Last = EMITTER()->ShouldEmit;
-    bool ExprIsConstant = VAR_LIT == Expr.LocationType;
+    bool ExprIsConstant = VAR_LIT == Expr.Location;
     bool Emitted = false;
 
     U32 OutBranch[256];
@@ -652,15 +656,15 @@ static void CompileCaseStmt(PVMCompiler *Compiler)
             /* don't need to free the expr here since 
              * it is only evaluated at compile time and does not use any register */
             VarLocation Constant = CompileExpr(Compiler);
-            if (VAR_LIT != Constant.LocationType) 
+            if (VAR_LIT != Constant.Location) 
             {
                 /* TODO: expression highlighter */
                 Error(Compiler, "Case expression cannot be evaluated at compile time.");
             }
-            if (!ConvertTypeImplicitly(Compiler, Expr.Type, &Constant))
+            if (!ConvertTypeImplicitly(Compiler, Expr.Type.Integral, &Constant))
             {
                 Error(Compiler, "Cannot convert from %s to %s in case expression.", 
-                        IntegralTypeToStr(Constant.Type), IntegralTypeToStr(Expr.Type)
+                        VarTypeToStr(Constant.Type), VarTypeToStr(Expr.Type)
                 );
                 Expr.Type = Constant.Type;
             }
@@ -675,7 +679,7 @@ static void CompileCaseStmt(PVMCompiler *Compiler)
 
             if (ExprIsConstant)
             {
-                bool LiteralEqu = LiteralEqual(Expr.As.Literal, Constant.As.Literal, Expr.Type);
+                bool LiteralEqu = LiteralEqual(Expr.As.Literal, Constant.As.Literal, Expr.Type.Integral);
                 EMITTER()->ShouldEmit = LiteralEqu;
                 if (LiteralEqu)
                     Emitted = true;
@@ -855,7 +859,7 @@ static void CompileBeginBlock(PVMCompiler *Compiler)
 
 
 static VarSubroutine *CompileSubroutineName(
-        PVMCompiler *Compiler, const Token *Name, bool IsFunction, U32 Location, const char *SubroutineType)
+        PVMCompiler *Compiler, const Token *Name, bool IsFunction, const char *SubroutineType)
 {
     PascalVar *SubroutineInfo = FindIdentifier(Compiler, Name);
     VarSubroutine *Subroutine = NULL;
@@ -875,14 +879,14 @@ static VarSubroutine *CompileSubroutineName(
         /* redefinition error */
         if (Subroutine->Defined)
         {
-            ErrorAt(Compiler, Name, "Redefinition of %s '%.*s' that was defined on line %d.",
-                    SubroutineType, Name->Len, Name->Str, Subroutine->Line
+            ErrorAt(Compiler, Name, "Redefinition of %s '"STRVIEW_FMT"' that was defined on line %d.",
+                    SubroutineType, STRVIEW_FMT_ARG(&Name->Lexeme), Subroutine->Line
             );
         }
         if (Subroutine->HasReturnType != IsFunction)
         {
-            ErrorAt(Compiler, Name, "Definition of %s '%.*s' does not match declaration on line %d.",
-                    SubroutineType, Name->Len, Name->Str, SubroutineInfo->Line
+            ErrorAt(Compiler, Name, "Definition of %s '"STRVIEW_FMT"' does not match declaration on line %d.",
+                    SubroutineType, STRVIEW_FMT_ARG(&Name->Lexeme), SubroutineInfo->Line
             );
         }
     }
@@ -890,16 +894,15 @@ static VarSubroutine *CompileSubroutineName(
     {
         /* new subroutine declaration */
         VarLocation *Var = CompilerAllocateVarLocation(Compiler);
-        Var->LocationType = VAR_SUBROUTINE;
-        Var->Type = TYPE_FUNCTION;
+        Var->Type = VarTypeInit(TYPE_FUNCTION, 0);
         Var->As.Subroutine = (VarSubroutine) {
             .HasReturnType = IsFunction,
-            .Location = Location,
+            .Location = VAR_SUBROUTINE,
             .Defined = false,
         };
         Subroutine = &Var->As.Subroutine;
 
-        SubroutineInfo = DefineIdentifier(Compiler, Name, TYPE_FUNCTION, Var);
+        SubroutineInfo = DefineIdentifier(Compiler, Name, VarTypeInit(TYPE_FUNCTION, 0), Var);
         PASCAL_ASSERT(SubroutineInfo != NULL, "");
         Subroutine->Scope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
     }
@@ -921,7 +924,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected %s name.", SubroutineType);
     Token Name = Compiler->Curr;
     VarSubroutine *Subroutine = CompileSubroutineName(
-            Compiler, &Name, TOKEN_FUNCTION == Keyword.Type, Location, SubroutineType
+            Compiler, &Name, TOKEN_FUNCTION == Keyword.Type, SubroutineType
     );
     PASCAL_NONNULL(Subroutine);
     
@@ -948,22 +951,26 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
 
         if (NULL != ReturnType)
         {
-            Subroutine->ReturnType = *ReturnType;
-            if (TYPE_RECORD == ReturnType->Type)
+            Subroutine->ReturnType = ReturnType->Type;
+            if (TYPE_RECORD == ReturnType->Type.Integral)
             {
-                /* reassign arguments because the first argument will be the addr of the struct */
+                /* NOTE: the VarLocation pointed to by record is SHARED across all function with 
+                 * the same type of record */
+                VarType Record = ReturnType->Type;
+
                 I32 Base = 0;
                 Subroutine->StackArgSize = 0;
-                PVMSetParam(EMITTER(), 0, TYPE_RECORD, ReturnType->Location->Size, &Base);
+                PVMSetParam(EMITTER(), 0, Record, &Base);
+                /* reassign arguments because the first argument will be the return record's addr */
                 for (UInt i = 0; i < Subroutine->ArgCount; i++)
                 {
                     VarLocation *Location = Subroutine->Args[i].Location;
                     PASCAL_NONNULL(Location);
 
-                    *Location = PVMSetParam(EMITTER(), i + 1, Location->Type, Location->Size, &Base);
+                    *Location = PVMSetParam(EMITTER(), i + 1, Location->Type, &Base);
                     PVMMarkArgAsOccupied(EMITTER(), Location);
                     if (i + 1 >= PVM_ARGREG_COUNT)
-                        Subroutine->StackArgSize += Location->Size;
+                        Subroutine->StackArgSize += Location->Type.Size;
                 }
             }
         }
@@ -992,18 +999,21 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     /* forward declaration */
     if (ConsumeIfNextIs(Compiler, TOKEN_FORWARD))
     {
-        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after '%.*s'", 
-                Compiler->Curr.Len, Compiler->Curr.Str
+        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after '"STRVIEW_FMT"'", 
+                STRVIEW_FMT_ARG(&Compiler->Curr.Lexeme)
         );
     }
     else /* body */
     {
         CompilerResolveSubroutineCalls(Compiler, Subroutine, Location);
         Subroutine->Defined = true;
+        Subroutine->Location = PVMGetCurrentLocation(EMITTER());
 
         Subroutine->Line = Name.Line;
-        PVMEmitSaveFrame(EMITTER());
+        U32 EnterLocation = PVMEmitEnter(EMITTER());
         CompileBlock(Compiler);
+        PVMPatchEnter(EMITTER(), EnterLocation, Compiler->StackSize);
+        Compiler->StackSize = 0;
 
         /* emit the exit instruction,
          * associate it with the 'end' token */
@@ -1012,12 +1022,24 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
         PVMEmitExit(EMITTER());
         CompilerEmitDebugInfo(Compiler, &End);
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s body.", SubroutineType);
+
+        /* force free all argument registers */
+        UInt ArgregCount = PVM_ARGREG_COUNT;
+        if (ArgregCount > Subroutine->ArgCount)
+            ArgregCount = Subroutine->ArgCount;
+        for (UInt i = 0; i < ArgregCount; i++)
+        {
+            PASCAL_NONNULL(Subroutine->Args[i].Location);
+            PVMMarkRegisterAsFreed(EMITTER(), Subroutine->Args[i].Location->As.Register.ID);
+        }
     }
 
 
     CompilerPopSubroutine(Compiler);
     PVMEmitterEndScope(EMITTER(), PrevScope);
 }
+
+
 
 
 static void CompileVarBlock(PVMCompiler *Compiler)
@@ -1027,72 +1049,86 @@ static void CompileVarBlock(PVMCompiler *Compiler)
      *      id1, id2: typename;
      *      id3: typename;
      */
-    Token Keyword = Compiler->Curr;
+    //Token Keyword = Compiler->Curr;
     if (!NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         Error(Compiler, "Expected variable name.");
         return;
     }
 
-    bool AtGlobalScope = IsAtGlobalScope(Compiler);
+    bool AtGlobalScope = false;
+    U32 BaseRegister = PVM_REG_FP;
+    U32 BaseAddr = Compiler->StackSize;
+    if (IsAtGlobalScope(Compiler))
+    {
+        AtGlobalScope = true;
+        BaseRegister = PVM_REG_GP;
+        BaseAddr = PVMGetGlobalOffset(EMITTER());
+    }
     U32 TotalSize = 0;
-    U32 Base = PVMGetStackOffset(EMITTER());
-    if (AtGlobalScope)
-        Base = PVMGetGlobalOffset(EMITTER());
     UInt Alignment = sizeof(U32);
 
     while (!IsAtEnd(Compiler) && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         Token VariableName = Compiler->Next;
-        U32 Next = CompileVarList(Compiler, Base + TotalSize, Alignment, AtGlobalScope);
+        U32 Next = CompileVarList(Compiler, BaseRegister, BaseAddr + TotalSize, Alignment);
         if (Next == TotalSize)
         {
             /* Error encountered */
             return;
         }
-        TotalSize = Next - Base;
+        TotalSize = Next - BaseAddr;
 
         /* initialization */
         if (ConsumeIfNextIs(Compiler, TOKEN_EQUAL))
         {
             PascalVar *Variable = FindIdentifier(Compiler, &VariableName);
+            PASCAL_NONNULL(Variable);
             Token EqualSign = Compiler->Curr;
             if (CompilerGetTmpCount(Compiler) > 1)
             {
-                ErrorAt(Compiler, &EqualSign, "Only one variable can be initialized.");
+                ErrorAt(Compiler, &EqualSign, "Only one variable can be initialized at a time.");
             }
-            PASCAL_NONNULL(Variable);
             PASCAL_NONNULL(Variable->Location);
 
-            if (!IsAtGlobalScope(Compiler))
-            {
-                CompileExprInto(Compiler, &EqualSign, Variable->Location);
-            }
-            else 
+            if (AtGlobalScope)
             {
                 VarLocation Constant = CompileExpr(Compiler);
-                if (VAR_LIT != Constant.LocationType)
-                    ErrorAt(Compiler, &EqualSign, "Can only initialize global variable with constant expression.");
-                if (TYPE_INVALID == CoerceTypes(Compiler, &EqualSign, Variable->Location->Type, Constant.Type))
-                    continue; /* error reported */
-                PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, Variable->Location->Type, &Constant), "Unreachable");
-                if (TYPE_RECORD == Constant.Type)
+                if (VAR_LIT != Constant.Location)
                 {
-                    ErrorAt(Compiler, &EqualSign, "Record cannot be initialized at compile time.");
-                    continue;
+                    ErrorAt(Compiler, &EqualSign, 
+                            "Can only initialize global variable with constant expression."
+                    );
+                }
+                if (TYPE_INVALID 
+                == CoerceTypes(Compiler, &EqualSign, Variable->Type.Integral, Constant.Type.Integral))
+                {
+                    continue; /* error reported */
                 }
 
+                PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, Variable->Type.Integral, &Constant), 
+                        "Unreachable"
+                );
+
+                /* flushes global variable so initialization can be done */
                 PVMEmitGlobalAllocation(EMITTER(), TotalSize);
                 TotalSize = 0;
                 PVMInitializeGlobal(EMITTER(), 
                         Variable->Location, 
-                        &Constant.As.Literal, 
-                        CompilerGetSizeOfType(Compiler, Constant.Type, &Constant), Constant.Type
+                        &Constant.As.Literal, Constant.Type.Size, Constant.Type.Integral
                 );
             }
+            else 
+            {
+                CompileExprInto(Compiler, &EqualSign, Variable->Location);
+            }
+            ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after expression.");
+        }
+        else
+        {
+            ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after variable declaration.");
         }
 
-        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after variable declaration.");
         if (ConsumeIfNextIs(Compiler, TOKEN_VAR) && !NextTokenIs(Compiler, TOKEN_IDENTIFIER))
         {
             Error(Compiler, "Expected variable name.");
@@ -1106,9 +1142,7 @@ static void CompileVarBlock(PVMCompiler *Compiler)
     }
     else
     {
-        CompilerInitDebugInfo(Compiler, &Keyword);
-        CompilerEmitDebugInfo(Compiler, &Keyword);
-        PVMEmitStackAllocation(EMITTER(), TotalSize);
+        Compiler->StackSize += TotalSize;
     }
 }
 
@@ -1147,8 +1181,8 @@ static void CompileTypeBlock(PVMCompiler *Compiler)
                 continue;
             if (NULL != Type->Location)
             {
-                ErrorAt(Compiler, &TypeName, "'%.*s' is not a type name.",
-                        TypeName.Len, TypeName.Str
+                ErrorAt(Compiler, &TypeName, "'"STRVIEW_FMT"' is not a type name.",
+                        STRVIEW_FMT_ARG(&TypeName.Lexeme)
                 );
                 continue;
             }
@@ -1196,7 +1230,7 @@ static void CompileConstBlock(PVMCompiler *Compiler)
 
         VarLocation *Literal = CompilerAllocateVarLocation(Compiler);
         *Literal = CompileExpr(Compiler);
-        if (VAR_LIT != Literal->LocationType)
+        if (VAR_LIT != Literal->Location)
         {
             ErrorAt(Compiler, &EquSign, 
                     "Expression on the right of '=' is not a compile-time constant."
@@ -1257,7 +1291,9 @@ static bool CompileHeadlessBlock(PVMCompiler *Compiler)
         {
             if (COMPMODE_REPL != Compiler->Flags.CompMode)
             {
-                Error(Compiler, "A block cannot start with '%.*s'.", Compiler->Next.Len, Compiler->Next.Str);
+                Error(Compiler, "A block cannot start with '"STRVIEW_FMT"'.", 
+                        STRVIEW_FMT_ARG(&Compiler->Next.Lexeme)
+                );
             }
             return false;
         } break;
@@ -1311,8 +1347,8 @@ static bool CompileProgram(PVMCompiler *Compiler)
 
             /* TODO: other libraries */
             /* including crt */
-            if (Unit.Len == Compiler->Builtins.Crt.Len
-            && TokenEqualNoCase(Unit.Str, Compiler->Builtins.Crt.Str, Unit.Len))
+            if (Unit.Lexeme.Len == Compiler->Builtins.Crt.Len
+            && TokenEqualNoCase(Unit.Lexeme.Str, Compiler->Builtins.Crt.Str, Unit.Lexeme.Len))
             {
                 DefineCrtSubroutines(Compiler);
             }

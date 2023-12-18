@@ -3,6 +3,7 @@
 
 
 #include "Common.h"
+#include "StringView.h"
 #include "PascalString.h"
 
 struct PascalTokenizer 
@@ -66,8 +67,7 @@ typedef enum TokenType
 
 struct Token 
 {
-    TokenType Type;
-    const U8 *Str;
+    StringView Lexeme;
     union {
         U64 Int;
         F64 Real;
@@ -75,7 +75,7 @@ struct Token
         const char *Err;
     } Literal;
 
-    UInt Len;
+    TokenType Type;
     UInt Line;
     UInt LineOffset;
 };

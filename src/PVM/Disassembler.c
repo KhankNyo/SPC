@@ -195,22 +195,6 @@ static void DisasmMnemonic(FILE *f, const char *Mnemonic, U16 Opcode)
     fputc('\n', f);
 }
 
-static U32 DisasmSysOp(FILE *f, const PVMChunk *Chunk, U32 Addr, U16 Opcode)
-{
-    (void)Chunk;
-    switch (PVM_GET_SYS_OP(Opcode))
-    {
-    case OP_SYS_EXIT:
-    {
-        DisasmMnemonic(f, "exit", Opcode);
-    } break;
-    case OP_SYS_WRITE:
-    {
-        DisasmMnemonic(f, "write", Opcode);
-    } break;
-    }
-    return Addr + 1;
-}
 
 static void DisasmReglist(FILE *f, const char *Mnemonic, U16 Opcode, bool UpperRegisters)
 {
@@ -387,6 +371,33 @@ static void DisasmSingleOperand(FILE *f, const char *Mnemonic, U16 Opcode)
     int Pad = Print2Bytes(f, Opcode);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     fprintf(f, "%s\n", Rd);
+}
+
+
+static U32 DisasmSysOp(FILE *f, const PVMChunk *Chunk, U32 Addr, U16 Opcode)
+{
+    switch (PVM_GET_SYS_OP(Opcode))
+    {
+    case OP_SYS_EXIT:
+    {
+        DisasmMnemonic(f, "exit", Opcode);
+    } break;
+    case OP_SYS_WRITE:
+    {
+        DisasmMnemonic(f, "write", Opcode);
+    } break;
+    case OP_SYS_ENTER:
+    {
+        ImmediateInfo Info = GetImmFromImmType(Chunk, Addr + 1, IMMTYPE_U32);
+        int Pad = Print2Bytes(f, Opcode);
+        Pad += Print2Bytes(f, Info.Imm >> 16);
+        PrintPaddedMnemonic(f, Pad, "enter");
+        fprintf(f, "%u", (U32)Info.Imm);
+        PrintImmBytes(f, Info);
+        return Info.Addr;
+    } break;
+    }
+    return Addr + 1;
 }
 
 

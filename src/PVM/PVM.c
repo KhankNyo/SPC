@@ -210,6 +210,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
     while (RegList && i < Base_ + PVM_REG_COUNT/2) {\
         if (RegList & 1) {\
             *(++SP().Ptr.DWord) = PVM->RegType[i].DWord;\
+            /* TODO: check stack */\
         }\
         i++;\
         RegList >>= 1;\
@@ -223,6 +224,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
     while (RegList && i < Base_ + PVM_REG_COUNT/2) {\
         if (RegList & 0x80) {\
             PVM->RegType[(Base + (PVM_REG_COUNT/2)-1) - i].DWord = *(SP().Ptr.DWord--);\
+            /* TODO: check stack */\
         }\
         i++;\
         RegList = (RegList << 1) & 0xFF;\
@@ -319,14 +321,28 @@ do {\
             {
             case OP_SYS_EXIT:
             {
+                /* global scope, exit */
                 if (PVM->RetStack.Val == PVM->RetStack.Start)
                     goto Exit;
 
+                /* stack scope, return */
                 PVM->RetStack.Val--;
                 IP = PVM->RetStack.Val->IP;
                 SP().Ptr = FP().Ptr;
                 FP().Ptr = PVM->RetStack.Val->FP;
                 PVM->RetStack.SizeLeft++;
+            } break;
+            case OP_SYS_ENTER:
+            {
+                FP() = SP();
+                U32 StackSize = 0;
+                GET_SEX_IMM(StackSize, IMMTYPE_U32, IP);
+                SP().Ptr.Byte += StackSize;
+
+                if (SP().Ptr.Byte >= PVM->Stack.End.Byte)
+                {
+                    /* TODO: check stack */
+                }
             } break;
             case OP_SYS_WRITE:
             {

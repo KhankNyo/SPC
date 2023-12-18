@@ -2,6 +2,8 @@
 
 #include <stdarg.h>
 
+#include "StringView.h"
+
 #include "Compiler/Data.h"
 #include "Compiler/Error.h"
 #include "Compiler/Builtins.h"
@@ -31,9 +33,9 @@ PVMCompiler CompilerInit(const U8 *Source,
         .InternalAlloc = GPAInit(4 * 1024 * 1024),
         /* string literals are safe */
         .Builtins = {
-            .Crt = ARTIFICIAL_TOKEN("crt"),
+            .Crt = STRVIEW_INIT_CSTR("crt", 3),
+            .System = STRVIEW_INIT_CSTR("system", 6),
         },
-        .EmptyToken = ARTIFICIAL_TOKEN(""),
 
         .Var = {
             .Cap = 256,
@@ -60,6 +62,7 @@ PVMCompiler CompilerInit(const U8 *Source,
             GPAAllocateZero(Compiler.GlobalAlloc, sizeof Compiler.Var.Location[0][0]);
     }
 
+
     DefineSystemSubroutines(&Compiler);
     return Compiler;
 }
@@ -73,55 +76,6 @@ void CompilerDeinit(PVMCompiler *Compiler)
 
 
 
-
-
-
-
-U32 CompilerGetSizeOfType(PVMCompiler *Compiler, IntegralType Type, const VarLocation *TypeInfo)
-{
-    switch (Type)
-    {
-    case TYPE_INVALID:
-    case TYPE_COUNT:
-    case TYPE_FUNCTION:
-        return 0;
-
-    case TYPE_I8:
-    case TYPE_U8:
-    case TYPE_BOOLEAN:
-        return 1;
-
-    case TYPE_I16:
-    case TYPE_U16:
-        return 2;
-
-    case TYPE_I32:
-    case TYPE_U32:
-    case TYPE_F32:
-        return 4;
-
-    case TYPE_I64:
-    case TYPE_U64:
-    case TYPE_F64:
-        return 8;
-
-    case TYPE_STRING:
-        return sizeof(PascalStr);
-
-    case TYPE_POINTER:
-        return sizeof(void*);
-    case TYPE_RECORD:
-    {
-        PASCAL_NONNULL(TypeInfo);
-        return TypeInfo->Size;
-    } break;
-    }
-
-    PASCAL_UNREACHABLE("Handle case %s", IntegralTypeToStr(Type));
-    (void)Compiler;
-    /* TODO: record and array types */
-    return 0;
-}
 
 
 
@@ -252,12 +206,12 @@ bool IsAtStmtEnd(const PVMCompiler *Compiler)
 
 void CompilerInitDebugInfo(PVMCompiler *Compiler, const Token *From)
 {
-    PVMEmitDebugInfo(&Compiler->Emitter, From->Str, From->Len, From->Line);
+    PVMEmitDebugInfo(&Compiler->Emitter, From->Lexeme.Str, From->Lexeme.Len, From->Line);
 }
 
 void CompilerEmitDebugInfo(PVMCompiler *Compiler, const Token *From)
 {
-    U32 LineLen = Compiler->Curr.Str - From->Str + Compiler->Curr.Len;
+    U32 LineLen = Compiler->Curr.Lexeme.Str - From->Lexeme.Str + Compiler->Curr.Lexeme.Len;
     if (From->Type == TOKEN_FUNCTION || From->Type == TOKEN_PROCEDURE)
     {
         PVMUpdateDebugInfo(&Compiler->Emitter, LineLen, true);
@@ -373,83 +327,83 @@ void CompilerResolveSubroutineCalls(PVMCompiler *Compiler, VarSubroutine *Subrou
 
 PascalVar *FindIdentifier(PVMCompiler *Compiler, const Token *Identifier)
 {
-    U32 Hash = VartabHashStr(Identifier->Str, Identifier->Len);
+    U32 Hash = VartabHashStr(Identifier->Lexeme.Str, Identifier->Lexeme.Len);
     PascalVar *Info = NULL;
 
     /* iterate from innermost scope to global - 1 */
     for (int i = Compiler->Scope - 1; i >= 0; i--)
     {
         Info = VartabFindWithHash(Compiler->Locals[i], 
-                Identifier->Str, Identifier->Len, Hash
+                Identifier->Lexeme.Str, Identifier->Lexeme.Len, Hash
         );
         if (NULL != Info)
             return Info;
     }
     Info = VartabFindWithHash(Compiler->Global,
-            Identifier->Str, Identifier->Len, Hash
+            Identifier->Lexeme.Str, Identifier->Lexeme.Len, Hash
     );
     return Info;
 }
 
 
 PascalVar *DefineAtScope(PVMCompiler *Compiler, PascalVartab *Scope,
-        const Token *Identifier, IntegralType Type, VarLocation *Location)
+        const Token *Identifier, VarType Type, VarLocation *Location)
 {
     PascalVar *AlreadyDefined = VartabFindWithHash(Scope, 
-            Identifier->Str, Identifier->Len, 
-            VartabHashStr(Identifier->Str, Identifier->Len)
+            Identifier->Lexeme.Str, Identifier->Lexeme.Len, 
+            VartabHashStr(Identifier->Lexeme.Str, Identifier->Lexeme.Len)
     );
     if (AlreadyDefined)
     {
         if (0 == AlreadyDefined->Line)
         {
-            ErrorAt(Compiler, Identifier, "'%.*s' is a predefined identifier in this scope.",
-                    Identifier->Len, Identifier->Str
+            ErrorAt(Compiler, Identifier, "'"STRVIEW_FMT"' is a predefined identifier in this scope.",
+                    STRVIEW_FMT_ARG(&Identifier->Lexeme)
             );
         }
         else
         {
-            ErrorAt(Compiler, Identifier, "'%.*s' is already defined on line %d in this scope.", 
-                    Identifier->Len, Identifier->Str,
+            ErrorAt(Compiler, Identifier, "'"STRVIEW_FMT"' is already defined on line %d in this scope.", 
+                    STRVIEW_FMT_ARG(&Identifier->Lexeme),
                     AlreadyDefined->Line
             );
         }
         return AlreadyDefined;
     }
     return VartabSet(Scope, 
-            Identifier->Str, Identifier->Len, Identifier->Line, 
+            Identifier->Lexeme.Str, Identifier->Lexeme.Len, Identifier->Line, 
             Type, Location
     );
 }
 
 PascalVar *DefineIdentifier(PVMCompiler *Compiler, 
-        const Token *Identifier, IntegralType Type, VarLocation *Location)
+        const Token *Identifier, VarType Type, VarLocation *Location)
 {
     return DefineAtScope(Compiler, CurrentScope(Compiler), Identifier, Type, Location);
 }
 
 PascalVar *DefineParameter(PVMCompiler *Compiler,
-        const Token *Identifier, IntegralType Type, VarLocation *Location)
+        const Token *Identifier, VarType Type, VarLocation *Location)
 {
     PascalVar *AlreadyDefined = VartabFindWithHash(CurrentScope(Compiler), 
-            Identifier->Str, Identifier->Len, 
-            VartabHashStr(Identifier->Str, Identifier->Len)
+            Identifier->Lexeme.Str, Identifier->Lexeme.Len, 
+            VartabHashStr(Identifier->Lexeme.Str, Identifier->Lexeme.Len)
     );
     if (AlreadyDefined)
     {
         ErrorAt(Compiler, Identifier, "Redefinition of parameter with the same name.",
-                Identifier->Len, Identifier->Str
+                Identifier->Lexeme.Len, Identifier->Lexeme.Str
         );
         return NULL;
     }
     return VartabSet(CurrentScope(Compiler), 
-            Identifier->Str, Identifier->Len, Identifier->Line, 
+            Identifier->Lexeme.Str, Identifier->Lexeme.Len, Identifier->Line, 
             Type, Location
     );
 }
 
 PascalVar *DefineGlobal(PVMCompiler *Compiler,
-        const Token *Identifier, IntegralType Type, VarLocation *Location)
+        const Token *Identifier, VarType Type, VarLocation *Location)
 {
     return DefineAtScope(Compiler, Compiler->Global, Identifier, Type, Location);
 }
@@ -470,6 +424,15 @@ PascalVar *GetIdenInfo(PVMCompiler *Compiler, const Token *Identifier, const cha
     return Info;
 }
 
+
+
+
+VarType *CompilerCopyType(PVMCompiler *Compiler, VarType Type)
+{
+    VarType *Copy = GPAAllocate(Compiler->GlobalAlloc, sizeof Type);
+    *Copy = Type;
+    return Copy;
+}
 
 
 

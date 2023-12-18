@@ -33,13 +33,7 @@ struct PVMEmitter
     } Reg;
 
     bool ShouldEmit;
-
     VarLocation ReturnValue;
-#if PVM_ARGREG_COUNT == 0
-    VarLocation *ArgReg;
-#else
-    VarLocation ArgReg[PVM_ARGREG_COUNT];
-#endif
 };
 
 typedef enum PVMBranchType
@@ -66,9 +60,13 @@ void PVMUpdateDebugInfo(PVMEmitter *Emitter, U32 LineLen, bool IsSubroutine);
 
 U32 PVMGetCurrentLocation(PVMEmitter *Emitter);
 /* TODO: weird semantics between these 2 functions */
+/* NOTE: FreeRegister does not free non-persistent registers, 
+ * use PVMMarkRegisterAsFreed to free persistent registers (parameter regs for example) */
 void PVMFreeRegister(PVMEmitter *Emitter, VarRegister Reg);
-VarLocation PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type);
+VarRegister PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type);
+VarLocation PVMAllocateRegisterLocation(PVMEmitter *Emitter, VarType Type);
 void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, U32 RegID);
+void PVMMarkRegisterAsFreed(PVMEmitter *Emitter, UInt Reg);
 
 
 /* Branching instructions */
@@ -90,11 +88,9 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 /* returns true if the caller owns OutTarget, false otherwise, 
  * call PVMFreeRegister to dipose OutTarget if true is returned */
-bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, const VarLocation *Src);
-void PVMEmitLoadAddr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Base, I32 Offset);
-void PVMEmitDerefPtr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Ptr);
-void PVMEmitStoreToPtr(PVMEmitter *Emitter, const VarLocation *Ptr, const VarLocation *Src);
+bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, bool ReadOnly, const VarLocation *Src);
+void PVMEmitLoadAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src);
+void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src, I32 Offset);
 
 
 /* type conversion */
@@ -134,19 +130,17 @@ VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op, const VarLocation 
 
 
 /* subroutine arguments */
-VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ParamType, U32 ParamSize, I32 *Base);
-
 I32 PVMStartArg(PVMEmitter *Emitter, U32 ArgSize);
-VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, IntegralType ArgType, U32 ArgSize, I32 *Base);
+VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType Type, I32 *Base);
+VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType Type, I32 *Base);
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg);
 
-VarLocation PVMSetReturnType(PVMEmitter *Emitter, IntegralType ReturnType);
+VarLocation PVMSetReturnType(PVMEmitter *Emitter, VarType Type);
 /* accepts Pointer to VarLocation as args */
 void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...);
 
 
 /* stack instructions */
-U32 PVMGetStackOffset(PVMEmitter *Emitter);
 VarMemory PVMQueueStackArg(PVMEmitter *Emitter, U32 Size);
 void PVMEmitStackAllocation(PVMEmitter *Emitter, I32 Size);
 
@@ -167,7 +161,9 @@ U32 PVMEmitCall(PVMEmitter *Emitter, const VarSubroutine *Callee);
 void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID, SaveRegInfo Save);
 
 
-/* exit/return */
+/* enter and exit/return */
+U32 PVMEmitEnter(PVMEmitter *Emitter);
+void PVMPatchEnter(PVMEmitter *Emitter, U32 Location, U32 StackSize);
 void PVMEmitExit(PVMEmitter *Emitter);
 
 

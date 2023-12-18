@@ -10,9 +10,9 @@
 
 
 
-#define IS_TOMBSTONED(pSlot) (0 == (pSlot)->Len)
-#define IS_EMPTY(pSlot) (IS_TOMBSTONED(pSlot) && NULL == (pSlot)->Str)
-#define SET_TOMBSTONE(pSlot) ((pSlot)->Len = 0)
+#define IS_TOMBSTONED(pSlot) (0 == (pSlot)->Str.Len)
+#define IS_EMPTY(pSlot) (IS_TOMBSTONED(pSlot) && NULL == (pSlot)->Str.Str)
+#define SET_TOMBSTONE(pSlot) ((pSlot)->Str.Len = 0)
 
 
 static PascalVar *VartabFindValidSlot(PascalVar *Table, ISize Cap, const U8 *Key, UInt Len, U32 Hash);
@@ -46,23 +46,25 @@ PascalVartab VartabInit(PascalGPA *Allocator, ISize InitialCap)
 PascalVartab VartabPredefinedIdentifiers(PascalGPA *Allocator, ISize InitialCap)
 {
     PascalVartab Identifiers = VartabInit(Allocator, InitialCap);
-    VartabSet(&Identifiers, (const U8*)"INTEGER", 7, 0, TYPE_I16, NULL);
-    VartabSet(&Identifiers, (const U8*)"REAL", 4, 0, TYPE_F32, NULL);
-    VartabSet(&Identifiers, (const U8*)"REAL32", 6, 0, TYPE_F32, NULL);
-    VartabSet(&Identifiers, (const U8*)"REAL64", 6, 0, TYPE_F64, NULL);
-    VartabSet(&Identifiers, (const U8*)"BOOLEAN", 7, 0, TYPE_BOOLEAN, NULL);
-    VartabSet(&Identifiers, (const U8*)"STRING", 6, 0, TYPE_STRING, NULL);
-    VartabSet(&Identifiers, (const U8*)"ShortString", 11, 0, TYPE_STRING, NULL);
+    VartabSet(&Identifiers, (const U8*)"INTEGER", 7, 0, VarTypeInit(TYPE_I16, 2), NULL);
 
-    VartabSet(&Identifiers, (const U8*)"int8", 4, 0, TYPE_I8, NULL);
-    VartabSet(&Identifiers, (const U8*)"int16", 5, 0, TYPE_I16, NULL);
-    VartabSet(&Identifiers, (const U8*)"int32", 5, 0, TYPE_I32, NULL);
-    VartabSet(&Identifiers, (const U8*)"int64", 5, 0, TYPE_I64, NULL);
+    VartabSet(&Identifiers, (const U8*)"REAL", 4, 0, VarTypeInit(TYPE_F32, 4), NULL);
+    VartabSet(&Identifiers, (const U8*)"REAL32", 6, 0, VarTypeInit(TYPE_F32, 4), NULL);
+    VartabSet(&Identifiers, (const U8*)"REAL64", 6, 0, VarTypeInit(TYPE_F64, 8), NULL);
+    VartabSet(&Identifiers, (const U8*)"BOOLEAN", 7, 0, VarTypeInit(TYPE_BOOLEAN, 1), NULL);
 
-    VartabSet(&Identifiers, (const U8*)"uint8", 5, 0, TYPE_U8, NULL);
-    VartabSet(&Identifiers, (const U8*)"uint16", 6, 0, TYPE_U16, NULL);
-    VartabSet(&Identifiers, (const U8*)"uint32", 6, 0, TYPE_U32, NULL);
-    VartabSet(&Identifiers, (const U8*)"uint64", 6, 0, TYPE_U64, NULL);
+    VartabSet(&Identifiers, (const U8*)"STRING", 6, 0, VarTypeInit(TYPE_STRING, sizeof(PascalStr)), NULL);
+    VartabSet(&Identifiers, (const U8*)"ShortString", 11, 0, VarTypeInit(TYPE_STRING, sizeof(PascalStr)), NULL);
+
+    VartabSet(&Identifiers, (const U8*)"int8", 4, 0, VarTypeInit(TYPE_I8, 1), NULL);
+    VartabSet(&Identifiers, (const U8*)"int16", 5, 0, VarTypeInit(TYPE_I16, 2), NULL);
+    VartabSet(&Identifiers, (const U8*)"int32", 5, 0, VarTypeInit(TYPE_I32, 4), NULL);
+    VartabSet(&Identifiers, (const U8*)"int64", 5, 0, VarTypeInit(TYPE_I64, 8), NULL);
+
+    VartabSet(&Identifiers, (const U8*)"uint8", 5, 0, VarTypeInit(TYPE_U8, 1), NULL);
+    VartabSet(&Identifiers, (const U8*)"uint16", 6, 0, VarTypeInit(TYPE_U16, 2), NULL);
+    VartabSet(&Identifiers, (const U8*)"uint32", 6, 0, VarTypeInit(TYPE_U32, 4), NULL);
+    VartabSet(&Identifiers, (const U8*)"uint64", 6, 0, VarTypeInit(TYPE_U64, 8), NULL);
     return Identifiers;
 }
 
@@ -97,7 +99,8 @@ PascalVar *VartabFindWithHash(PascalVartab *Vartab, const U8 *Key, UInt Len, U32
 
 
 
-PascalVar *VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, U32 Line, IntegralType Type, VarLocation *Location)
+PascalVar *VartabSet(PascalVartab *Vartab, 
+        const U8 *Key, UInt Len, U32 Line, VarType Type, VarLocation *Location)
 {
     PASCAL_ASSERT(NULL != Vartab->Allocator, "Attempting to call VartabSet on a const Vartab");
 
@@ -119,13 +122,12 @@ PascalVar *VartabSet(PascalVartab *Vartab, const U8 *Key, UInt Len, U32 Line, In
     }
 
 
-    Slot->Str = Key;
-    Slot->Len = Len;
+    Slot->Str = STRVIEW_INIT(Key, Len);
+    Slot->Line = Line;
     Slot->Hash = Hash;
 
     Slot->Type = Type;
     Slot->Location = Location;
-    Slot->Line = Line;
     return Slot;
 }
 
@@ -170,9 +172,9 @@ static PascalVar *VartabFindValidSlot(PascalVar *Table, ISize Cap, const U8 *Key
     for (ISize i = 0; i < 2*Cap; i++)
     {
         PascalVar *Slot = &Table[Index];
-        if (Len == Slot->Len
+        if (Len == Slot->Str.Len
             && Hash == Slot->Hash
-            && TokenEqualNoCase(Key, Slot->Str, Len))
+            && TokenEqualNoCase(Key, Slot->Str.Str, Len))
         {
             return Slot;
         }
@@ -208,7 +210,7 @@ static void VartabResize(PascalVartab *Vartab, U32 NewCap)
             continue;
 
         PascalVar *Slot = VartabFindValidSlot(NewTable, Vartab->Cap, 
-                Vartab->Table[i].Str, Vartab->Table[i].Len, Vartab->Table[i].Hash
+                Vartab->Table[i].Str.Str, Vartab->Table[i].Str.Len, Vartab->Table[i].Hash
         );
         *Slot = Vartab->Table[i];
         Vartab->Count++;

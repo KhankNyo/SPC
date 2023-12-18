@@ -17,13 +17,13 @@ static U32 LineLen(const U8 *s)
 
 static void PrintAndHighlightSource(FILE *LogFile, const Token *Tok)
 {
-    const U8 *LineStart = Tok->Str - Tok->LineOffset + 1;
+    const U8 *LineStart = Tok->Lexeme.Str - Tok->LineOffset + 1;
     char Highlighter = '^';
     U32 Len = LineLen(LineStart);
 
     fprintf(LogFile, "\n    \"%.*s\"", Len, LineStart);
     fprintf(LogFile, "\n    %*s", Tok->LineOffset, "");
-    for (U32 i = 0; i < Tok->Len; i++)
+    for (U32 i = 0; i < Tok->Lexeme.Len; i++)
     {
         fputc(Highlighter, LogFile);
     }

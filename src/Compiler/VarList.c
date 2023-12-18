@@ -10,13 +10,9 @@
 typedef struct TypeAttribute 
 {
     bool Packed;
-    IntegralType Type;
-    USize Size;
-    union {
-        PascalVar Var;
-        PascalVartab Record;
-    } Pointer;
+    VarType Type;
 } TypeAttribute;
+
 
 static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttribute *Out)
 {
@@ -40,10 +36,7 @@ static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttri
         if (NULL == Record)
             return false;
 
-        Out->Size = CompilerGetSizeOfType(Compiler, TYPE_RECORD, Record->Location);
-        Out->Type = TYPE_RECORD;
-        PASCAL_NONNULL(Record->Location);
-        Out->Pointer.Record = Record->Location->PointerTo.Record;
+        Out->Type = Record->Type;
         return true;
     }
     if (ConsumeIfNextIs(Compiler, TOKEN_ARRAY))
@@ -55,39 +48,24 @@ static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttri
         PascalVar *Typename = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined type name.");
         if (NULL == Typename)
             return false;
-
-        Out->Size = CompilerGetSizeOfType(Compiler, Typename->Type, Typename->Location);
-        if (Pointer)
+        if (NULL != Typename->Location)
         {
-            Out->Type = TYPE_POINTER;
-            Out->Pointer.Var = *Typename;
-            Out->Size = sizeof(void*);
-        }
-        else if (TYPE_RECORD == Typename->Type)
-        {
-            PASCAL_NONNULL(Typename->Location);
-            Out->Type = TYPE_RECORD;
-            Out->Pointer.Record = Typename->Location->PointerTo.Record;
-        }
-        /* a type name */
-        else if (NULL == Typename->Location)
-        {
-            Out->Type = Typename->Type;
-        }
-        /* not a typename, report error */
-        else
-        {
-            ErrorAt(Compiler, &Compiler->Curr, "'%.*s' is not a type name in this scope.", 
-                    Compiler->Curr.Len, Compiler->Curr.Str
+            ErrorAt(Compiler, &Compiler->Curr, "'"STRVIEW_FMT"' is not a type name in this scope.", 
+                    STRVIEW_FMT_ARG(&Compiler->Curr.Lexeme)
             );
             return false;
         }
+
+        if (Pointer)
+            Out->Type = VarTypePtr(CompilerCopyType(Compiler, Typename->Type));
+        else
+            Out->Type = Typename->Type;
         return true;
     }
     else 
     {
-        Error(Compiler, "Expected type name after '%.*s'.",
-                Compiler->Curr.Len, Compiler->Curr.Str
+        Error(Compiler, "Expected type name after '"STRVIEW_FMT"'.",
+                STRVIEW_FMT_ARG(&Compiler->Curr.Lexeme)
         );
     }
     return false;
@@ -132,7 +110,7 @@ static bool ParseVarList(PVMCompiler *Compiler, bool IsParameterList, TypeAttrib
 
 
 /* alignment should be pow 2 */
-U32 CompileVarList(PVMCompiler *Compiler, U32 StartAddr, UInt Alignment, bool Global)
+U32 CompileVarList(PVMCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U32 Alignment)
 {
     /* 
      *  a, b, c: typename;
@@ -141,42 +119,35 @@ U32 CompileVarList(PVMCompiler *Compiler, U32 StartAddr, UInt Alignment, bool Gl
      *  a1, a2: Array of typename
      *          Array[~~~]
      */
-    TypeAttribute Type;
-    if (!ParseVarList(Compiler, false, &Type))
+    TypeAttribute TypeAttr;
+    if (!ParseVarList(Compiler, false, &TypeAttr))
         return StartAddr;
 
     UInt VarCount = CompilerGetTmpCount(Compiler);
-    U32 AlignedSize = Type.Size;
+    U32 AlignedSize = TypeAttr.Type.Size;
     U32 Mask = ~(Alignment - 1);
     U32 EndAddr = StartAddr;
-    if (Type.Size & ~Mask)
+    if (TypeAttr.Type.Size & ~Mask)
     {
-        AlignedSize = (Type.Size + Alignment) & Mask;
+        AlignedSize = (TypeAttr.Type.Size + Alignment) & Mask;
     }
 
-    UInt Base = PVM_REG_FP;
-    if (Global)
-        Base = PVM_REG_GP;
     /* defining the variables */
     for (UInt i = 0; i < VarCount; i++)
     {
         VarLocation *Location = CompilerAllocateVarLocation(Compiler);
         DefineIdentifier(Compiler, 
                 CompilerGetTmp(Compiler, i),
-                Type.Type,
+                TypeAttr.Type,
                 Location
         );
 
-        Location->Size = AlignedSize;
-        Location->Type = Type.Type;
-        Location->LocationType = VAR_MEM;
+        Location->Type = TypeAttr.Type;
+        Location->Location = VAR_MEM;
         Location->As.Memory = (VarMemory) {
             .Location = EndAddr,
-            .RegPtr.ID = Base,
+            .RegPtr.ID = BaseRegister,
         };
-        if (TYPE_RECORD == Type.Type)
-            Location->PointerTo.Record = Type.Pointer.Record;
-        else Location->PointerTo.Var = Type.Pointer.Var;
         EndAddr += AlignedSize;
     }
     return EndAddr;
@@ -214,8 +185,8 @@ bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *Subroutine)
             PASCAL_UNREACHABLE("TODO: const param");
         }
         /* parse the parameters */
-        TypeAttribute Type;
-        if (!ParseVarList(Compiler, true, &Type))
+        TypeAttribute TypeAttr;
+        if (!ParseVarList(Compiler, true, &TypeAttr))
         {
             /* flushes temporary params and pretend nothing happened */
             CompilerResetTmp(Compiler);
@@ -229,20 +200,17 @@ bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *Subroutine)
             VarLocation *Location = CompilerAllocateVarLocation(Compiler);
             PascalVar *Var = DefineIdentifier(Compiler, 
                     CompilerGetTmp(Compiler, i),
-                    Type.Type,
+                    TypeAttr.Type,
                     Location
             );
 
-            *Location = PVMSetParam(EMITTER(), Subroutine->ArgCount, Type.Type, Type.Size, &Base);
+            *Location = PVMSetParam(EMITTER(), Subroutine->ArgCount, TypeAttr.Type, &Base);
             /* arg will be freed when compilation of function is finished */
             PVMMarkArgAsOccupied(EMITTER(), Location);
-            if (TYPE_RECORD == Type.Type)
-                Location->PointerTo.Record = Type.Pointer.Record;
-            else Location->PointerTo.Var = Type.Pointer.Var;
 
             SubroutineDataPushParameter(Compiler->GlobalAlloc, Subroutine, Var);
             if (Subroutine->ArgCount >= PVM_ARGREG_COUNT)
-                Subroutine->StackArgSize += Type.Size;
+                Subroutine->StackArgSize += TypeAttr.Type.Size;
         }
 
         if (ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
@@ -271,7 +239,7 @@ PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Name)
     while (!IsAtEnd(Compiler) && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         /* packed alignment: 1 */
-        U32 NextLine = CompileVarList(Compiler, TotalSize, 1, false);
+        U32 NextLine = CompileVarList(Compiler, 0, TotalSize, 1);
         if (TotalSize == NextLine)
         {
             return NULL;
@@ -290,12 +258,8 @@ PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Name)
     ConsumeOrError(Compiler, TOKEN_END, "Expected 'end' after record definition.");
 
     CompilerPopScope(Compiler);
-    VarLocation *Type = CompilerAllocateVarLocation(Compiler);
-    Type->Type = TYPE_RECORD;
-    Type->LocationType = VAR_INVALID;
-    Type->PointerTo.Record = RecordScope;
-    Type->Size = TotalSize;
-    return DefineIdentifier(Compiler, Name, TYPE_RECORD, Type);
+    VarType Record = VarTypeRecord(Name->Lexeme, RecordScope, TotalSize);
+    return DefineIdentifier(Compiler, Name, Record, NULL);
 }
 
 
@@ -321,17 +285,14 @@ void CompileArgumentList(PVMCompiler *Compiler,
     );
 
     I32 Base = PVMStartArg(EMITTER(), Subroutine->StackArgSize);
+    UInt RecordArg = TYPE_RECORD == Subroutine->ReturnType.Integral;
     do {
         if (ArgCount < ExpectedArgCount)
         {
             const VarLocation *CurrentArg = Subroutine->Args[ArgCount].Location;
             PASCAL_NONNULL(CurrentArg);
 
-            VarLocation Arg = PVMSetArg(EMITTER(), ArgCount, CurrentArg->Type, CurrentArg->Size, &Base);
-            if (CurrentArg->Type == TYPE_RECORD)
-                Arg.PointerTo.Record = CurrentArg->PointerTo.Record;
-            else Arg.PointerTo.Var = CurrentArg->PointerTo.Var;
-
+            VarLocation Arg = PVMSetArg(EMITTER(), ArgCount + RecordArg, CurrentArg->Type, &Base);
             CompileExprInto(Compiler, NULL, &Arg);
         }
         else

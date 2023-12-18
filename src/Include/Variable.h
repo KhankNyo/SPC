@@ -7,17 +7,32 @@
 #include "Vartab.h"
 #include "PascalString.h"
 
+#include "StringView.h"
+
+
+struct VarType 
+{
+    IntegralType Integral;
+    U32 Size;
+    union {
+        struct VarType *Pointee;
+        struct {
+            StringView Name;
+            PascalVartab Field;
+        } Record;
+    } As;
+};
 
 struct PascalVar
 {
-    const U8 *Str;
-    UInt Len;
+    StringView Str;
     U32 Line;
     U32 Hash;
 
-    IntegralType Type;
     VarLocation *Location;
+    VarType Type;
 };
+
 
 
 
@@ -48,15 +63,17 @@ struct VarSubroutine
 
 	bool Defined;
 	U32 Line;
+    /* TODO: who own these */
 	U32 *References;
 	U32 RefCount, RefCap;
 
     U32 ArgCount, Cap;
 	U32 StackArgSize;
+    /* this too */
 	PascalVar *Args;
 
     bool HasReturnType;
-    PascalVar ReturnType;
+    VarType ReturnType;
     PascalVartab Scope;
 };
 
@@ -72,17 +89,10 @@ typedef enum VarLocationType
 } VarLocationType;
 
 
-
-
 struct VarLocation 
 {
-    VarLocationType LocationType;
-    IntegralType Type;
-    U32 Size;
-    union {
-        PascalVar Var;
-        PascalVartab Record;
-    } PointerTo;
+    VarType Type;
+    VarLocationType Location;
     union {
         VarMemory Memory;
         VarRegister Register;
@@ -93,8 +103,10 @@ struct VarLocation
 };
 
 
+/* Assignment: '.Int = 1' */
 #define VAR_LOCATION_LIT(Assignment, LitType) (VarLocation) {\
-    .As.Literal Assignment, .Type = LitType, .LocationType = VAR_LIT,\
+    .Type = VarTypeInit(LitType, IntegralTypeSize(LitType)), .Location = VAR_LIT, \
+    .As.Literal Assignment\
 }
 
 
@@ -112,6 +124,73 @@ static inline F64 VarLiteralToF64(VarLiteral Literal, IntegralType Type)
     PASCAL_UNREACHABLE("cannot convert %s into f64", IntegralTypeToStr(Type));
     return 0;
 }
+
+static inline const char *VarTypeToStr(VarType Type)
+{
+    if (TYPE_POINTER == Type.Integral && NULL != Type.As.Pointee)
+    {
+        return VarTypeToStr(*Type.As.Pointee);
+    }
+    return IntegralTypeToStr(Type.Integral);
+}
+
+static inline bool VarTypeEqual(const VarType *A, const VarType *B)
+{
+    if (!A || !B) 
+        return false;
+    if (A->Integral != B->Integral)
+        return false;
+
+    if (TYPE_POINTER == A->Integral)
+    {
+        /* chase the pointer */
+        while (A && B && A->Integral == B->Integral && A->Integral == TYPE_POINTER)
+        {
+            A = A->As.Pointee;
+            B = B->As.Pointee;
+        }
+        return VarTypeEqual(A, B);
+    }
+    if (TYPE_RECORD == A->Integral)
+    {
+        /* has to be the same table that was defined, names don't matter */
+        return A->As.Record.Field.Table == B->As.Record.Field.Table;
+    }
+    return true;
+}
+
+
+static inline VarType VarTypeInit(IntegralType Type, U32 Size)
+{
+    return (VarType) {
+        .Integral = Type, 
+        .Size = Size,
+        .As.Pointee = NULL,
+    };
+}
+
+static inline VarType VarTypePtr(VarType *Pointee)
+{
+    return (VarType) {
+        .Integral = TYPE_POINTER, 
+        .Size = sizeof(void*),
+        .As.Pointee = Pointee,
+    };
+}
+
+static inline VarType VarTypeRecord(StringView Name, PascalVartab FieldTable, U32 Size)
+{
+    return (VarType) {
+        .Integral = TYPE_RECORD, 
+        .Size = Size,
+
+        .As.Record.Name = Name,
+        .As.Record.Field = FieldTable,
+    };
+}
+
+
+
 
 
 

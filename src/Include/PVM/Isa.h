@@ -218,6 +218,7 @@ typedef enum PVMOp
 typedef enum PVMSysOp
 {
     OP_SYS_EXIT,
+    OP_SYS_ENTER,
     OP_SYS_WRITE,
 } PVMSysOp;
 

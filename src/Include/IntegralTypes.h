@@ -3,6 +3,7 @@
 
 
 #include "Common.h"
+#include "PascalString.h"
 
 typedef enum IntegralType 
 {
@@ -17,6 +18,7 @@ typedef enum IntegralType
     TYPE_POINTER,
     TYPE_STRING,
     TYPE_RECORD,
+
     TYPE_COUNT,
 } IntegralType;
 
@@ -46,33 +48,49 @@ static inline const char *IntegralTypeToStr(IntegralType Type)
         [TYPE_RECORD] = "record",
         [TYPE_POINTER] = "pointer",
     };
-    PASCAL_STATIC_ASSERT(TYPE_COUNT == STATIC_ARRAY_SIZE(StrLut), "Missing type for ParserIntegralTypeToStr()");
+    PASCAL_STATIC_ASSERT(TYPE_COUNT == STATIC_ARRAY_SIZE(StrLut), "Missing type");
     if (Type < TYPE_COUNT)
         return StrLut[Type];
     return "invalid";
 }
+
+static inline U32 IntegralTypeSize(IntegralType Type)
+{
+    switch (Type)
+    {
+    case TYPE_BOOLEAN:
+    case TYPE_I8:
+    case TYPE_U8:
+        return 1;
+    case TYPE_I16:
+    case TYPE_U16:
+        return 2;
+    case TYPE_I32:
+    case TYPE_U32:
+    case TYPE_F32:
+        return 4;
+    case TYPE_I64:
+    case TYPE_U64:
+    case TYPE_F64:
+        return 8;
+    case TYPE_POINTER:
+        return sizeof(void*);
+    case TYPE_STRING:
+        return sizeof(PascalStr);
+    default: 
+    {
+        PASCAL_UNREACHABLE("%s is not an integral type.", IntegralTypeToStr(Type));
+    } break;
+    }
+    return 0;
+}
+
 
 static inline bool IntegralTypeIsSigned(IntegralType Type)
 {
     return TYPE_I8 <= Type && Type <= TYPE_I64;
 }
 
-static inline UInt TypeOfIntLit(U64 Integer)
-{
-    if (IN_I8(Integer))
-        return TYPE_I8;
-    if (IN_U8(Integer))
-        return TYPE_U8;
-    if (IN_I16(Integer))
-        return TYPE_I16;
-    if (IN_U16(Integer))
-        return TYPE_U16;
-    if (IN_I32(Integer))
-        return TYPE_I32;
-    if (IN_U32(Integer))
-        return TYPE_U32;
-    return TYPE_U64;
-}
 
 static inline bool IntegralTypeIsInteger(IntegralType Type)
 {

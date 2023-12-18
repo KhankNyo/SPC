@@ -9,6 +9,7 @@ typedef struct PVMEmitter PVMEmitter;
 typedef struct PascalTokenizer PascalTokenizer;
 typedef struct CompilerFrame CompilerFrame;
 typedef struct TmpIdentifiers TmpIdentifiers;
+typedef union PointeeTable PointeeTable;
 typedef struct Token Token;
 
 typedef struct VarLocation VarLocation;
@@ -16,6 +17,7 @@ typedef union VarLiteral VarLiteral;
 typedef struct VarRegister VarRegister;
 typedef struct VarMemory VarMemory;
 typedef struct VarSubroutine VarSubroutine;
+typedef struct VarType VarType;
 
 typedef struct OptionalReturnValue OptionalReturnValue;
 typedef OptionalReturnValue (*VarBuiltinRoutine)(PVMCompiler *, const Token *);
@@ -24,6 +26,8 @@ typedef struct SaveRegInfo SaveRegInfo;
 typedef union PascalStr PascalStr;
 typedef struct PascalVartab PascalVartab;
 typedef struct PascalVar PascalVar;
+
+typedef struct StringView StringView;
 
 
 

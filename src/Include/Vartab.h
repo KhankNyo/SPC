@@ -35,7 +35,7 @@ PascalVar *VartabFindWithHash(PascalVartab *Vartab,
  */
 PascalVar *VartabSet(PascalVartab *Vartab, 
         const U8 *Key, UInt Len, U32 Line,
-        IntegralType Type, VarLocation *Location
+        VarType Type, VarLocation *Location
 );
 
 

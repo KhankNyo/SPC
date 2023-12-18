@@ -1,5 +1,6 @@
 
 
+#include "StringView.h"
 #include "Tokenizer.h"
 
 
@@ -403,8 +404,7 @@ static Token MakeToken(PascalTokenizer *Lexer, TokenType Type)
 {
     Token Tok = {
         .Type = Type,
-        .Str = Lexer->Start,
-        .Len = Lexer->Curr - Lexer->Start,
+        .Lexeme = STRVIEW_INIT(Lexer->Start, Lexer->Curr - Lexer->Start),
         .Line = Lexer->Line,
         .LineOffset = Lexer->Start - Lexer->LinePtr + 1,
     };
@@ -630,8 +630,8 @@ static Token ConsumeString(PascalTokenizer *Lexer)
     Token StringToken = MakeToken(Lexer, TOKEN_STRING_LITERAL);
 
     /* consume opening and closing quotes */
-    StringToken.Str++;
-    StringToken.Len -= Trim;
+    StringToken.Lexeme.Str++;
+    StringToken.Lexeme.Len -= Trim;
     StringToken.Literal.Str = Literal;
     return StringToken;
 }

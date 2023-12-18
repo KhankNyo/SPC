@@ -21,6 +21,21 @@ struct TmpIdentifiers
     U32 Count, Cap;
 };
 
+union PointeeTable 
+{
+    VarType *Pointee[TYPE_COUNT];
+    struct {
+        VarType *Lo[TYPE_POINTER - 1];
+        union PointeeTable *Ptr;
+        VarType *Hi[TYPE_COUNT - TYPE_POINTER];
+    } Specific;
+};
+
+PASCAL_STATIC_ASSERT(
+        (TYPE_POINTER - 1)*sizeof(void*) == offsetof(PointeeTable, Specific.Ptr), 
+        "Pack the damn union"
+);
+
 
 struct PVMCompiler 
 {
@@ -35,9 +50,11 @@ struct PVMCompiler
 
     PascalVartab *Locals[PVM_MAX_SCOPE_COUNT];
     PascalVartab *Global;
+    U32 StackSize;
 
     struct {
-        Token Crt;
+        StringView Crt;
+        StringView System;
     } Builtins;
     Token EmptyToken;
 
@@ -47,9 +64,13 @@ struct PVMCompiler
         VarLocation **Location;
         U32 Count, Cap;
     } Var;
+    VarLocation Lhs;
 
     /* TODO: dynamic */
     CompilerFrame Subroutine[PVM_MAX_SCOPE_COUNT];
+
+    /* TODO: who owns the pointee table?? */
+    PointeeTable Pointees;
 
     U32 Breaks[256];
     U32 BreakCount;
@@ -75,7 +96,6 @@ void CompilerDeinit(PVMCompiler *Compiler);
 
 
 
-U32 CompilerGetSizeOfType(PVMCompiler *Compiler, IntegralType Type, const VarLocation *TypeInfo);
 bool IsAtGlobalScope(const PVMCompiler *Compiler);
 PascalVartab *CurrentScope(PVMCompiler *Compiler);
 
@@ -111,21 +131,22 @@ bool ConsumeOrError(PVMCompiler *Compiler, TokenType Expected, const char *Fmt, 
 
 PascalVar *FindIdentifier(PVMCompiler *Compiler, const Token *Identifier);
 PascalVar *DefineAtScope(PVMCompiler *Compiler, PascalVartab *Scope,
-        const Token *Identifier, IntegralType Type, VarLocation *Location
+        const Token *Identifier, VarType Type, VarLocation *Location
 );
 PascalVar *DefineParameter(PVMCompiler *Compiler,
-        const Token *Identifier, IntegralType Type, VarLocation *Location
+        const Token *Identifier, VarType Type, VarLocation *Location
 );
 PascalVar *DefineIdentifier(PVMCompiler *Compiler, 
-        const Token *Identifier, IntegralType Type, VarLocation *Location
+        const Token *Identifier, VarType Type, VarLocation *Location
 );
 PascalVar *DefineGlobal(PVMCompiler *Compiler,
-        const Token *Identifier, IntegralType Type, VarLocation *Location
+        const Token *Identifier, VarType Type, VarLocation *Location
 );
 
 /* reports error if identifier is not found */
 PascalVar *GetIdenInfo(PVMCompiler *Compiler, const Token *Identifier, const char *ErrFmt, ...);
 
+VarType *CompilerCopyType(PVMCompiler *Compiler, VarType Type);
 
 
 #endif /* PASCAL_COMPILER_DATA_H */
