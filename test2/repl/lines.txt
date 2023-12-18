@@ -1,0 +1,11 @@
+/* function argument */
+function test: integer; var a, b: integer; c: integer = 10; begin a := 1 + c; b := 2 + c; c += 1 + a + b + c; c := c; exit(c) end; begin writeln(test) end;
+
+/* function argument */
+function testp(a, b: integer): integer; var c: integer; begin c := a + b; c += a + 1; exit(c) end; begin writeln(testp(1, 2)) end;
+
+/* record return type, global */
+type r = record a, b, c: integer; end; function test: r; var ret: r; begin ret.a := 0; ret.b := 1; ret.c := 2; exit(ret) end; var ret: r; procedure log(struct: r); begin writeln(struct.a); writeln(struct.b); writeln(struct.c) end;   begin ret := test(); log(ret) end;
+
+
+type s = record a, b: integer; end; function sret(a, b: integer): s; var ret: s; begin ret.a := a; ret.b := b; exit(ret) end; var t: s; begin t := sret(1, 2) end;
