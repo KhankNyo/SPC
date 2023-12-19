@@ -19,11 +19,8 @@
 - Windows: `Pascal InputFile.pas OutputFile.exe`
 - Other OSes: `./Pascal InputFile.pas OutputFile`
 
-# Supported keywords:
-- None yet
-
 # Supported functions:
-- None yet
+- read, write, readln, writeln
 
 # TODO:
 - range, set and array, file type, and rewrtie readln and writeln
