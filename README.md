@@ -19,15 +19,14 @@
 - Windows: `Pascal InputFile.pas OutputFile.exe`
 - Other OSes: `./Pascal InputFile.pas OutputFile`
 
-# Supported keywords:
-- None yet
-
 # Supported functions:
-- None yet
+- read, write, readln, writeln
 
 # TODO:
-- enter instruction that allocates stack space for upon entry into a non-nested begin block
-- struct return value (caller side)
-- reconsider stack allocation (after adding enter instruction)
+- range, set and array, file type, and rewrtie readln and writeln
+- char type, and rewrite string aswell
+- const subroutine parameters
+- passing by reference
+- calling functions that return a record without using the return value
 
 
