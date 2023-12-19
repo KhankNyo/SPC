@@ -103,7 +103,7 @@ VarLocation CompileExprIntoReg(PVMCompiler *Compiler)
 {
     VarLocation Expr = CompileExpr(Compiler);
     VarLocation Reg;
-    PVMEmitIntoReg(EMITTER(), &Reg, false, &Expr); 
+    PVMEmitIntoRegLocation(EMITTER(), &Reg, false, &Expr); 
     /* ownership is transfered */
     return Reg;
 }
@@ -498,7 +498,6 @@ static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, Pa
 
         PVMEmitLoadAddr(EMITTER(), Arg, Compiler->Lhs.As.Memory);
         PVMMarkRegisterAsAllocated(EMITTER(), Arg.ID);
-
         CompileSubroutineCall(Compiler, Callee, Identifier, &Ret);
         return Ret;
     }
@@ -1027,7 +1026,7 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler,
     }
 
     VarLocation Dst;
-    PVMEmitIntoReg(EMITTER(), &Dst, false, &Tmp);
+    PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
     switch (OpToken->Type)
     {
     case TOKEN_PLUS: 
@@ -1361,9 +1360,44 @@ IntegralType CoerceTypes(PVMCompiler *Compiler, const Token *Op, IntegralType Le
 }
 
 
+
+bool ConvertRegisterTypeImplicitly(PVMEmitter *Emitter, 
+        IntegralType To, VarRegister *From, IntegralType FromType)
+{
+    if (To == FromType)
+        return true;
+
+    if (IntegralTypeIsInteger(To))
+    {
+        if (IntegralTypeIsInteger(FromType))
+        {
+            PVMEmitIntegerTypeConversion(Emitter, *From, To, *From, FromType);
+        }
+        else return false;
+    }
+    else if (IntegralTypeIsFloat(To))
+    {
+        if (IntegralTypeIsFloat(FromType))
+        {
+            PVMEmitFloatTypeConversion(Emitter, *From, To, *From, FromType);
+        }
+        else if (IntegralTypeIsInteger(FromType))
+        {
+            VarRegister FloatReg = PVMAllocateRegister(Emitter, To);
+            PVMEmitIntToFltTypeConversion(Emitter, FloatReg, To, *From, FromType);
+            PVMFreeRegister(Emitter, *From);
+            *From = FloatReg;
+        }
+        else return false;
+    }
+    else return false;
+    return true;
+}
+
 bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLocation *From)
 {
-    if (To == From->Type.Integral)
+    IntegralType FromType = From->Type.Integral;
+    if (To == FromType)
     {
         return true;
     }
@@ -1371,14 +1405,14 @@ bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLocation *
     {
     case VAR_LIT:
     {
-        if (IntegralTypeIsInteger(To) && IntegralTypeIsInteger(From->Type.Integral))
+        if (IntegralTypeIsInteger(To) && IntegralTypeIsInteger(FromType))
             break;
 
         if (IntegralTypeIsFloat(To))
         {
-            if (IntegralTypeIsFloat(From->Type.Integral))
+            if (IntegralTypeIsFloat(FromType))
                 break;
-            if (IntegralTypeIsInteger(From->Type.Integral))
+            if (IntegralTypeIsInteger(FromType))
             {
                 From->As.Literal.Flt = From->As.Literal.Int;
                 break;
@@ -1389,46 +1423,25 @@ bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLocation *
     } break;
     case VAR_REG:
     {
-        if (IntegralTypeIsInteger(To) && IntegralTypeIsInteger(From->Type.Integral))
+        if (!ConvertRegisterTypeImplicitly(EMITTER(), To, &From->As.Register, From->Type.Integral))
         {
-            PVMEmitIntegerTypeConversion(EMITTER(), From->As.Register, To, From->As.Register, From->Type.Integral);
-            break;
+            goto InvalidTypeConversion;
         }
-        if (IntegralTypeIsFloat(To))
-        {
-            if (IntegralTypeIsFloat(From->Type.Integral))
-            {
-                PVMEmitFloatTypeConversion(EMITTER(), From->As.Register, To, From->As.Register, From->Type.Integral);
-            }
-            else if (IntegralTypeIsInteger(From->Type.Integral))
-            {
-                VarRegister FloatReg = PVMAllocateRegister(EMITTER(), To);
-                PVMEmitIntToFltTypeConversion(EMITTER(), 
-                        FloatReg, To, From->As.Register, From->Type.Integral
-                );
-                PVMFreeRegister(EMITTER(), From->As.Register);
-                From->As.Register.ID = FloatReg.ID;
-            }
-            else goto InvalidTypeConversion;
-            break;
-        }
-        goto InvalidTypeConversion;
     } break;
     case VAR_MEM:
     {
-        From->Type.Integral = To;
-        return true;
-        if (To != From->Type.Integral)
-        {
-            Error(Compiler, "Cannot reinterpret memory of %s as %s.", 
-                    VarTypeToStr(From->Type), IntegralTypeToStr(To)
-            );
-            return false;
-        }
+        VarRegister OutTarget;
+        PVMEmitIntoReg(EMITTER(), &OutTarget, false, From);
+        if (!ConvertRegisterTypeImplicitly(EMITTER(), To, &OutTarget, FromType))
+            goto InvalidTypeConversion;
+
+        FreeExpr(Compiler, *From);
+        From->Location = VAR_REG;
+        From->As.Register = OutTarget;
     } break;
     case VAR_FLAG:
     {
-        if (TYPE_BOOLEAN != To || TYPE_BOOLEAN != From->Type.Integral)
+        if (TYPE_BOOLEAN != To || TYPE_BOOLEAN != FromType)
             goto InvalidTypeConversion;
     } break;
     case VAR_INVALID:

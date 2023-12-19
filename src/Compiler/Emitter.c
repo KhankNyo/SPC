@@ -29,6 +29,7 @@
 PVMEmitter PVMEmitterInit(PVMChunk *Chunk)
 {
     PASCAL_NONNULL(Chunk);
+
     PVMEmitter Emitter = {
         .Chunk = Chunk,
         .Reglist = EMPTY_REGLIST,
@@ -39,6 +40,7 @@ PVMEmitter PVMEmitterInit(PVMChunk *Chunk)
                 .Location = VAR_REG,
                 .As.Register = {
                     .ID = PVM_REG_SP,
+                    .Persistent = true,
                 },
             },
             .FP = {
@@ -195,7 +197,8 @@ static void MakeDstTypeCompatible(PVMEmitter *Emitter, VarRegister *Dst, Integra
     }
 }
 
-static void TransferRegister(PVMEmitter *Emitter, VarRegister *Dst, IntegralType DstType, VarRegister Src, IntegralType SrcType)
+static void TransferRegister(PVMEmitter *Emitter, 
+        VarRegister *Dst, IntegralType DstType, VarRegister Src, IntegralType SrcType)
 {
     PASCAL_NONNULL(Emitter);
     PASCAL_NONNULL(Dst);
@@ -208,7 +211,9 @@ static void TransferRegister(PVMEmitter *Emitter, VarRegister *Dst, IntegralType
 Unreachable:
     {
         break;
-        PASCAL_UNREACHABLE("Cannot move register of type %s into %s", IntegralTypeToStr(DstType), IntegralTypeToStr(SrcType));
+        PASCAL_UNREACHABLE("Cannot move register of type %s into %s", 
+                IntegralTypeToStr(DstType), IntegralTypeToStr(SrcType)
+        );
     } break;
     case TYPE_I64:
     {
@@ -344,12 +349,13 @@ Unreachable:
 
 
 static void StoreToPtr(PVMEmitter *Emitter, 
-        VarRegister Base, I32 Offset, IntegralType DstType, 
+        VarRegister Base, I32 Offset, VarType Type, 
         VarRegister Src)
 {
+    PASCAL_NONNULL(Emitter);
     if (IN_I16(Offset)) 
     {
-        switch (DstType) 
+        switch (Type.Integral) 
         {
         case TYPE_BOOLEAN:
         case TYPE_I8:
@@ -365,10 +371,12 @@ static void StoreToPtr(PVMEmitter *Emitter,
         case TYPE_F32: WriteOp32(Emitter, PVM_OP(STF32, Src.ID, Base.ID), Offset); break;
         case TYPE_F64: WriteOp32(Emitter, PVM_OP(STF64, Src.ID, Base.ID), Offset); break;
         case TYPE_STRING:
+        case TYPE_RECORD:
         {
             VarRegister Rd = PVMAllocateRegister(Emitter, TYPE_STRING);
-            WriteOp32(Emitter, PVM_OP(LEA, Rd.ID, Base.ID), Offset);
-            WriteOp16(Emitter, PVM_OP(SCPY, Rd.ID, Src.ID));
+            PVMEmitLoadAddr(Emitter, Rd, (VarMemory) {.RegPtr = Base, .Location = Offset});
+            WriteOp16(Emitter, PVM_OP(MEMCPY, Rd.ID, Src.ID));
+            WriteOp32(Emitter, Type.Size, Type.Size >> 16);
             PVMFreeRegister(Emitter, Rd);
         } break;
         default: PASCAL_UNREACHABLE("TODO: Src.Size > 8"); break;
@@ -376,7 +384,7 @@ static void StoreToPtr(PVMEmitter *Emitter,
     } 
     else 
     {
-        switch (DstType) 
+        switch (Type.Integral) 
         {
         case TYPE_BOOLEAN:
         case TYPE_I8:
@@ -404,12 +412,13 @@ static void StoreToPtr(PVMEmitter *Emitter,
     }
 }
 
-static void StoreFromReg(PVMEmitter *Emitter, VarMemory Dst, IntegralType DstType, VarRegister Src, IntegralType SrcType)
+static void StoreFromReg(PVMEmitter *Emitter, 
+        VarMemory Dst, VarType DstType, VarRegister Src, IntegralType SrcType)
 {    
     PASCAL_NONNULL(Emitter);
-    if (DstType != SrcType) 
+    if (DstType.Integral != SrcType) 
     {
-        TransferRegister(Emitter, &Src, DstType, Src, SrcType);
+        TransferRegister(Emitter, &Src, DstType.Integral, Src, SrcType);
     }
 
     VarRegister Base = Dst.RegPtr;
@@ -583,36 +592,40 @@ static void MoveLiteralIntoReg(PVMEmitter *Emitter,
 }
 
 
+bool PVMEmitIntoRegLocation(PVMEmitter *Emitter, VarLocation *OutTarget, bool ReadOnly, const VarLocation *Src)
+{
+    OutTarget->Type = Src->Type;
+    OutTarget->Location = VAR_REG;
+    return PVMEmitIntoReg(Emitter, &OutTarget->As.Register, ReadOnly, Src);
+}
 
-bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, bool ReadOnly, const VarLocation *Src)
+bool PVMEmitIntoReg(PVMEmitter *Emitter, VarRegister *OutTarget, bool ReadOnly, const VarLocation *Src)
 {
     PASCAL_NONNULL(Emitter);
     PASCAL_NONNULL(OutTarget);
     PASCAL_NONNULL(Src);
 
-    VarLocation Tmp = *Src;
-    OutTarget->Location = VAR_REG;
-    switch (Tmp.Location)
+    IntegralType SrcType = Src->Type.Integral;
+    switch (Src->Location)
     {
     case VAR_REG: 
     {
-        if (Tmp.As.Register.Persistent && !ReadOnly)
+        if (Src->As.Register.Persistent && !ReadOnly)
         {
-            *OutTarget = PVMAllocateRegisterLocation(Emitter, Tmp.Type);
+            *OutTarget = PVMAllocateRegister(Emitter, Src->Type.Integral);
             TransferRegister(Emitter, 
-                    &OutTarget->As.Register, Tmp.Type.Integral, 
-                    Tmp.As.Register, Tmp.Type.Integral
+                    OutTarget, SrcType,
+                    Src->As.Register, SrcType
             );
             return true;
         }
     } break;
     case VAR_MEM:
     {
-
-        *OutTarget = PVMAllocateRegisterLocation(Emitter, Tmp.Type);
+        *OutTarget = PVMAllocateRegister(Emitter, SrcType);
         DerefIntoReg(Emitter, 
-                &OutTarget->As.Register, Tmp.Type.Integral, 
-                Tmp.As.Memory, Tmp.Type.Integral
+                OutTarget, SrcType, 
+                Src->As.Memory, SrcType
         );
         return true;
     } break;
@@ -623,23 +636,24 @@ bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, bool ReadOnly, 
     } break;
     case VAR_FLAG:
     {
-        PASCAL_ASSERT(Tmp.Type.Integral == TYPE_BOOLEAN, "Unreachable");
-        *OutTarget = PVMAllocateRegisterLocation(Emitter, Tmp.Type);
-        WriteOp16(Emitter, PVM_OP(GETFLAG, OutTarget->As.Register.ID, 0));
+        PASCAL_ASSERT(SrcType == TYPE_BOOLEAN, "Unreachable");
+        *OutTarget = PVMAllocateRegister(Emitter, SrcType);
+        WriteOp16(Emitter, PVM_OP(GETFLAG, OutTarget->ID, 0));
+        return true;
     } break;
     case VAR_LIT:
     {
-        *OutTarget = PVMAllocateRegisterLocation(Emitter, Tmp.Type);
+        *OutTarget = PVMAllocateRegister(Emitter, SrcType);
         MoveLiteralIntoReg(Emitter, 
-                &OutTarget->As.Register, Tmp.Type.Integral, 
-                &Tmp.As.Literal
+                OutTarget, SrcType,
+                &Src->As.Literal
         );
         return true;
     } break;
     case VAR_INVALID: break;
     }
 
-    *OutTarget = Tmp;
+    *OutTarget = Src->As.Register;
     return false;
 }
 
@@ -773,9 +787,11 @@ VarRegister PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type)
 void PVMFreeRegister(PVMEmitter *Emitter, VarRegister Reg)
 {
     PASCAL_NONNULL(Emitter);
-    PASCAL_ASSERT(!PVMRegisterIsFree(Emitter, Reg.ID), "double free register: %d", Reg.ID);
-    if (Reg.Persistent)
+    if (Reg.Persistent || Reg.ID == PVM_REG_FP
+    || Reg.ID == PVM_REG_GP || Reg.ID == PVM_REG_SP)
         return;
+
+    PASCAL_ASSERT(!PVMRegisterIsFree(Emitter, Reg.ID), "double free register: %d", Reg.ID);
 
     UInt SpilledReg = (Emitter->SpilledRegCount - 1) % PVM_REG_COUNT;
     if (Emitter->SpilledRegCount > 0 && SpilledReg == Reg.ID)
@@ -804,12 +820,12 @@ U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition)
         return PVMEmitBranchOnFalseFlag(Emitter);
     }
 
-    VarLocation Target;
-    bool IsOwning = PVMEmitIntoReg(Emitter, &Target, true, Condition);
-    U32 Location = WriteOp32(Emitter, PVM_B(EZ, Target.As.Register.ID, 0), 0);
+    VarRegister Test;
+    bool IsOwning = PVMEmitIntoReg(Emitter, &Test, true, Condition);
+    U32 Location = WriteOp32(Emitter, PVM_B(EZ, Test.ID, 0), 0);
     if (IsOwning)
     {
-        PVMFreeRegister(Emitter, Target.As.Register);
+        PVMFreeRegister(Emitter, Test);
     }
     return Location;
 }
@@ -823,12 +839,12 @@ U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition)
         return PVMEmitBranchOnTrueFlag(Emitter);
     }
 
-    VarLocation Target;
-    bool IsOwning = PVMEmitIntoReg(Emitter, &Target, true, Condition);
-    U32 Location = WriteOp32(Emitter, PVM_B(NZ, Target.As.Register.ID, 0), 0);
+    VarRegister Test;
+    bool IsOwning = PVMEmitIntoReg(Emitter, &Test, true, Condition);
+    U32 Location = WriteOp32(Emitter, PVM_B(NZ, Test.ID, 0), 0);
     if (IsOwning)
     {
-        PVMFreeRegister(Emitter, Target.As.Register);
+        PVMFreeRegister(Emitter, Test);
     }
     return Location;
 }
@@ -911,13 +927,15 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
     {
         if (Src->Location == VAR_FLAG)
             return;
-
-        VarLocation Rs;
-        bool Owning = PVMEmitIntoReg(Emitter, &Rs, false, Src);
         PASCAL_ASSERT(Src->Type.Integral == TYPE_BOOLEAN, "Src must be boolean");
-        WriteOp16(Emitter, PVM_OP(SETFLAG, Src->As.Register.ID, 0));
+
+        VarRegister Rs;
+        bool Owning = PVMEmitIntoReg(Emitter, &Rs, false, Src);
+        WriteOp16(Emitter, PVM_OP(SETFLAG, Rs.ID, 0));
         if (Owning)
-            PVMFreeRegister(Emitter, Rs.As.Register);
+        {
+            PVMFreeRegister(Emitter, Rs);
+        }
     } break;
     case VAR_REG:
     {
@@ -940,14 +958,16 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
     } break;
     case VAR_MEM:
     {
-        VarLocation Tmp;
+        VarRegister Tmp;
         bool Owning = PVMEmitIntoReg(Emitter, &Tmp, true, Src);
         StoreFromReg(Emitter, 
-                Dst->As.Memory, Dst->Type.Integral, 
-                Tmp.As.Register, Tmp.Type.Integral
+                Dst->As.Memory, Dst->Type, 
+                Tmp, Src->Type.Integral
         );
         if (Owning)
-            PVMFreeRegister(Emitter, Tmp.As.Register);
+        {
+            PVMFreeRegister(Emitter, Tmp);
+        }
     } break;
     }
 }
@@ -959,7 +979,6 @@ void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation 
     PASCAL_NONNULL(Dst);
     PASCAL_NONNULL(Src);
 
-    PASCAL_ASSERT(Dst->Location == VAR_MEM, "Dst must be memory");
     PASCAL_ASSERT(Dst->Type.Integral == Src->Type.Integral, "Unreachable");
     PASCAL_ASSERT(Dst->Type.Size == Src->Type.Size, "Unreachable");
     PASCAL_ASSERT(Dst->Type.Integral == TYPE_RECORD || Src->Type.Integral == TYPE_STRING, "Unhandled case: %s", 
@@ -967,15 +986,20 @@ void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation 
     );
     PASCAL_ASSERT(Dst->Type.Size <= UINT32_MAX, "record too big");
 
-    VarLocation SrcPtr;
+    VarRegister DstPtr, SrcPtr;
+    bool OwningDstPtr = PVMEmitIntoReg(Emitter, &DstPtr, true, Dst); /* the addr itself is readonly */
     bool OwningSrcPtr = PVMEmitIntoReg(Emitter, &SrcPtr, true, Src);
 
-    WriteOp16(Emitter, PVM_OP(MEMCPY, Dst->As.Register.ID, SrcPtr.As.Register.ID));
+    WriteOp16(Emitter, PVM_OP(MEMCPY, DstPtr.ID, SrcPtr.ID));
     WriteOp32(Emitter, Dst->Type.Size, Dst->Type.Size >> 16);
 
+    if (OwningDstPtr)
+    {
+        PVMFreeRegister(Emitter, DstPtr);
+    }
     if (OwningSrcPtr)
     {
-        PVMFreeRegister(Emitter, SrcPtr.As.Register);
+        PVMFreeRegister(Emitter, SrcPtr);
     }
 }
 
@@ -986,7 +1010,7 @@ void PVMEmitLoadAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src)
 
     UInt Base = Src.RegPtr.ID;
     UInt Rd = Dst.ID;
-    U32 Offset = Src.Location;
+    I32 Offset = Src.Location;
     if (0 == Offset)
     {
         if (Rd == Base)
@@ -1234,49 +1258,55 @@ void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I64 Imm)
     PASCAL_NONNULL(Dst);
     if (0 == Imm)
         return;
-    VarLocation Target;
-    bool IsOwning = PVMEmitIntoReg(Emitter, &Target, false, Dst);
+    VarRegister Target;
+    /* TODO: the readonly param does not make sense here, 
+     * because in this case we want dst to be modified 
+     * without having extra instructions 
+     * moving it into a tmp register */
+    bool IsOwning = PVMEmitIntoReg(Emitter, &Target, true, Dst);
 
     if (Dst->Type.Integral == TYPE_U64 || Dst->Type.Integral == TYPE_I64)
     {
         if (IS_SMALL_IMM(Imm))
-            WriteOp16(Emitter, PVM_OP(ADDQI64, Target.As.Register.ID, Imm));
+            WriteOp16(Emitter, PVM_OP(ADDQI64, Target.ID, Imm));
         else if (IN_I16(Imm))
-            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_I16), Imm);
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_I16), Imm);
         else if (IN_U16(Imm))
-            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_U16), Imm);
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_U16), Imm);
         else if (IN_I32(Imm))
-            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_I32), Imm);
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_I32), Imm);
         else if (IN_U32(Imm))
-            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_U32), Imm);
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_U32), Imm);
         else if (IN_I48(Imm))
-            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_I48), Imm);
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_I48), Imm);
         else if (IN_U48(Imm))
-            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_U48), Imm);
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_U48), Imm);
         else
-            WriteOp32(Emitter, PVM_OP(ADDI64, Target.As.Register.ID, IMMTYPE_U64), Imm);
+            WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_U64), Imm);
     }
     else if (IS_SMALL_IMM(Imm))
-        WriteOp16(Emitter, PVM_OP(ADDQI, Target.As.Register.ID, Imm));
+        WriteOp16(Emitter, PVM_OP(ADDQI, Target.ID, Imm));
     else if (IN_I16(Imm))
-        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_I16), Imm);
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_I16), Imm);
     else if (IN_U16(Imm))
-        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_U16), Imm);
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_U16), Imm);
     else if (IN_I32(Imm))
-        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_I32), Imm);
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_I32), Imm);
     else if (IN_U32(Imm))
-        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_U32), Imm);
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_U32), Imm);
     else if (IN_I48(Imm))
-        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_I48), Imm);
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_I48), Imm);
     else if (IN_U48(Imm))
-        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_U48), Imm);
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_U48), Imm);
     else
-        WriteOp32(Emitter, PVM_OP(ADDI, Target.As.Register.ID, IMMTYPE_U64), Imm);
+        WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_U64), Imm);
 
     if (IsOwning)
     {
-        PVMEmitMov(Emitter, Dst, &Target);
-        PVMFreeRegister(Emitter, Target.As.Register);
+        PVMEmitMov(Emitter, Dst, 
+                &(VarLocation) {.Type = Dst->Type, .Location = VAR_REG, .As.Register = Target}
+        );
+        PVMFreeRegister(Emitter, Target);
     }
 }
 
@@ -1291,15 +1321,15 @@ void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src) {\
     PASCAL_NONNULL(Src);\
     PASCAL_ASSERT(Dst->Type.Integral == Src->Type.Integral, "Dst and Src type must be the same");\
     PASCAL_ASSERT(Dst->Location == VAR_REG, "Dst must be register");\
-    VarLocation Rs;\
+    VarRegister Rs, Rd = Dst->As.Register;\
     bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, true, Src);\
     if (TYPE_U64 == Dst->Type.Integral || TYPE_I64 == Dst->Type.Integral) {\
-        WriteOp16(Emitter, PVM_OP( Mnemonic ## 64, Dst->As.Register.ID, Rs.As.Register.ID));\
+        WriteOp16(Emitter, PVM_OP( Mnemonic ## 64, Rd.ID, Rs.ID));\
     } else {\
-        WriteOp16(Emitter, PVM_OP( Mnemonic , Dst->As.Register.ID, Rs.As.Register.ID));\
+        WriteOp16(Emitter, PVM_OP( Mnemonic , Rd.ID, Rs.ID));\
     }\
     if (OwningRs) {\
-        PVMFreeRegister(Emitter, Rs.As.Register);\
+        PVMFreeRegister(Emitter, Rs);\
     }\
 }\
 void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
@@ -1309,21 +1339,22 @@ void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src) {\
     PASCAL_NONNULL(Emitter);\
     PASCAL_NONNULL(Dst);\
     PASCAL_NONNULL(Src);\
-    PASCAL_ASSERT(Dst->Type.Integral == Src->Type.Integral, "Dst and Src type must be the same in %s", __func__);\
     PASCAL_ASSERT(Dst->Location == VAR_REG, "Dst must be register");\
-    VarLocation Rs;\
+    PASCAL_ASSERT(Dst->Type.Integral == Src->Type.Integral, \
+            "Dst and Src type must be the same in %s", __func__);\
+    VarRegister Rs, Rd = Dst->As.Register;\
     bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, true, Src);\
     if (TYPE_U64 == Dst->Type.Integral || TYPE_I64 == Dst->Type.Integral) {\
-        WriteOp16(Emitter, PVM_OP( Mnemonic ## 64, Dst->As.Register.ID, Rs.As.Register.ID));\
+        WriteOp16(Emitter, PVM_OP( Mnemonic ## 64, Rd.ID, Rs.ID));\
     } else if (TYPE_F64 == Dst->Type.Integral || TYPE_F64 == Src->Type.Integral) {\
-        WriteOp16(Emitter, PVM_OP( F ## Mnemonic ## 64, Dst->As.Register.ID, Rs.As.Register.ID));\
+        WriteOp16(Emitter, PVM_OP( F ## Mnemonic ## 64, Rd.ID, Rs.ID));\
     } else if (TYPE_F32 == Dst->Type.Integral || TYPE_F32 == Dst->Type.Integral) {\
-        WriteOp16(Emitter, PVM_OP( F ## Mnemonic, Dst->As.Register.ID, Rs.As.Register.ID));\
+        WriteOp16(Emitter, PVM_OP( F ## Mnemonic, Rd.ID, Rs.ID));\
     } else {\
-        WriteOp16(Emitter, PVM_OP( Mnemonic , Dst->As.Register.ID, Rs.As.Register.ID));\
+        WriteOp16(Emitter, PVM_OP( Mnemonic , Rd.ID, Rs.ID));\
     }\
     if (OwningRs) {\
-        PVMFreeRegister(Emitter, Rs.As.Register);\
+        PVMFreeRegister(Emitter, Rs);\
     }\
 }\
 void FnName (PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
@@ -1348,32 +1379,32 @@ void PVMEmitAdd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
         return;
     }
 
-    VarLocation Rs;
+    VarRegister Rs, Rd = Dst->As.Register;
     bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, true, Src);
     if (TYPE_F64 == Dst->Type.Integral || TYPE_F64 == Src->Type.Integral) 
     {
-        WriteOp16(Emitter, PVM_OP(FADD64, Dst->As.Register.ID, Rs.As.Register.ID));
+        WriteOp16(Emitter, PVM_OP(FADD64, Rd.ID, Rs.ID));
     } 
     else if (TYPE_F32 == Dst->Type.Integral || TYPE_F32 == Dst->Type.Integral) 
     {
-        WriteOp16(Emitter, PVM_OP(FADD, Dst->As.Register.ID, Rs.As.Register.ID));
+        WriteOp16(Emitter, PVM_OP(FADD, Rd.ID, Rs.ID));
     }
     else if (TYPE_I64 == Dst->Type.Integral || TYPE_U64 == Dst->Type.Integral)
     {
-        WriteOp16(Emitter, PVM_OP(ADD64, Dst->As.Register.ID, Rs.As.Register.ID));
+        WriteOp16(Emitter, PVM_OP(ADD64, Rd.ID, Rs.ID));
     }
     else if (TYPE_STRING == Dst->Type.Integral)
     {
-        PASCAL_ASSERT(TYPE_STRING == Rs.Type.Integral, "Unreachable in %s", __func__);
-        WriteOp16(Emitter, PVM_OP(SADD, Dst->As.Register.ID, Rs.As.Register.ID));
+        PASCAL_ASSERT(TYPE_STRING == Src->Type.Integral, "Unreachable in %s", __func__);
+        WriteOp16(Emitter, PVM_OP(SADD, Rd.ID, Rs.ID));
     }
     else
     {
-        WriteOp16(Emitter, PVM_OP(ADD, Dst->As.Register.ID, Rs.As.Register.ID));
+        WriteOp16(Emitter, PVM_OP(ADD, Rd.ID, Rs.ID));
     }
 
     if (OwningRs) 
-        PVMFreeRegister(Emitter, Rs.As.Register);
+        PVMFreeRegister(Emitter, Rs);
 }
 
 void PVMEmitSub(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src) 
@@ -1393,26 +1424,26 @@ void PVMEmitSub(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
         return;
     }
 
-    VarLocation Rs;
+    VarRegister Rs, Rd = Dst->As.Register;
     bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, true, Src);
     if (TYPE_F64 == Dst->Type.Integral || TYPE_F64 == Src->Type.Integral) 
     {
-        WriteOp16(Emitter, PVM_OP(FSUB64, Dst->As.Register.ID, Rs.As.Register.ID));
+        WriteOp16(Emitter, PVM_OP(FSUB64, Rd.ID, Rs.ID));
     } 
     else if (TYPE_F32 == Dst->Type.Integral || TYPE_F32 == Dst->Type.Integral) 
     {
-        WriteOp16(Emitter, PVM_OP(FSUB, Dst->As.Register.ID, Rs.As.Register.ID));
+        WriteOp16(Emitter, PVM_OP(FSUB, Rd.ID, Rs.ID));
     }
     else if (TYPE_I64 == Dst->Type.Integral || TYPE_U64 == Dst->Type.Integral)
     {
-        WriteOp16(Emitter, PVM_OP(SUB64, Dst->As.Register.ID, Rs.As.Register.ID));
+        WriteOp16(Emitter, PVM_OP(SUB64, Rd.ID, Rs.ID));
     }
     else
     {
-        WriteOp16(Emitter, PVM_OP(SUB, Dst->As.Register.ID, Rs.As.Register.ID));
+        WriteOp16(Emitter, PVM_OP(SUB, Rd.ID, Rs.ID));
     }
     if (OwningRs) 
-        PVMFreeRegister(Emitter, Rs.As.Register);
+        PVMFreeRegister(Emitter, Rs);
 }
 
 
@@ -1427,11 +1458,11 @@ do {\
     case 8: WriteOp16(Emitter, PVM_OP(FastPathOp ## Bits, (VarLoc_Dst).As.Register.ID, 3)); break;\
     case 16: WriteOp16(Emitter, PVM_OP(FastPathOp ## Bits, (VarLoc_Dst).As.Register.ID, 4)); break;\
     default: {\
-        VarLocation Rs;\
+        VarRegister Rs;\
         bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, true, &(VarLoc_Src));\
-        WriteOp16(Emitter, PVM_OP(SlowPathOp ## Bits, (VarLoc_Dst).As.Register.ID, Rs.As.Register.ID));\
+        WriteOp16(Emitter, PVM_OP(SlowPathOp ## Bits, (VarLoc_Dst).As.Register.ID, Rs.ID));\
         if (OwningRs) {\
-            PVMFreeRegister(Emitter, Rs.As.Register);\
+            PVMFreeRegister(Emitter, Rs);\
         }\
     } break;\
     }\
@@ -1462,19 +1493,19 @@ void PVMEmitIMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
     }
     else
     {
-        VarLocation Rs;
+        VarRegister Rs, Rd = Dst->As.Register;
         bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, true, Src);
         if (TYPE_I64 == Dst->Type.Integral)
         {
-            WriteOp16(Emitter, PVM_OP(IMUL64, Dst->As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(IMUL64, Rd.ID, Rs.ID));
         }
         else
         {
-            WriteOp16(Emitter, PVM_OP(IMUL, Dst->As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(IMUL, Rd.ID, Rs.ID));
         }
         if (OwningRs) 
         {
-            PVMFreeRegister(Emitter, Rs.As.Register);
+            PVMFreeRegister(Emitter, Rs);
         }
     }
 }
@@ -1501,19 +1532,19 @@ void PVMEmitIDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
     }
     else
     {
-        VarLocation Rs;
+        VarRegister Rs, Rd = Dst->As.Register;
         bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, true, Src);
         if (TYPE_I64 == Dst->Type.Integral)
         {
-            WriteOp16(Emitter, PVM_OP(IDIV64, Dst->As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(IDIV64, Rd.ID, Rs.ID));
         }
         else
         {
-            WriteOp16(Emitter, PVM_OP(IDIV, Dst->As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(IDIV, Rd.ID, Rs.ID));
         }
         if (OwningRs) 
         {
-            PVMFreeRegister(Emitter, Rs.As.Register);
+            PVMFreeRegister(Emitter, Rs);
         }
     }
 }
@@ -1530,20 +1561,20 @@ void PVMEmitMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
     if (IntegralTypeIsFloat(Dst->Type.Integral))
     {
-        VarLocation Rs;
+        VarRegister Rs, Rd = Dst->As.Register;
         bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, true, Src);
         if (TYPE_F64 == Dst->Type.Integral)
         {
-            WriteOp16(Emitter, PVM_OP(FMUL64, Dst->As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(FMUL64, Rd.ID, Rs.ID));
         }
         else
         {
-            WriteOp16(Emitter, PVM_OP(FMUL, Dst->As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(FMUL, Rd.ID, Rs.ID));
         }
 
         if (OwningRs) 
         {
-            PVMFreeRegister(Emitter, Rs.As.Register);
+            PVMFreeRegister(Emitter, Rs);
         }
     }
     else
@@ -1573,20 +1604,20 @@ void PVMEmitDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
 
     if (IntegralTypeIsFloat(Dst->Type.Integral))
     {
-        VarLocation Rs;
+        VarRegister Rs, Rd = Dst->As.Register;
         bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, true, Src);
         if (TYPE_F64 == Dst->Type.Integral)
         {
-            WriteOp16(Emitter, PVM_OP(FDIV64, Dst->As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(FDIV64, Rd.ID, Rs.ID));
         }
         else
         {
-            WriteOp16(Emitter, PVM_OP(FDIV, Dst->As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(FDIV, Rd.ID, Rs.ID));
         }
 
         if (OwningRs) 
         {
-            PVMFreeRegister(Emitter, Rs.As.Register);
+            PVMFreeRegister(Emitter, Rs);
         }
     }
     else
@@ -1620,34 +1651,36 @@ void PVMEmitNot(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src)
             WriteOp16(Emitter, PVM_OP(NEGFLAG, 0, 0));
             return;
         }
-        VarLocation Rs;
+        VarRegister Rs, Rd = Dst->As.Register;
         bool Owning = PVMEmitIntoReg(Emitter, &Rs, true, Src);
         if (VAR_REG == Dst->Location)
         {
-            WriteOp16(Emitter, PVM_OP(SETEZ, Dst->As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(SETEZ, Rd.ID, Rs.ID));
         }
         else if (VAR_FLAG == Dst->Location)
         {
-            WriteOp16(Emitter, PVM_OP(SETNFLAG, 0, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(SETNFLAG, Rs.ID, 0));
         }
         if (Owning)
-            PVMFreeRegister(Emitter, Rs.As.Register);
+        {
+            PVMFreeRegister(Emitter, Rs);
+        }
     }
     else if (IntegralTypeIsInteger(Dst->Type.Integral))
     {
         PASCAL_ASSERT(Dst->Location == VAR_REG, "Dst can only be a register");
-        VarLocation Rs;
+        VarRegister Rs, Rd = Dst->As.Register;
         bool Owning = PVMEmitIntoReg(Emitter, &Rs, true, Src);
         if (TYPE_U64 == Dst->Type.Integral || TYPE_I64 == Dst->Type.Integral)
         {
-            WriteOp16(Emitter, PVM_OP(NOT64, Dst->As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(NOT64, Rd.ID, Rs.ID));
         }
         else
         {
-            WriteOp16(Emitter, PVM_OP(NOT, Dst->As.Register.ID, Rs.As.Register.ID));
+            WriteOp16(Emitter, PVM_OP(NOT, Rd.ID, Rs.ID));
         }
         if (Owning)
-            PVMFreeRegister(Emitter, Rs.As.Register);
+            PVMFreeRegister(Emitter, Rs);
     }
     else
     {
@@ -1733,20 +1766,16 @@ VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op, const VarLocation 
     PASCAL_ASSERT(Left->Type.Integral == Right->Type.Integral, "Left and Right must have the same type");
     if (!Emitter->ShouldEmit) 
     {
-        return (VarLocation) {
-            .Type = VarTypeInit(TYPE_BOOLEAN, 1),
-            .Location = VAR_LIT,
-            .As.Literal.Bool = false,
-        };
+        return VAR_LOCATION_LIT(.Bool = false, TYPE_BOOLEAN);
     }
 
-    VarLocation Rd, Rs;
+    VarRegister Rd, Rs;
     bool OwningRd = PVMEmitIntoReg(Emitter, &Rd, true, Left);
     bool OwningRs = PVMEmitIntoReg(Emitter, &Rs, true, Right);
-    UInt RdID = Rd.As.Register.ID;
-    UInt RsID = Rs.As.Register.ID;
+    UInt RdID = Rd.ID;
+    UInt RsID = Rs.ID;
 
-    if (TYPE_STRING == Left->Location)
+    if (TYPE_STRING == Left->Type.Integral)
     {
         if (UINTPTR_MAX == UINT32_MAX)
             SSET();
@@ -1789,11 +1818,11 @@ VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op, const VarLocation 
 
     if (OwningRd)
     {
-        PVMFreeRegister(Emitter, Rd.As.Register);
+        PVMFreeRegister(Emitter, Rd);
     }
     if (OwningRs) 
     {
-        PVMFreeRegister(Emitter, Rs.As.Register);
+        PVMFreeRegister(Emitter, Rs);
     }
     return Emitter->Reg.Flag;
 #undef SET
@@ -1814,6 +1843,7 @@ VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType ParamType, 
 {
     PASCAL_NONNULL(Emitter);
     PASCAL_NONNULL(Base);
+    /* params in register */
     if (ArgNumber < PVM_ARGREG_COUNT)
     {
         VarLocation RegParam = {
@@ -1824,6 +1854,8 @@ VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType ParamType, 
                 .Persistent = true,
             },
         };
+        PVMMarkRegisterAsAllocated(Emitter, ArgNumber);
+
         if (IntegralTypeIsFloat(ParamType.Integral))
             RegParam.As.Register.ID += PVM_REG_COUNT;
         if (TYPE_RECORD == ParamType.Integral)
@@ -1836,6 +1868,7 @@ VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType ParamType, 
         return RegParam;
     }
 
+    /* params on stack */
     I32 ParamOffset = *Base - ParamType.Size;
     VarLocation Location = {
         .Type = ParamType,
@@ -1851,6 +1884,7 @@ VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType ParamType, 
 
 I32 PVMStartArg(PVMEmitter *Emitter, U32 ArgSize)
 {
+    PASCAL_NONNULL(Emitter);
     PVMEmitStackAllocation(Emitter, ArgSize);
     return Emitter->StackSpace;
 }
@@ -1861,6 +1895,7 @@ VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType ArgType, I32 
     PASCAL_NONNULL(Emitter);
     PASCAL_NONNULL(Base);
 
+    /* arguments in register */
     if (ArgNumber < PVM_ARGREG_COUNT)
     {
         VarLocation ArgReg = {
@@ -1877,6 +1912,7 @@ VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType ArgType, I32 
         return ArgReg;
     }
 
+    /* arguments on stack */
     *Base -= ArgType.Size;
     I32 ArgOffset = *Base;
     VarLocation Mem = {
@@ -1891,12 +1927,17 @@ VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType ArgType, I32 
 }
 
 
-void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg)
+void PVMMarkArgAsOccupied(PVMEmitter *Emitter, const VarLocation *Arg)
 {
     PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Arg);
     if (VAR_REG == Arg->Location)
     {
         PVMMarkRegisterAsAllocated(Emitter, Arg->As.Register.ID);
+    }
+    else if (VAR_MEM == Arg->Location)
+    {
+        PVMMarkRegisterAsAllocated(Emitter, Arg->As.Memory.RegPtr.ID);
     }
 }
 
@@ -1904,6 +1945,7 @@ void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg)
 VarLocation PVMSetReturnType(PVMEmitter *Emitter, VarType Type)
 {
     PASCAL_NONNULL(Emitter);
+
     VarLocation ReturnValue = Emitter->ReturnValue;
     PASCAL_ASSERT(ReturnValue.Location == VAR_REG, "??");
 
@@ -1927,20 +1969,21 @@ VarLocation PVMSetReturnType(PVMEmitter *Emitter, VarType Type)
 void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...)
 {
     PASCAL_NONNULL(Emitter);
+
     va_list Args;
     va_start(Args, Count);
     for (int i = 0; i < Count; i++)
     {
-        VarLocation Reg;
+        VarRegister Reg;
         VarLocation *Location = va_arg(Args, VarLocation *);
         PASCAL_NONNULL(Location);
 
         bool Owning = PVMEmitIntoReg(Emitter, &Reg, true, Location);
-        PVMEmitPushReg(Emitter, Reg.As.Register.ID);
+        PVMEmitPushReg(Emitter, Reg.ID);
 
         if (Owning)
         {
-            PVMFreeRegister(Emitter, Reg.As.Register);
+            PVMFreeRegister(Emitter, Reg);
         }
     }
     va_end(Args);
@@ -1955,6 +1998,7 @@ void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...)
 void PVMEmitStackAllocation(PVMEmitter *Emitter, I32 Size) 
 {
     PASCAL_NONNULL(Emitter);
+
     U64 Aligned = (I64)Size;
     U64 Extra = sizeof(PVMGPR);
     if (Size < 0)
@@ -1974,6 +2018,7 @@ void PVMEmitStackAllocation(PVMEmitter *Emitter, I32 Size)
 /* global instructions */
 U32 PVMGetGlobalOffset(PVMEmitter *Emitter)
 {
+    PASCAL_NONNULL(Emitter);
     return PVMCurrentChunk(Emitter)->Global.Count;
 }
 
@@ -2144,6 +2189,8 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID, SaveRegInfo 
 /* enter and exit/return */
 U32 PVMEmitEnter(PVMEmitter *Emitter)
 {
+    PASCAL_NONNULL(Emitter);
+
     WriteOp16(Emitter, PVM_SYS(ENTER));
     U32 Location = WriteOp32(Emitter, 0, 0);
     return Location;
@@ -2151,6 +2198,8 @@ U32 PVMEmitEnter(PVMEmitter *Emitter)
 
 void PVMPatchEnter(PVMEmitter *Emitter, U32 Location, U32 StackSize)
 {
+    PASCAL_NONNULL(Emitter);
+
     PVMChunk *Chunk = PVMCurrentChunk(Emitter);
     if (StackSize % sizeof(PVMGPR))
         StackSize = (StackSize + sizeof(PVMGPR)) & ~(sizeof(PVMGPR) - 1);

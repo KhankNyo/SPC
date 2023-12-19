@@ -110,8 +110,9 @@ static const PascalStr *RuntimeTypeToStr(IntegralType Type, PVMGPR Data)
     } break;
     case TYPE_F32:
     {
-        F32 f32;
-        memcpy(&f32, &Data, sizeof f32);
+        PVMFPR FltReg;
+        memcpy(&FltReg, &Data, sizeof FltReg);
+        F32 f32 = FltReg.Single;
         int Len = snprintf(Str, PSTR_MAX_LEN, "%f", f32);
         PStrSetLen(&Tmp, Len);
     } break;

@@ -88,7 +88,8 @@ void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
 void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 /* returns true if the caller owns OutTarget, false otherwise, 
  * call PVMFreeRegister to dipose OutTarget if true is returned */
-bool PVMEmitIntoReg(PVMEmitter *Emitter, VarLocation *OutTarget, bool ReadOnly, const VarLocation *Src);
+bool PVMEmitIntoRegLocation(PVMEmitter *Emitter, VarLocation *OutTarget, bool ReadOnly, const VarLocation *Src);
+bool PVMEmitIntoReg(PVMEmitter *Emitter, VarRegister *OutTarget, bool ReadOnly, const VarLocation *Src);
 void PVMEmitLoadAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src);
 void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src, I32 Offset);
 
@@ -133,7 +134,7 @@ VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op, const VarLocation 
 I32 PVMStartArg(PVMEmitter *Emitter, U32 ArgSize);
 VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType Type, I32 *Base);
 VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType Type, I32 *Base);
-void PVMMarkArgAsOccupied(PVMEmitter *Emitter, VarLocation *Arg);
+void PVMMarkArgAsOccupied(PVMEmitter *Emitter, const VarLocation *Arg);
 
 VarLocation PVMSetReturnType(PVMEmitter *Emitter, VarType Type);
 /* accepts Pointer to VarLocation as args */

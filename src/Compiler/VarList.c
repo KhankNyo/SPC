@@ -206,7 +206,6 @@ bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *Subroutine)
 
             *Location = PVMSetParam(EMITTER(), Subroutine->ArgCount, TypeAttr.Type, &Base);
             /* arg will be freed when compilation of function is finished */
-            PVMMarkArgAsOccupied(EMITTER(), Location);
 
             SubroutineDataPushParameter(Compiler->GlobalAlloc, Subroutine, Var);
             if (Subroutine->ArgCount >= PVM_ARGREG_COUNT)

@@ -155,7 +155,6 @@ static void CompileExitStmt(PVMCompiler *Compiler)
             if (TYPE_RECORD == ReturnValue.Type.Integral)
             {
                 VarLocation RecordAddr = CompileExpr(Compiler);
-                ReturnValue.Location = VAR_MEM;
                 PASCAL_ASSERT(RecordAddr.Location == VAR_MEM, "Record ret");
                 PVMEmitCopy(EMITTER(), &ReturnValue, &RecordAddr);
             }
@@ -495,6 +494,55 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
         VarLocation *Left, const VarLocation *Right)
 {
     PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Assignment);
+    PASCAL_NONNULL(Left);
+    PASCAL_NONNULL(Right);
+
+
+#if 1
+    if (TOKEN_COLON_EQUAL == Assignment->Type)
+    {
+        PVMEmitMov(EMITTER(), Left, Right);
+        return;
+    }
+
+    VarLocation Dst;
+    bool OwningLeft = PVMEmitIntoRegLocation(EMITTER(), &Dst, true, Left);
+    switch (Assignment->Type)
+    {
+    case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), &Dst, Right); break;
+    case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), &Dst, Right); break;
+    case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), &Dst, Right); break;
+    case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), &Dst, Right); break;
+    case TOKEN_PERCENT_EQUAL: 
+    {
+        if (IntegralTypeIsInteger(Dst.Type.Integral) 
+        && IntegralTypeIsInteger(Right->Type.Integral))
+        {
+            PVMEmitMod(EMITTER(), &Dst, Right);
+        }
+        else 
+        {
+            ErrorAt(Compiler, Assignment, "Cannot perform modulo between %s and %s.",
+                    VarTypeToStr(Left->Type), VarTypeToStr(Right->Type)
+            );
+        }
+    } break;
+    default: 
+    {
+        ErrorAt(Compiler, Assignment, "Expected ':=' or other assignment operator.");
+    } break;
+    }
+
+    if (OwningLeft)
+    {
+        PVMEmitMov(EMITTER(), Left, &Dst);
+        FreeExpr(Compiler, Dst);
+    }
+#else
+
+
+
     VarLocation Dst = *Left;
     if (TOKEN_COLON_EQUAL == Assignment->Type)
     {
@@ -505,7 +553,7 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
     bool OwningLeft = false;
     if (VAR_REG != Left->Location)
     {
-        PVMEmitIntoReg(EMITTER(), Left, false, Left);
+        PVMEmitIntoRegLocation(EMITTER(), Left, false, Left);
     }
     switch (Assignment->Type)
     {
@@ -538,7 +586,9 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
     {
         FreeExpr(Compiler, *Left);
     }
+
     *Left = Dst;
+#endif 
 }
 
 static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
@@ -940,7 +990,6 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
 
 
 
-    /* TODO: record return value */
     /* return type and semicolon */
     if (Subroutine->HasReturnType)
     {
@@ -954,13 +1003,12 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
             Subroutine->ReturnType = ReturnType->Type;
             if (TYPE_RECORD == ReturnType->Type.Integral)
             {
-                /* NOTE: the VarLocation pointed to by record is SHARED across all function with 
-                 * the same type of record */
                 VarType Record = ReturnType->Type;
 
                 I32 Base = 0;
                 Subroutine->StackArgSize = 0;
                 PVMSetParam(EMITTER(), 0, Record, &Base);
+
                 /* reassign arguments because the first argument will be the return record's addr */
                 for (UInt i = 0; i < Subroutine->ArgCount; i++)
                 {
@@ -982,8 +1030,8 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
         && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
         {
             Error(Compiler, "Procedure cannot return a value.");
-            ConsumeToken(Compiler); /* identifier */
-            ConsumeToken(Compiler); /* semicolon */
+            ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER); 
+            ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON); 
         }
         else
         {
@@ -1074,6 +1122,7 @@ static void CompileVarBlock(PVMCompiler *Compiler)
         U32 Next = CompileVarList(Compiler, BaseRegister, BaseAddr + TotalSize, Alignment);
         if (Next == TotalSize)
         {
+            DBG_PRINT("E\n");
             /* Error encountered */
             return;
         }
@@ -1112,6 +1161,7 @@ static void CompileVarBlock(PVMCompiler *Compiler)
 
                 /* flushes global variable so initialization can be done */
                 PVMEmitGlobalAllocation(EMITTER(), TotalSize);
+                BaseAddr += TotalSize;
                 TotalSize = 0;
                 PVMInitializeGlobal(EMITTER(), 
                         Variable->Location, 
