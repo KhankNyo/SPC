@@ -215,6 +215,11 @@ static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
         );
         return *Variable;
     }
+    if (NULL == Variable->Type.As.Pointee)
+    {
+        ErrorAt(Compiler, &Caret, "Cannot dereference an opque pointer.");
+        return *Variable;
+    }
 
 
     VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), VarTypeInit(TYPE_POINTER, sizeof(void*)));

@@ -43,6 +43,10 @@ static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttri
     {
         PASCAL_UNREACHABLE("TODO: array");
     }
+    if (ConsumeIfNextIs(Compiler, TOKEN_FUNCTION))
+    {
+        PASCAL_UNREACHABLE("TODO: fnptr");
+    }
     if (ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER))
     {
         PascalVar *Typename = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined type name.");
