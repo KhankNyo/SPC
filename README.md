@@ -26,8 +26,10 @@
 - None yet
 
 # TODO:
-- enter instruction that allocates stack space for upon entry into a non-nested begin block
-- struct return value (caller side)
-- reconsider stack allocation (after adding enter instruction)
+- range, set and array, file type, and rewrtie readln and writeln
+- char type, and rewrite string aswell
+- const subroutine parameters
+- passing by reference
+- calling functions that return a record without using the return value
 
 
