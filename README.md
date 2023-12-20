@@ -20,11 +20,12 @@
 - Other OSes: `./Pascal InputFile.pas OutputFile`
 
 # Supported functions:
-- read, write, readln, writeln
+- write, writeln (no file parameter)
+- sizeof
 
 # TODO:
 - range, set and array, file type, and rewrtie readln and writeln
-- char type, and rewrite string aswell
+- char type, and rewrite string as well
 - const subroutine parameters
 - passing by reference
 - calling functions that return a record without using the return value
