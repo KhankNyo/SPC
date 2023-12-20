@@ -125,12 +125,14 @@ PascalVartab *CompilerPopScope(PVMCompiler *Compiler)
 }
 
 
-void CompilerPushSubroutine(PVMCompiler *Compiler, VarSubroutine *Subroutine)
+void CompilerPushSubroutine(PVMCompiler *Compiler, SubroutineData *Subroutine)
 {
     Compiler->Subroutine[Compiler->Scope].Current = Subroutine;
-    Compiler->Subroutine[Compiler->Scope].Location = Compiler->Var.Count;
+    Compiler->Subroutine[Compiler->Scope].VarCount = Compiler->Var.Count;
     CompilerPushScope(Compiler, &Subroutine->Scope);
-    PASCAL_ASSERT(Compiler->Scope < (I32)STATIC_ARRAY_SIZE(Compiler->Subroutine), "TODO: dynamic nested scope");
+    PASCAL_ASSERT(Compiler->Scope < (I32)STATIC_ARRAY_SIZE(Compiler->Subroutine), 
+            "TODO: dynamic nested scope"
+    );
 }
 
 void CompilerPopSubroutine(PVMCompiler *Compiler)
@@ -272,30 +274,17 @@ Token *CompilerGetTmp(PVMCompiler *Compiler, UInt Idx)
 
 
 
-void SubroutineDataPushParameter(PascalGPA *Allocator, VarSubroutine *Subroutine, const PascalVar *Param)
-{
-    if (Subroutine->ArgCount == Subroutine->Cap)
-    {
-        Subroutine->Cap = Subroutine->Cap * 2 + 8;
-        Subroutine->Args = GPAReallocateArray(Allocator, 
-                Subroutine->Args, *Subroutine->Args, 
-                Subroutine->Cap
-        );
-    }
-    Subroutine->Args[Subroutine->ArgCount++] = *Param;
-}
-
 void SubroutineDataPushRef(PascalGPA *Allocator, VarSubroutine *Subroutine, U32 CallSite)
 {
     if (Subroutine->RefCount == Subroutine->RefCap)
     {
-        Subroutine->Cap = Subroutine->Cap*2 + 8;
-        Subroutine->References = GPAReallocateArray(Allocator,
-                Subroutine->References, *Subroutine->References,
-                Subroutine->Cap
+        Subroutine->RefCap = Subroutine->RefCap*2 + 8;
+        Subroutine->Refs = GPAReallocateArray(Allocator,
+                Subroutine->Refs, *Subroutine->Refs,
+                Subroutine->RefCap
         );
     }
-    Subroutine->References[Subroutine->RefCount++] = CallSite;
+    Subroutine->Refs[Subroutine->RefCount++] = CallSite;
 }
 
 void CompilerResolveSubroutineCalls(PVMCompiler *Compiler, VarSubroutine *Subroutine, U32 SubroutineLocation)
@@ -303,13 +292,13 @@ void CompilerResolveSubroutineCalls(PVMCompiler *Compiler, VarSubroutine *Subrou
     for (U32 i = 0; i < Subroutine->RefCount; i++)
     {
         PVMPatchBranch(&Compiler->Emitter, 
-                Subroutine->References[i], 
+                Subroutine->Refs[i], 
                 SubroutineLocation, 
                 BRANCHTYPE_UNCONDITIONAL
         );
     }
-    GPADeallocate(Compiler->GlobalAlloc, Subroutine->References);
-    Subroutine->References = NULL;
+    GPADeallocate(Compiler->GlobalAlloc, Subroutine->Refs);
+    Subroutine->Refs = NULL;
     Subroutine->RefCount = 0;
     Subroutine->RefCap = 0;
 }

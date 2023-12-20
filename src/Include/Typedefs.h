@@ -18,6 +18,8 @@ typedef struct VarRegister VarRegister;
 typedef struct VarMemory VarMemory;
 typedef struct VarSubroutine VarSubroutine;
 typedef struct VarType VarType;
+typedef struct SubroutineData SubroutineData;
+typedef struct SubroutineParameterList SubroutineParameterList;
 
 typedef struct OptionalReturnValue OptionalReturnValue;
 typedef OptionalReturnValue (*VarBuiltinRoutine)(PVMCompiler *, const Token *);

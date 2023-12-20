@@ -226,7 +226,7 @@ static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
     PVMEmitMov(EMITTER(), &Ptr, Variable);
     VarLocation Memory = {
         .Location = VAR_MEM,
-        .Type = Variable->Type,
+        .Type = *Variable->Type.As.Pointee,
         .As.Memory = {
             .RegPtr = Ptr.As.Register,
             .Location = 0,
@@ -478,8 +478,8 @@ static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, Pa
     }
 
     /* function call */
-    VarSubroutine *Callee = &Location->As.Subroutine;
-    if (!Callee->HasReturnType)
+    SubroutineData *Subroutine = &Location->Type.As.Subroutine;
+    if (NULL == Subroutine->ReturnType)
     {
         ErrorAt(Compiler, Identifier, "Procedure '"STRVIEW_FMT"' does not have a return value.",
                 STRVIEW_FMT_ARG(&Identifier->Lexeme)
@@ -487,8 +487,9 @@ static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, Pa
         return ReturnValue;
     }
 
+
     /* setup return reg */
-    if (TYPE_RECORD == Callee->ReturnType.Integral)
+    if (TYPE_RECORD == Subroutine->ReturnType->Integral)
     {
         if (TYPE_RECORD != Compiler->Lhs.Type.Integral)
         {
@@ -497,24 +498,22 @@ static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, Pa
         }
 
         /* TODO: unhack this */
-        VarLocation Ret = PVMSetReturnType(EMITTER(), Callee->ReturnType);
-        VarRegister Arg = Ret.As.Memory.RegPtr;
+        ReturnValue = PVMSetReturnType(EMITTER(), *Subroutine->ReturnType);
+        VarRegister Arg = ReturnValue.As.Memory.RegPtr;
         PASCAL_ASSERT(VAR_MEM == Compiler->Lhs.Location, "");
 
         PVMEmitLoadAddr(EMITTER(), Arg, Compiler->Lhs.As.Memory);
         PVMMarkRegisterAsAllocated(EMITTER(), Arg.ID);
-        CompileSubroutineCall(Compiler, Callee, Identifier, &Ret);
-        return Ret;
+        CompileSubroutineCall(Compiler, Location, Identifier, &ReturnValue);
     }
     else
     {
-        ReturnValue = PVMAllocateRegisterLocation(EMITTER(), Callee->ReturnType);
-        CompileSubroutineCall(Compiler, Callee, Identifier, &ReturnValue);
+        ReturnValue = PVMAllocateRegisterLocation(EMITTER(), *Subroutine->ReturnType);
+        CompileSubroutineCall(Compiler, Location, Identifier, &ReturnValue);
         if (TYPE_POINTER == ReturnValue.Type.Integral)
         {
-            ReturnValue.Type.As.Pointee = Callee->ReturnType.As.Pointee;
+            ReturnValue.Type.As.Pointee = Subroutine->ReturnType->As.Pointee;
         }
-        return ReturnValue;
     }
     return ReturnValue;
 }

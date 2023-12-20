@@ -10,6 +10,22 @@
 #include "StringView.h"
 
 
+
+struct SubroutineParameterList 
+{
+    PascalVar *Params;
+    U32 Count;
+};
+
+struct SubroutineData
+{
+    /* owns by the compiler */
+    const struct VarType *ReturnType;
+    SubroutineParameterList ParameterList;
+    PascalVartab Scope;
+    U32 StackArgSize;
+};
+
 struct VarType 
 {
     IntegralType Integral;
@@ -20,6 +36,7 @@ struct VarType
             StringView Name;
             PascalVartab Field;
         } Record;
+        SubroutineData Subroutine;
     } As;
 };
 
@@ -60,21 +77,9 @@ struct VarMemory
 struct VarSubroutine
 {
     U32 Location;
-
 	bool Defined;
-	U32 Line;
-    /* TODO: who own these */
-	U32 *References;
-	U32 RefCount, RefCap;
-
-    U32 ArgCount, Cap;
-	U32 StackArgSize;
-    /* this too */
-	PascalVar *Args;
-
-    bool HasReturnType;
-    VarType ReturnType;
-    PascalVartab Scope;
+    U32 RefCount, RefCap;
+    U32 *Refs;
 };
 
 typedef enum VarLocationType
@@ -191,6 +196,36 @@ static inline VarType VarTypeRecord(StringView Name, PascalVartab FieldTable, U3
         .As.Record.Name = Name,
         .As.Record.Field = FieldTable,
     };
+}
+
+static inline VarType VarTypeSubroutine(
+        SubroutineParameterList ParameterList, PascalVartab Scope, const VarType *ReturnType, U32 StackArgSize)
+{
+    return (VarType) {
+        .Integral = TYPE_FUNCTION,
+        .Size = sizeof(void*),
+
+        .As.Subroutine = {
+            .ParameterList = ParameterList,
+            .Scope = Scope, 
+            .StackArgSize = StackArgSize,
+            .ReturnType = ReturnType,
+        },
+    };
+}
+
+
+#define ParameterListInit() (SubroutineParameterList) { 0 }
+static inline void ParameterListPush(SubroutineParameterList *ParameterList, 
+        PascalGPA *Allocator, const PascalVar *Param)
+{
+    if (ParameterList->Count % 8 == 0)
+    {
+        ParameterList->Params = GPAReallocateArray(Allocator, ParameterList->Params, 
+                *ParameterList->Params, ParameterList->Count + 8
+        );
+    }
+    ParameterList->Params[ParameterList->Count++] = *Param;
 }
 
 

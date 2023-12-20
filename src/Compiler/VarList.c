@@ -14,7 +14,7 @@ typedef struct TypeAttribute
 } TypeAttribute;
 
 
-static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttribute *Out)
+static bool ParseTypename(PVMCompiler *Compiler, TypeAttribute *Out)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Out);
@@ -24,12 +24,6 @@ static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttri
     if (ConsumeIfNextIs(Compiler, TOKEN_RECORD))
     {
         /* annonymous record */
-        if (IsParameterList)
-        {
-            ErrorAt(Compiler, &Compiler->Curr, "Record definition is not allowed in parameter list.");
-            return false;
-        }
-
         TmpIdentifiers SaveList = CompilerSaveTmp(Compiler);
         PascalVar *Record = CompileRecordDefinition(Compiler, &Compiler->EmptyToken);
         CompilerUnsaveTmp(Compiler, &SaveList);
@@ -77,7 +71,7 @@ static bool ParseTypename(PVMCompiler *Compiler, bool IsParameterList, TypeAttri
 
 
 
-static bool ParseVarList(PVMCompiler *Compiler, bool IsParameterList, TypeAttribute *Out)
+static bool ParseVarList(PVMCompiler *Compiler, TypeAttribute *Out)
 {
     /* 
      *  a, b, c: typename;
@@ -92,24 +86,21 @@ static bool ParseVarList(PVMCompiler *Compiler, bool IsParameterList, TypeAttrib
 
     /* a, b, c part first */
     CompilerResetTmp(Compiler);
-    const char *Type = "variable";
-    if (IsParameterList)
-        Type = "parameter";
     int Count = 0;
     do {
-        ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected %s name.", Type);
+        ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected variable name.");
         CompilerPushTmp(Compiler, Compiler->Curr);
         Count++;
     } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
 
     if (!ConsumeOrError(Compiler, TOKEN_COLON, 
-    "Expected ':' and type name after %s%s.", Type, Count > 1 ? "s" : ""))
+    "Expected ':' and type name after variable%s.", Count > 1 ? "s" : ""))
     {
         return false;
     }
 
     /* then parses typename */
-    return ParseTypename(Compiler, IsParameterList, Out);
+    return ParseTypename(Compiler, Out);
 }
 
 
@@ -124,7 +115,7 @@ U32 CompileVarList(PVMCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U32 
      *          Array[~~~]
      */
     TypeAttribute TypeAttr;
-    if (!ParseVarList(Compiler, false, &TypeAttr))
+    if (!ParseVarList(Compiler, &TypeAttr))
         return StartAddr;
 
     UInt VarCount = CompilerGetTmpCount(Compiler);
@@ -159,74 +150,72 @@ U32 CompileVarList(PVMCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U32 
 
 
 
-bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *Subroutine)
+SubroutineParameterList CompileParameterList(PVMCompiler *Compiler, PascalVartab *Scope)
 {
-    /*
-     * procedure fn;
-     * procedure fn(a, b: integer);
-     * procedure fn(a: integer; b: array of integer);
-     *
-     * */
+    SubroutineParameterList ParameterList = ParameterListInit();
     PASCAL_NONNULL(Compiler);
-    PASCAL_NONNULL(Subroutine);
-    PASCAL_ASSERT(!IsAtGlobalScope(Compiler), "Cannot compile param list at global scope");
+    PASCAL_NONNULL(Scope);
 
-    Subroutine->ArgCount = 0;
-    if (!ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
-        return true;
-    if (ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
-        return true;
-
-    Subroutine->StackArgSize = 0;
-    I32 Base = 0;
+    /* '(' is consumed */
     do {
         if (ConsumeIfNextIs(Compiler, TOKEN_VAR))
         {
-            PASCAL_UNREACHABLE("TODO: passing by ref");
+            PASCAL_UNREACHABLE("TODO: reference parameter.");
         }
         else if (ConsumeIfNextIs(Compiler, TOKEN_CONST))
         {
-            PASCAL_UNREACHABLE("TODO: const param");
+            PASCAL_UNREACHABLE("TODO: const parameter.");
         }
-        /* parse the parameters */
-        TypeAttribute TypeAttr;
-        if (!ParseVarList(Compiler, true, &TypeAttr))
+
+        /* parameter list is completely different from other variable declaration */
+        /* so the code to parse it is unique from others */
+        CompilerResetTmp(Compiler);
+        do {
+            ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected parameter name.");
+            CompilerPushTmp(Compiler, Compiler->Curr);
+        } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
+        ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' or ',' after parameter name.");
+
+
+        if (NextTokenIs(Compiler, TOKEN_SEMICOLON))
         {
-            /* flushes temporary params and pretend nothing happened */
-            CompilerResetTmp(Compiler);
-            Compiler->Panic = false;
+            PASCAL_UNREACHABLE("TODO: untyped parameters.");
         }
-
-        /* define the parameters */
-        UInt VarCount = CompilerGetTmpCount(Compiler);
-        for (U32 i = 0; i < VarCount; i++)
+        else if (NextTokenIs(Compiler, TOKEN_ARRAY))
         {
-            VarLocation *Location = CompilerAllocateVarLocation(Compiler);
-            PascalVar *Var = DefineIdentifier(Compiler, 
-                    CompilerGetTmp(Compiler, i),
-                    TypeAttr.Type,
-                    Location
-            );
-
-            *Location = PVMSetParam(EMITTER(), Subroutine->ArgCount, TypeAttr.Type, &Base);
-            /* arg will be freed when compilation of function is finished */
-
-            SubroutineDataPushParameter(Compiler->GlobalAlloc, Subroutine, Var);
-            if (Subroutine->ArgCount >= PVM_ARGREG_COUNT)
-                Subroutine->StackArgSize += TypeAttr.Type.Size;
+            PASCAL_UNREACHABLE("TODO: array parameters.");
         }
+        else if (ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected type name."))
+        {
+            Token Typename = Compiler->Curr;
+            PascalVar *TypeInfo = GetIdenInfo(Compiler, &Typename, "Undefined type name.");
+            if (NULL == TypeInfo)
+                continue; /* error reported */
 
-        if (ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
-            return true;
-
-        if (ConsumeIfNextIs(Compiler, TOKEN_COMMA))
-            ErrorAt(Compiler, &Compiler->Curr, "Use ';' to separate parameters.");
-        else if (!ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after parameter list."))
-            return false;
-    } while (!IsAtEnd(Compiler));
-
-    return false;
+            UInt IdentifierCount = CompilerGetTmpCount(Compiler);
+            for (UInt i = 0; i < IdentifierCount; i++)
+            {
+                VarLocation *ParameterLocation = CompilerAllocateVarLocation(Compiler);
+                PASCAL_NONNULL(ParameterLocation);
+                ParameterLocation->Type = TypeInfo->Type;
+                PascalVar *Param = DefineAtScope(
+                        Compiler, Scope, 
+                        CompilerGetTmp(Compiler, i), 
+                        TypeInfo->Type, 
+                        ParameterLocation
+                );
+                ParameterListPush(&ParameterList, Compiler->GlobalAlloc, Param);
+            }
+        }
+        else 
+        {
+            /* Error from above */
+        }
+    } while (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON));
+    return ParameterList;
 }
+
+
 
 
 PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Name)
@@ -268,13 +257,13 @@ PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Name)
 
 
 void CompileArgumentList(PVMCompiler *Compiler, 
-        const Token *FunctionName, const VarSubroutine *Subroutine)
+        const Token *FunctionName, const SubroutineData *Subroutine)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(FunctionName);
     PASCAL_NONNULL(Subroutine);
 
-    UInt ExpectedArgCount = Subroutine->ArgCount;
+    UInt ExpectedArgCount = Subroutine->ParameterList.Count;
     UInt ArgCount = 0;
     /* no args */
     if (!ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
@@ -287,12 +276,16 @@ void CompileArgumentList(PVMCompiler *Compiler,
             "TODO: other calling convention"
     );
 
+
     I32 Base = PVMStartArg(EMITTER(), Subroutine->StackArgSize);
-    UInt RecordArg = TYPE_RECORD == Subroutine->ReturnType.Integral;
+    UInt RecordArg = 0;
+    if (Subroutine->ReturnType)
+        RecordArg = TYPE_RECORD == Subroutine->ReturnType->Integral;
+
     do {
         if (ArgCount < ExpectedArgCount)
         {
-            const VarLocation *CurrentArg = Subroutine->Args[ArgCount].Location;
+            const VarLocation *CurrentArg = Subroutine->ParameterList.Params[ArgCount].Location;
             PASCAL_NONNULL(CurrentArg);
 
             VarLocation Arg = PVMSetArg(EMITTER(), ArgCount + RecordArg, CurrentArg->Type, &Base);
@@ -313,13 +306,13 @@ CheckArgs:
     if (ArgCount != ExpectedArgCount)
     {
         ErrorAt(Compiler, FunctionName, 
-                "Expected %d arguments but got %d instead.", Subroutine->ArgCount, ArgCount
+                "Expected %d arguments but got %d instead.", Subroutine->ParameterList.Count, ArgCount
         );
     }
 }
 
 void CompileSubroutineCall(PVMCompiler *Compiler, 
-        VarSubroutine *Callee, const Token *Name, VarLocation *ReturnValue)
+        VarLocation *Callee, const Token *Name, VarLocation *ReturnValue)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Callee);
@@ -328,13 +321,20 @@ void CompileSubroutineCall(PVMCompiler *Compiler,
     U32 CallSite = 0;
     UInt ReturnReg = NO_RETURN_REG;
     SaveRegInfo SaveRegs = { 0 };
+
+    /* TODO: this is horrible */
+    VarType *CalleeType = &Callee->Type;
+    SubroutineData *CalleeData = &CalleeType->As.Subroutine;
+    VarSubroutine *Subroutine = &Callee->As.Subroutine;
+
+    /* return value is not discarded */
     if (NULL != ReturnValue)
     {
         ReturnReg = ReturnValue->As.Register.ID;
         /* call the function */
         SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
-        CompileArgumentList(Compiler, Name, Callee);
-        CallSite = PVMEmitCall(EMITTER(), Callee);
+        CompileArgumentList(Compiler, Name, CalleeData);
+        CallSite = PVMEmitCall(EMITTER(), Subroutine);
 
         /* carefully move return reg into the return location */
         VarLocation Tmp = PVMSetReturnType(EMITTER(), ReturnValue->Type);
@@ -344,19 +344,19 @@ void CompileSubroutineCall(PVMCompiler *Compiler,
     {
         /* calling a procedure, or function without caring about its return value */
         SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
-        CompileArgumentList(Compiler, Name, Callee);
-        CallSite = PVMEmitCall(EMITTER(), Callee);
+        CompileArgumentList(Compiler, Name, CalleeData);
+        CallSite = PVMEmitCall(EMITTER(), Subroutine);
     }
 
     /* deallocate stack args */
-    if (Callee->StackArgSize) 
+    if (CalleeData->StackArgSize) 
     {
-        PVMEmitStackAllocation(EMITTER(), -Callee->StackArgSize);
+        PVMEmitStackAllocation(EMITTER(), -CalleeData->StackArgSize);
     }
     PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg, SaveRegs);
-    if (!Callee->Defined)
+    if (!Subroutine->Defined)
     {
-        SubroutineDataPushRef(Compiler->GlobalAlloc, Callee, CallSite);
+        SubroutineDataPushRef(Compiler->GlobalAlloc, Subroutine, CallSite);
     }
 }
 

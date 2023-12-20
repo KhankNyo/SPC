@@ -11,8 +11,8 @@
 
 struct CompilerFrame 
 {
-    U32 Location;
-    VarSubroutine *Current; /* VarLocation never resizes, this is safe */
+    U32 VarCount;
+    const SubroutineData *Current;
 };
 
 struct TmpIdentifiers
@@ -47,9 +47,9 @@ struct PVMCompiler
 
     PascalGPA InternalAlloc;
     PascalGPA *GlobalAlloc;
-
     PascalVartab *Locals[PVM_MAX_SCOPE_COUNT];
     PascalVartab *Global;
+    I32 Scope;
     U32 StackSize;
 
     struct {
@@ -67,6 +67,7 @@ struct PVMCompiler
     VarLocation Lhs;
 
     /* TODO: dynamic */
+    /* for exit statement to see which subroutine it's currently in */
     CompilerFrame Subroutine[PVM_MAX_SCOPE_COUNT];
 
     /* TODO: who owns the pointee table?? */
@@ -76,7 +77,6 @@ struct PVMCompiler
     U32 BreakCount;
     bool InLoop;
 
-    I32 Scope;
     U32 EntryPoint;
     FILE *LogFile;
     bool Error, Panic;
@@ -101,7 +101,7 @@ PascalVartab *CurrentScope(PVMCompiler *Compiler);
 
 void CompilerPushScope(PVMCompiler *Compiler, PascalVartab *Scope);
 PascalVartab *CompilerPopScope(PVMCompiler *Compiler);
-void CompilerPushSubroutine(PVMCompiler *Compiler, VarSubroutine *Subroutine);
+void CompilerPushSubroutine(PVMCompiler *Compiler, SubroutineData *Subroutine);
 void CompilerPopSubroutine(PVMCompiler *Compiler);
 VarLocation *CompilerAllocateVarLocation(PVMCompiler *Compiler);
 
@@ -115,7 +115,9 @@ Token *CompilerGetTmp(PVMCompiler *Compiler, UInt Idx);
 void CompilerInitDebugInfo(PVMCompiler *Compiler, const Token *From);
 void CompilerEmitDebugInfo(PVMCompiler *Compiler, const Token *From);
 
-void SubroutineDataPushParameter(PascalGPA *Allocator, VarSubroutine *Subroutine, const PascalVar *Param);
+U32 SubroutineDataPushParameter(PascalGPA *Allocator, 
+        SubroutineData *Subroutine, const PascalVar *Param, U32 Cap
+);
 void SubroutineDataPushRef(PascalGPA *Allocator, VarSubroutine *Subroutine, U32 CallSite);
 void CompilerResolveSubroutineCalls(PVMCompiler *Compiler, 
         VarSubroutine *Subroutine, U32 SubroutineLocation
@@ -129,22 +131,30 @@ void ConsumeToken(PVMCompiler *Compiler);
 bool ConsumeIfNextIs(PVMCompiler *Compiler, TokenType Type);
 bool ConsumeOrError(PVMCompiler *Compiler, TokenType Expected, const char *Fmt, ...);
 
+/* find an identifier, returns NULL if it doesn't exist, 
+ * NOTE: DOES NOT report error when the search failed  */
 PascalVar *FindIdentifier(PVMCompiler *Compiler, const Token *Identifier);
+/* find an identifier, reutrns NULL if it doesn't exist,
+ * NOTE: DOES report error when the search failed */
+PascalVar *GetIdenInfo(PVMCompiler *Compiler, const Token *Identifier, const char *ErrFmt, ...);
+
+/* never returns NULL */
 PascalVar *DefineAtScope(PVMCompiler *Compiler, PascalVartab *Scope,
         const Token *Identifier, VarType Type, VarLocation *Location
 );
+/* never returns NULL */
 PascalVar *DefineParameter(PVMCompiler *Compiler,
         const Token *Identifier, VarType Type, VarLocation *Location
 );
+/* never returns NULL */
 PascalVar *DefineIdentifier(PVMCompiler *Compiler, 
         const Token *Identifier, VarType Type, VarLocation *Location
 );
+/* never returns NULL */
 PascalVar *DefineGlobal(PVMCompiler *Compiler,
         const Token *Identifier, VarType Type, VarLocation *Location
 );
 
-/* reports error if identifier is not found */
-PascalVar *GetIdenInfo(PVMCompiler *Compiler, const Token *Identifier, const char *ErrFmt, ...);
 
 VarType *CompilerCopyType(PVMCompiler *Compiler, VarType Type);
 

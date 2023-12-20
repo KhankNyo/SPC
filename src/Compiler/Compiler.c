@@ -128,46 +128,52 @@ static void CompileExitStmt(PVMCompiler *Compiler)
     /* Exit */
     if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
     {
-        const VarSubroutine *CurrentSubroutine = Compiler->Subroutine[Compiler->Scope - 1].Current;
 
         if (IsAtGlobalScope(Compiler))
         {
-            /* Exit() */
-            if (ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
-                goto Done;
-
-            VarLocation ReturnValue = PVMSetReturnType(EMITTER(), VarTypeInit(TYPE_I32, sizeof(I32)));
-            CompileExprInto(Compiler, &Keyword, &ReturnValue);
-        }
-        else if (CurrentSubroutine->HasReturnType)
-        {
-            PASCAL_NONNULL(CurrentSubroutine);
-            /* Exit(expr), must have return value */
-            if (NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
+            /* Exit(expr) */
+            if (!ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
             {
-                ErrorAt(Compiler, &Keyword, "Function must return a value.");
-                goto Done;
-            }
-
-            VarLocation ReturnValue = PVMSetReturnType(EMITTER(), 
-                    CurrentSubroutine->ReturnType
-            );
-            if (TYPE_RECORD == ReturnValue.Type.Integral)
-            {
-                VarLocation RecordAddr = CompileExpr(Compiler);
-                PASCAL_ASSERT(RecordAddr.Location == VAR_MEM, "Record ret");
-                PVMEmitCopy(EMITTER(), &ReturnValue, &RecordAddr);
-            }
-            else 
-            {
+                VarLocation ReturnValue = PVMSetReturnType(EMITTER(), VarTypeInit(TYPE_I32, sizeof(I32)));
                 CompileExprInto(Compiler, &Keyword, &ReturnValue);
             }
         }
-        else if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
+        else
         {
-            /* Exit(), no return type */
-            ErrorAt(Compiler, &Keyword, "Procedure cannot return a value.");
+            const SubroutineData *Subroutine = Compiler->Subroutine[Compiler->Scope - 1].Current;
+            if (NULL != Subroutine->ReturnType)
+            {
+                PASCAL_NONNULL(Subroutine);
+                PASCAL_NONNULL(Subroutine->ReturnType);
+
+                /* Exit(expr), must have return value */
+                if (NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
+                {
+                    ErrorAt(Compiler, &Keyword, "Function must return a value.");
+                    goto Done;
+                }
+
+                VarLocation ReturnValue = PVMSetReturnType(EMITTER(), 
+                        *Subroutine->ReturnType
+                );
+                if (TYPE_RECORD == ReturnValue.Type.Integral)
+                {
+                    VarLocation RecordAddr = CompileExpr(Compiler);
+                    PASCAL_ASSERT(RecordAddr.Location == VAR_MEM, "Record ret");
+                    PVMEmitCopy(EMITTER(), &ReturnValue, &RecordAddr);
+                }
+                else 
+                {
+                    CompileExprInto(Compiler, &Keyword, &ReturnValue);
+                }
+            }
+            else if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
+            {
+                /* Exit(), no return type */
+                ErrorAt(Compiler, &Keyword, "Procedure cannot return a value.");
+            }
         }
+
         /* else Exit(), no return type */
         ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
     }
@@ -329,7 +335,7 @@ static void CompileForStmt(PVMCompiler *Compiler)
 
 
     /* loop body */
-    /* TODO: what if the body try to write to the loop variable */
+    /* NOTE: writing to the loop counter variable is legal here but not FreePascal */
     UInt BreakCountBeforeBody = CompileLoopBody(Compiler);
 
     /* loop increment */
@@ -480,12 +486,9 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token Name, PascalVar *
     PASCAL_ASSERT(TYPE_FUNCTION == IdenInfo->Type.Integral, "Unreachable, IdenInfo is not a subroutine");
 
     /* iden consumed */
-    CompilerInitDebugInfo(Compiler, &Name);
-
     /* call the subroutine */
-    VarSubroutine *Callee = &IdenInfo->Location->As.Subroutine;
-    CompileSubroutineCall(Compiler, Callee, &Name, NULL);
-
+    CompilerInitDebugInfo(Compiler, &Name);
+    CompileSubroutineCall(Compiler, IdenInfo->Location, &Name, NULL);
     CompilerEmitDebugInfo(Compiler, &Name);
 }
 
@@ -498,8 +501,6 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
     PASCAL_NONNULL(Left);
     PASCAL_NONNULL(Right);
 
-
-#if 1
     if (TOKEN_COLON_EQUAL == Assignment->Type)
     {
         PVMEmitMov(EMITTER(), Left, Right);
@@ -539,56 +540,6 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
         PVMEmitMov(EMITTER(), Left, &Dst);
         FreeExpr(Compiler, Dst);
     }
-#else
-
-
-
-    VarLocation Dst = *Left;
-    if (TOKEN_COLON_EQUAL == Assignment->Type)
-    {
-        PVMEmitMov(EMITTER(), Left, Right);
-        return;
-    }
-
-    bool OwningLeft = false;
-    if (VAR_REG != Left->Location)
-    {
-        PVMEmitIntoRegLocation(EMITTER(), Left, false, Left);
-    }
-    switch (Assignment->Type)
-    {
-    case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), Left, Right); break;
-    case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), Left, Right); break;
-    case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), Left, Right); break;
-    case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), Left, Right); break;
-    case TOKEN_PERCENT_EQUAL: 
-    {
-        if (VarTypeToStr(Left->Type) && VarTypeToStr(Right->Type))
-        {
-            PVMEmitMod(EMITTER(), Left, Right);
-        }
-        else 
-        {
-            ErrorAt(Compiler, Assignment, "Cannot perform modulo between %s and %s.",
-                    VarTypeToStr(Left->Type), VarTypeToStr(Right->Type)
-            );
-        }
-    } break;
-    default: 
-    {
-        ErrorAt(Compiler, Assignment, "Expected ':=' or other assignment operator.");
-    } break;
-    }
-
-
-    PVMEmitMov(EMITTER(), &Dst, Left);
-    if (OwningLeft)
-    {
-        FreeExpr(Compiler, *Left);
-    }
-
-    *Left = Dst;
-#endif 
 }
 
 static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
@@ -908,55 +859,67 @@ static void CompileBeginBlock(PVMCompiler *Compiler)
 }
 
 
-static VarSubroutine *CompileSubroutineName(
-        PVMCompiler *Compiler, const Token *Name, bool IsFunction, const char *SubroutineType)
+static PascalVar *CompileSubroutineName(
+        PVMCompiler *Compiler, const Token *Name, bool HasReturnType, const char *SubroutineType)
 {
     PascalVar *SubroutineInfo = FindIdentifier(Compiler, Name);
-    VarSubroutine *Subroutine = NULL;
+    if (NULL == SubroutineInfo)
+    {
+        VarLocation *Location = CompilerAllocateVarLocation(Compiler);
+        Location->Type = VarTypeInit(TYPE_FUNCTION, sizeof(void*));
+        Location->As.Subroutine = (VarSubroutine) { 0 };
+        return DefineIdentifier(Compiler, Name, Location->Type, Location);
+    }
+    /* redefinition in repl is fine */
+    if (COMPMODE_REPL == Compiler->Flags.CompMode)
+        return SubroutineInfo;
+
+    if (TYPE_FUNCTION != SubroutineInfo->Type.Integral)
+    {
+        ErrorAt(Compiler, Name, "'"STRVIEW_FMT"' of type %s begin redefined as a %s.",
+                STRVIEW_FMT_ARG(&Name->Lexeme), VarTypeToStr(SubroutineInfo->Type),
+                HasReturnType? "function" : "procedure"
+        );
+        return SubroutineInfo;
+    }
+
+
     /* subroutine is already declared */
-    if (NULL != SubroutineInfo)
+    VarLocation *Location = SubroutineInfo->Location;
+    SubroutineData *Subroutine = &Location->Type.As.Subroutine;
+    PASCAL_NONNULL(Location);
+
+
+    /* redefinition error */
+    if (Location->As.Subroutine.Defined)
     {
-        PASCAL_NONNULL(SubroutineInfo->Location);
-        Subroutine = &SubroutineInfo->Location->As.Subroutine;
-
-        /* redef in repl is fine */
-        if (COMPMODE_REPL == Compiler->Flags.CompMode)
-        {
-            Subroutine->HasReturnType = IsFunction;
-            return Subroutine;
-        }
-
-        /* redefinition error */
-        if (Subroutine->Defined)
-        {
-            ErrorAt(Compiler, Name, "Redefinition of %s '"STRVIEW_FMT"' that was defined on line %d.",
-                    SubroutineType, STRVIEW_FMT_ARG(&Name->Lexeme), Subroutine->Line
-            );
-        }
-        if (Subroutine->HasReturnType != IsFunction)
-        {
-            ErrorAt(Compiler, Name, "Definition of %s '"STRVIEW_FMT"' does not match declaration on line %d.",
-                    SubroutineType, STRVIEW_FMT_ARG(&Name->Lexeme), SubroutineInfo->Line
-            );
-        }
+        ErrorAt(Compiler, Name, "Redefinition of %s '"STRVIEW_FMT"' that was defined on line %d.",
+                SubroutineType, STRVIEW_FMT_ARG(&Name->Lexeme), SubroutineInfo->Line
+        );
     }
-    else 
+    /* function/procedure mismatch */
+    if (HasReturnType != (NULL == Subroutine->ReturnType))
     {
-        /* new subroutine declaration */
-        VarLocation *Var = CompilerAllocateVarLocation(Compiler);
-        Var->Type = VarTypeInit(TYPE_FUNCTION, 0);
-        Var->As.Subroutine = (VarSubroutine) {
-            .HasReturnType = IsFunction,
-            .Location = VAR_SUBROUTINE,
-            .Defined = false,
-        };
-        Subroutine = &Var->As.Subroutine;
-
-        SubroutineInfo = DefineIdentifier(Compiler, Name, VarTypeInit(TYPE_FUNCTION, 0), Var);
-        PASCAL_ASSERT(SubroutineInfo != NULL, "");
-        Subroutine->Scope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+        ErrorAt(Compiler, Name, "Definition of %s '"STRVIEW_FMT"' does not match declaration on line %d.",
+                SubroutineType, STRVIEW_FMT_ARG(&Name->Lexeme), SubroutineInfo->Line
+        );
     }
-    return Subroutine;
+    return SubroutineInfo;
+}
+
+
+static SubroutineParameterList CompileParameterListWithParentheses(PVMCompiler *Compiler, PascalVartab *Scope)
+{
+    SubroutineParameterList ParameterList = { 0 };
+    if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+    {
+        if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
+        {
+            ParameterList = CompileParameterList(Compiler, Scope);
+        }
+        ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after parameter list.");
+    }
+    return ParameterList;
 }
 
 
@@ -965,83 +928,85 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(SubroutineType);
 
+
     /* 'function', 'procedure' consumed */
     Token Keyword = Compiler->Curr;
+    bool ShouldHaveReturnType = TOKEN_FUNCTION == Keyword.Type;
     CompilerInitDebugInfo(Compiler, &Keyword);
     U32 Location = PVMGetCurrentLocation(EMITTER());
+
 
     /* function/proc name */
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected %s name.", SubroutineType);
     Token Name = Compiler->Curr;
-    VarSubroutine *Subroutine = CompileSubroutineName(
-            Compiler, &Name, TOKEN_FUNCTION == Keyword.Type, SubroutineType
+    PascalVar *SubroutineInfo = CompileSubroutineName(
+            Compiler, &Name, ShouldHaveReturnType, SubroutineType
     );
-    PASCAL_NONNULL(Subroutine);
+    VarLocation *SubroutineLocation = SubroutineInfo->Location;
+    SubroutineData *Subroutine = &SubroutineInfo->Type.As.Subroutine;
+    PASCAL_NONNULL(SubroutineInfo);
+    PASCAL_NONNULL(SubroutineLocation);
     
 
-
-    /* begin subroutine scope */
-    CompilerPushSubroutine(Compiler, Subroutine);
-    SaveRegInfo PrevScope = PVMEmitterBeginScope(EMITTER());
-
-
     /* param list */
-    CompileParameterList(Compiler, Subroutine);
-
+    /* TODO: param list check */
+    Subroutine->Scope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+    Subroutine->ParameterList = CompileParameterListWithParentheses(Compiler, &Subroutine->Scope);
 
 
     /* return type and semicolon */
-    if (Subroutine->HasReturnType)
+    Subroutine->ReturnType = NULL;
+    I32 StackBase = 0;
+    UInt RecordReturn = 0; 
+    if (ShouldHaveReturnType)
     {
         ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' before function return type.");
         ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected function return type.");
         PascalVar *ReturnType = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined return type.");
-        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after return type.");
-
         if (NULL != ReturnType)
         {
-            Subroutine->ReturnType = ReturnType->Type;
-            if (TYPE_RECORD == ReturnType->Type.Integral)
-            {
-                VarType Record = ReturnType->Type;
+            RecordReturn = TYPE_RECORD == ReturnType->Type.Integral; 
 
-                I32 Base = 0;
-                Subroutine->StackArgSize = 0;
-                PVMSetParam(EMITTER(), 0, Record, &Base);
+            /* location in the variable table is volatile, 
+             * so we need to copy the return type */
+            Subroutine->ReturnType = CompilerCopyType(Compiler, ReturnType->Type);
+            PASCAL_NONNULL(Subroutine->ReturnType);
 
-                /* reassign arguments because the first argument will be the return record's addr */
-                for (UInt i = 0; i < Subroutine->ArgCount; i++)
-                {
-                    VarLocation *Location = Subroutine->Args[i].Location;
-                    PASCAL_NONNULL(Location);
-
-                    *Location = PVMSetParam(EMITTER(), i + 1, Location->Type, &Base);
-                    PVMMarkArgAsOccupied(EMITTER(), Location);
-                    if (i + 1 >= PVM_ARGREG_COUNT)
-                        Subroutine->StackArgSize += Location->Type.Size;
-                }
-            }
+            /* first arg is the addr of the returning struct, 
+             * TODO: other calling convention */
+            PVMSetParam(EMITTER(), 0, *Subroutine->ReturnType, &StackBase);
         }
-
+        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after function return type.");
     }
     else
     {
-        if (ConsumeIfNextIs(Compiler, TOKEN_COLON) 
-        && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
+        /* for good error message */
+        if (ConsumeIfNextIs(Compiler, TOKEN_COLON))
         {
-            Error(Compiler, "Procedure cannot return a value.");
-            ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER); 
-            ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON); 
+            if (ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER))
+            {
+                Error(Compiler, "Procedure cannot have a return type.");
+            }
         }
-        else
-        {
-            ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after parameter list.");
-        }
+        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after parameter list.");
     }
 
 
+    /* finalize the location of parameters */
     /* end function decl */
+    for (UInt i = 0; i < Subroutine->ParameterList.Count; i++)
+    {
+        VarLocation *Parameter = Subroutine->ParameterList.Params[i].Location;
+        PASCAL_NONNULL(Parameter);
+        *Parameter = PVMSetParam(EMITTER(), i + RecordReturn, Parameter->Type, &StackBase);
+        if (i + RecordReturn >= PVM_ARGREG_COUNT)
+        {
+            Subroutine->StackArgSize += Parameter->Type.Size;
+        }
+    }
     CompilerEmitDebugInfo(Compiler, &Keyword);
+    SubroutineInfo->Type.As.Subroutine = *Subroutine;
+    SubroutineLocation->Type = SubroutineInfo->Type;
 
 
     /* forward declaration */
@@ -1053,38 +1018,45 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     }
     else /* body */
     {
-        CompilerResolveSubroutineCalls(Compiler, Subroutine, Location);
-        Subroutine->Defined = true;
-        Subroutine->Location = PVMGetCurrentLocation(EMITTER());
+        /* begin subroutine scope */
+        CompilerPushSubroutine(Compiler, Subroutine);
+        SaveRegInfo PrevScope = PVMEmitterBeginScope(EMITTER());
 
-        Subroutine->Line = Name.Line;
+
+        /* patch all references to this subroutine if any */
+        SubroutineLocation->As.Subroutine.Location = PVMGetCurrentLocation(EMITTER());
+        SubroutineLocation->As.Subroutine.Defined = true;
+        CompilerResolveSubroutineCalls(Compiler, &SubroutineLocation->As.Subroutine, Location);
+
+
+        /* body */
         U32 EnterLocation = PVMEmitEnter(EMITTER());
         CompileBlock(Compiler);
         PVMPatchEnter(EMITTER(), EnterLocation, Compiler->StackSize);
         Compiler->StackSize = 0;
 
-        /* emit the exit instruction,
-         * associate it with the 'end' token */
+
+        /* emit the exit instruction and associate it with the 'end' token */
         Token End = Compiler->Curr;
         CompilerInitDebugInfo(Compiler, &End);
         PVMEmitExit(EMITTER());
         CompilerEmitDebugInfo(Compiler, &End);
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s body.", SubroutineType);
 
+
         /* force free all argument registers */
         UInt ArgregCount = PVM_ARGREG_COUNT;
-        if (ArgregCount > Subroutine->ArgCount)
-            ArgregCount = Subroutine->ArgCount;
+        if (ArgregCount > Subroutine->ParameterList.Count)
+            ArgregCount = Subroutine->ParameterList.Count;
         for (UInt i = 0; i < ArgregCount; i++)
         {
-            PASCAL_NONNULL(Subroutine->Args[i].Location);
-            PVMMarkRegisterAsFreed(EMITTER(), Subroutine->Args[i].Location->As.Register.ID);
+            VarRegister RegisterParameter = Subroutine->ParameterList.Params[i].Location->As.Register;
+            PVMMarkRegisterAsFreed(EMITTER(), RegisterParameter.ID);
         }
+
+        CompilerPopSubroutine(Compiler);
+        PVMEmitterEndScope(EMITTER(), PrevScope);
     }
-
-
-    CompilerPopSubroutine(Compiler);
-    PVMEmitterEndScope(EMITTER(), PrevScope);
 }
 
 
@@ -1199,6 +1171,20 @@ static void CompileVarBlock(PVMCompiler *Compiler)
 
 
 
+static PascalVar *FindTypeName(PVMCompiler *Compiler, const Token *Name)
+{
+    PascalVar *Type = GetIdenInfo(Compiler, Name, "Undefined type name.");
+    if (NULL == Type)
+        return NULL;
+    if (NULL != Type->Location)
+    {
+        ErrorAt(Compiler, Name, "'"STRVIEW_FMT"' is not a type name.",
+                STRVIEW_FMT_ARG(&Name->Lexeme)
+        );
+        return NULL;
+    }
+    return Type;
+}
 
 
 static void CompileTypeBlock(PVMCompiler *Compiler)
@@ -1227,21 +1213,45 @@ static void CompileTypeBlock(PVMCompiler *Compiler)
         {
             const Token TypeName = Compiler->Curr;
             PascalVar *Type = GetIdenInfo(Compiler, &TypeName, "Undefined type name.");
+                DefineIdentifier(Compiler, &Identifier, Type->Type, NULL);
+        }
+        else if (ConsumeIfNextIs(Compiler, TOKEN_CARET))
+        {
+            if (!ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected type name."))
+                continue;
+            PascalVar *Type = FindTypeName(Compiler, &Compiler->Curr);
             if (NULL == Type)
                 continue;
-            if (NULL != Type->Location)
-            {
-                ErrorAt(Compiler, &TypeName, "'"STRVIEW_FMT"' is not a type name.",
-                        STRVIEW_FMT_ARG(&TypeName.Lexeme)
-                );
-                continue;
-            }
 
-            DefineIdentifier(Compiler, &Identifier, Type->Type, NULL);
+            VarType Pointer = VarTypePtr(CompilerCopyType(Compiler, Type->Type));
+            DefineIdentifier(Compiler, &Identifier, Pointer, NULL);
         }
         else if (ConsumeIfNextIs(Compiler, TOKEN_RECORD))
         {
             CompileRecordDefinition(Compiler, &Identifier);
+        }
+        else if (ConsumeIfNextIs(Compiler, TOKEN_FUNCTION))
+        {
+            PascalVartab Scope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+            SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
+
+            ConsumeOrError(Compiler, TOKEN_COLON, "Expeccted ':' after function paramter list.");
+            if (!ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected function return type."))
+                continue;
+            PascalVar *Type = FindTypeName(Compiler, &Compiler->Curr);
+            if (NULL == Type)
+                continue;
+
+            VarType *ReturnType = CompilerCopyType(Compiler, Type->Type);
+            VarType Function = VarTypeSubroutine(ParameterList, Scope, ReturnType, 0);
+            DefineIdentifier(Compiler, &Identifier, Function, NULL);
+        }
+        else if (ConsumeIfNextIs(Compiler, TOKEN_PROCEDURE))
+        {
+            PascalVartab Scope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+            SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
+            VarType Procedure = VarTypeSubroutine(ParameterList, Scope, NULL, 0);
+            DefineIdentifier(Compiler, &Identifier, Procedure, NULL);
         }
         else
         {

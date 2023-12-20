@@ -73,10 +73,12 @@ static inline U32 IntegralTypeSize(IntegralType Type)
     case TYPE_U64:
     case TYPE_F64:
         return 8;
+    case TYPE_FUNCTION:
     case TYPE_POINTER:
         return sizeof(void*);
     case TYPE_STRING:
         return sizeof(PascalStr);
+
     default: 
     {
         PASCAL_UNREACHABLE("%s is not an integral type.", IntegralTypeToStr(Type));

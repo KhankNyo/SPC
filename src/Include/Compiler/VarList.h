@@ -7,7 +7,10 @@
 
 
 /* nothing can be NULL */
-bool CompileParameterList(PVMCompiler *Compiler, VarSubroutine *CurrentFunction);
+/*
+ * compiles a subroutine's parameter list, 
+ * returns the parameter list */
+SubroutineParameterList CompileParameterList(PVMCompiler *Compiler, PascalVartab *Scope);
 
 /* returns the same addr passed in on error, else returns the next addr,
  * Alignment must be a power of 2 */
@@ -18,12 +21,12 @@ PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Name);
 
 /* nothing can be NULL */
 void CompileArgumentList(PVMCompiler *Compiler, 
-        const Token *FunctionName, const VarSubroutine *Subroutine
+        const Token *FunctionName, const SubroutineData *Subroutine
 );
 
 /* NULL can be passed into OutReturnValue */
 void CompileSubroutineCall(PVMCompiler *Compiler,
-        VarSubroutine *Callee, const Token *Name, VarLocation *OutReturnValue
+        VarLocation *Callee, const Token *Name, VarLocation *OutReturnValue
 );
 
 
