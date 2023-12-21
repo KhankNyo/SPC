@@ -18,7 +18,7 @@
 
 #define PASCAL_BUILTIN(Name, Arg1, Arg2)\
 static OptionalReturnValue Compile##Name (PVMCompiler *, const Token *);\
-static VarLocation s##Name = {.Type = { .Integral = TYPE_FUNCTION }, .Location = VAR_BUILTIN, \
+static VarLocation s##Name = {.Type = { .Integral = TYPE_FUNCTION }, .LocationType = VAR_BUILTIN, \
     .As.BuiltinSubroutine = Compile##Name};\
 static OptionalReturnValue Compile##Name (PVMCompiler *Arg1, const Token *Arg2)
 
@@ -68,7 +68,7 @@ static void CompileSysWrite(PVMCompiler *Compiler, bool Newline)
     /* arg count reg */
     VarLocation ArgCountReg = {
         .Type = VarTypeInit(TYPE_U32, 4),
-        .Location = VAR_REG,
+        .LocationType = VAR_REG,
         .As.Register.ID = 0,
     };
     PVMEmitMov(EMITTER(), &ArgCountReg, &VAR_LOCATION_LIT(.Int = ArgCount, ArgCountReg.Type.Integral));
@@ -76,7 +76,7 @@ static void CompileSysWrite(PVMCompiler *Compiler, bool Newline)
     /* file ptr reg */
     VarLocation FilePtrReg = {
         .Type = VarTypeInit(TYPE_POINTER, sizeof(void*)),
-        .Location = VAR_REG,
+        .LocationType = VAR_REG,
         .As.Register.ID = 1,
     };
     PVMEmitMov(EMITTER(), &FilePtrReg, &File);
@@ -114,7 +114,7 @@ PASCAL_BUILTIN(SizeOf, Compiler, FnName)
 
     Size.ReturnValue = (VarLocation){
         .Type = VarTypeInit(TYPE_SIZE, IntegralTypeSize(TYPE_SIZE)),
-        .Location = VAR_LIT,
+        .LocationType = VAR_LIT,
         .As.Literal.Int = Expr.Type.Size,
     };
     FreeExpr(Compiler, Expr);
@@ -158,8 +158,7 @@ void DefineSystemSubroutines(PVMCompiler *Compiler)
     static VarLocation NewlineConstant = {
         .Type.Integral = TYPE_STRING,
         .Type.Size = sizeof(PascalStr),
-        .Location = VAR_MEM,
-        .As.Memory.Location = 10,
+        .LocationType = VAR_MEM,
     };
     NewlineConstant.As.Memory = PVMEmitGlobalData(EMITTER(), "\1\n", sizeof("\n"));
     DEFINE_BUILTIN_LIT(Scope, sNewlineConstName, TYPE_STRING, &NewlineConstant);

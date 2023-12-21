@@ -52,9 +52,11 @@ typedef enum PVMOp
     OP_BNZ,
     OP_BR,
     OP_BSR,
+    OP_JSR,
     OP_BCT,
     OP_BCF,
     OP_BRI,
+    OP_LDRIP,
 
     OP_PSHL,
     OP_PSHH,
@@ -258,17 +260,22 @@ typedef enum PVMImmType
      | BIT_POS32(Rd, 4, 4)\
      | BIT_POS32(Imm4, 4, 0))
 
-#define PVM_BR(UpperByte)\
+#define PVM_BR(LowerByte)\
     (BIT_POS32(OP_BR, 8, 8)\
-     | BIT_POS32(UpperByte, 8, 0))
+     | BIT_POS32(LowerByte, 8, 0))
 
-#define PVM_BSR(UpperByte)\
+#define PVM_BSR(LowerByte)\
     (BIT_POS32(OP_BSR, 8, 8)\
-     | BIT_POS32(UpperByte, 8, 0))
+     | BIT_POS32(LowerByte, 8, 0))
 
-#define PVM_BR_COND(Cond, UpperByte)\
+#define PVM_BR_COND(Cond, LowerByte)\
     (BIT_POS32(OP_BC ## Cond, 8, 8)\
-     | BIT_POS32(UpperByte, 8, 8))\
+     | BIT_POS32(LowerByte, 8, 8))
+
+#define PVM_IMM_OP(Opcode, Rd, ImmType)\
+    (BIT_POS32(OP_ ## Opcode, 8, 8)\
+     | BIT_POS32(Rd, 4, 4)\
+     | BIT_POS32(ImmType, 4, 0))
 
 
 #define PVM_GET_OP(OpcodeHalf) (PVMOp)(((Opcode) >> 8) & 0xFF)

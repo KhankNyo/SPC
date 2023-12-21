@@ -159,7 +159,7 @@ static void CompileExitStmt(PVMCompiler *Compiler)
                 if (TYPE_RECORD == ReturnValue.Type.Integral)
                 {
                     VarLocation RecordAddr = CompileExpr(Compiler);
-                    PASCAL_ASSERT(RecordAddr.Location == VAR_MEM, "Record ret");
+                    PASCAL_ASSERT(RecordAddr.LocationType == VAR_MEM, "Record ret");
                     PVMEmitCopy(EMITTER(), &ReturnValue, &RecordAddr);
                 }
                 else 
@@ -219,7 +219,7 @@ static void CompilerPatchBreaks(PVMCompiler *Compiler, UInt PrevBreakCount)
 {
     for (UInt i = PrevBreakCount; i < Compiler->BreakCount; i++)
     {
-        PVMPatchBranchToCurrent(EMITTER(), Compiler->Breaks[i], BRANCHTYPE_UNCONDITIONAL);
+        PVMPatchBranchToCurrent(EMITTER(), Compiler->Breaks[i], PATCHTYPE_BRANCH_UNCONDITIONAL);
     }
     Compiler->BreakCount = PrevBreakCount;
 }
@@ -252,7 +252,7 @@ static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
     }
 
     U32 ToHead = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
-    PVMPatchBranch(EMITTER(), ToHead, LoopHead, BRANCHTYPE_CONDITIONAL);
+    PVMPatchBranch(EMITTER(), ToHead, LoopHead, PATCHTYPE_BRANCH_CONDITIONAL);
     FreeExpr(Compiler, Tmp);
 
     CompilerEmitDebugInfo(Compiler, &UntilKeyword);
@@ -343,7 +343,7 @@ static void CompileForStmt(PVMCompiler *Compiler)
 
     /* loop end */
     PVMEmitDebugInfo(EMITTER(), Compiler->Curr.Lexeme.Str, Compiler->Curr.Lexeme.Len, Compiler->Curr.Line);
-    PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_FLAG);
+    PVMPatchBranchToCurrent(EMITTER(), LoopExit, PATCHTYPE_BRANCH_FLAG);
     CompilerPatchBreaks(Compiler, BreakCountBeforeBody);
 
     /* move the result of the counter variable */
@@ -371,7 +371,7 @@ static void CompileWhileStmt(PVMCompiler *Compiler)
     }
 
     Condition Cond = COND_UNKNOWN;
-    if (VAR_LIT == Tmp.Location)
+    if (VAR_LIT == Tmp.LocationType)
     {
         Cond = COND_FALSE;
         if (Tmp.As.Literal.Bool)
@@ -396,7 +396,7 @@ static void CompileWhileStmt(PVMCompiler *Compiler)
     /* back to loophead */
     PVMEmitBranch(EMITTER(), LoopHead);
     /* patch the exit branch */
-    PVMPatchBranchToCurrent(EMITTER(), LoopExit, BRANCHTYPE_CONDITIONAL);
+    PVMPatchBranchToCurrent(EMITTER(), LoopExit, PATCHTYPE_BRANCH_CONDITIONAL);
     CompilerPatchBreaks(Compiler, BreakCountBeforeBody);
 
     EMITTER()->ShouldEmit = Last;
@@ -421,7 +421,7 @@ static void CompileIfStmt(PVMCompiler *Compiler)
         ErrorTypeMismatch(Compiler, &Keyword, "if condition", "boolean", Tmp.Type.Integral);
 
     Condition IfCond = COND_UNKNOWN;
-    if (VAR_LIT == Tmp.Location)
+    if (VAR_LIT == Tmp.LocationType)
     {
         IfCond = COND_FALSE;
         if (Tmp.As.Literal.Bool)
@@ -459,18 +459,18 @@ static void CompileIfStmt(PVMCompiler *Compiler)
         if (COND_UNKNOWN == IfCond)
             FromEndIf = PVMEmitBranch(EMITTER(), 0);
 
-        PVMPatchBranchToCurrent(EMITTER(), FromIf, BRANCHTYPE_CONDITIONAL);
+        PVMPatchBranchToCurrent(EMITTER(), FromIf, PATCHTYPE_BRANCH_CONDITIONAL);
         CompilerInitDebugInfo(Compiler, &Compiler->Curr);
         CompilerEmitDebugInfo(Compiler, &Compiler->Curr);
 
         CompileStmt(Compiler);
 
         if (COND_UNKNOWN == IfCond)
-            PVMPatchBranchToCurrent(EMITTER(), FromEndIf, BRANCHTYPE_UNCONDITIONAL);
+            PVMPatchBranchToCurrent(EMITTER(), FromEndIf, PATCHTYPE_BRANCH_UNCONDITIONAL);
     }
     else if (COND_UNKNOWN == IfCond)
     {
-        PVMPatchBranchToCurrent(EMITTER(), FromIf, BRANCHTYPE_CONDITIONAL);
+        PVMPatchBranchToCurrent(EMITTER(), FromIf, PATCHTYPE_BRANCH_CONDITIONAL);
     }
     EMITTER()->ShouldEmit = Last;
 }
@@ -552,7 +552,7 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
     /* no nested assignment is possible, this is ok */
     Compiler->Lhs = CompileVariableExpr(Compiler);
     VarLocation *Dst = &Compiler->Lhs;
-    PASCAL_ASSERT(VAR_INVALID != Dst->Location, "Invalid location");
+    PASCAL_ASSERT(VAR_INVALID != Dst->LocationType, "Invalid location");
 
 
     const Token Assignment = Compiler->Next;
@@ -583,7 +583,7 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
     }
 
 
-    Compiler->Lhs.Location = VAR_INVALID;
+    Compiler->Lhs.LocationType = VAR_INVALID;
     FreeExpr(Compiler, Right);
     CompilerEmitDebugInfo(Compiler, &Identifier);
 }
@@ -612,7 +612,7 @@ static void CompileIdenStmt(PVMCompiler *Compiler)
 
         PASCAL_NONNULL(IdentifierInfo->Location);
         const VarLocation *Location = IdentifierInfo->Location;
-        if (VAR_BUILTIN == Location->Location)
+        if (VAR_BUILTIN == Location->LocationType)
         {
             CompileCallToBuiltin(Compiler, Location->As.BuiltinSubroutine);
         }
@@ -643,7 +643,7 @@ static void CompileCaseStmt(PVMCompiler *Compiler)
 
 
     bool Last = EMITTER()->ShouldEmit;
-    bool ExprIsConstant = VAR_LIT == Expr.Location;
+    bool ExprIsConstant = VAR_LIT == Expr.LocationType;
     bool Emitted = false;
 
     U32 OutBranch[256];
@@ -657,7 +657,7 @@ static void CompileCaseStmt(PVMCompiler *Compiler)
             /* don't need to free the expr here since 
              * it is only evaluated at compile time and does not use any register */
             VarLocation Constant = CompileExpr(Compiler);
-            if (VAR_LIT != Constant.Location) 
+            if (VAR_LIT != Constant.LocationType) 
             {
                 /* TODO: expression highlighter */
                 Error(Compiler, "Case expression cannot be evaluated at compile time.");
@@ -693,7 +693,7 @@ static void CompileCaseStmt(PVMCompiler *Compiler)
 
             /* end of statement */
             OutBranch[CaseCount++] = PVMEmitBranch(EMITTER(), 0);
-            PVMPatchBranchToCurrent(EMITTER(), NextCase, BRANCHTYPE_CONDITIONAL);
+            PVMPatchBranchToCurrent(EMITTER(), NextCase, PATCHTYPE_BRANCH_CONDITIONAL);
             EMITTER()->ShouldEmit = Last;
 
             if (NextTokenIs(Compiler, TOKEN_END) || NextTokenIs(Compiler, TOKEN_ELSE))
@@ -721,7 +721,7 @@ static void CompileCaseStmt(PVMCompiler *Compiler)
     if (!ExprIsConstant)
     {
         for (U32 i = 0; i < CaseCount; i++)
-            PVMPatchBranchToCurrent(EMITTER(), OutBranch[i], BRANCHTYPE_UNCONDITIONAL);
+            PVMPatchBranchToCurrent(EMITTER(), OutBranch[i], PATCHTYPE_BRANCH_UNCONDITIONAL);
     }
 
     ConsumeOrError(Compiler, TOKEN_END, "Expected 'end' after statement.");
@@ -933,7 +933,6 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     Token Keyword = Compiler->Curr;
     bool ShouldHaveReturnType = TOKEN_FUNCTION == Keyword.Type;
     CompilerInitDebugInfo(Compiler, &Keyword);
-    U32 Location = PVMGetCurrentLocation(EMITTER());
 
 
     /* function/proc name */
@@ -1007,6 +1006,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     CompilerEmitDebugInfo(Compiler, &Keyword);
     SubroutineInfo->Type.As.Subroutine = *Subroutine;
     SubroutineLocation->Type = SubroutineInfo->Type;
+    SubroutineLocation->LocationType = VAR_SUBROUTINE;
 
 
     /* forward declaration */
@@ -1026,7 +1026,6 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
         /* patch all references to this subroutine if any */
         SubroutineLocation->As.Subroutine.Location = PVMGetCurrentLocation(EMITTER());
         SubroutineLocation->As.Subroutine.Defined = true;
-        CompilerResolveSubroutineCalls(Compiler, &SubroutineLocation->As.Subroutine, Location);
 
 
         /* body */
@@ -1115,7 +1114,7 @@ static void CompileVarBlock(PVMCompiler *Compiler)
             if (AtGlobalScope)
             {
                 VarLocation Constant = CompileExpr(Compiler);
-                if (VAR_LIT != Constant.Location)
+                if (VAR_LIT != Constant.LocationType)
                 {
                     ErrorAt(Compiler, &EqualSign, 
                             "Can only initialize global variable with constant expression."
@@ -1290,7 +1289,7 @@ static void CompileConstBlock(PVMCompiler *Compiler)
 
         VarLocation *Literal = CompilerAllocateVarLocation(Compiler);
         *Literal = CompileExpr(Compiler);
-        if (VAR_LIT != Literal->Location)
+        if (VAR_LIT != Literal->LocationType)
         {
             ErrorAt(Compiler, &EquSign, 
                     "Expression on the right of '=' is not a compile-time constant."

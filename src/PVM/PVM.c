@@ -195,9 +195,9 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
     PVM->Condition = PVM->R[PVM_GET_RD(Opc)]RegType Operator PVM->R[PVM_GET_RS(Opc)]RegType
 
 #define GET_BR_IMM(Opc, IP) \
-    BitSex32Safe(*IP++ | (((U32)(Opc) & 0xFF) << 16), PVM_BR_OFFSET_SIZE - 1)
+    BitSex32Safe(((U32)*IP++ << 8) | (((U32)(Opc) & 0xFF)), 23) /* sign extend at bit 23 */
 #define GET_BCC_IMM(Opc, IP) \
-    BitSex32Safe(*IP++ | (((U32)(Opc) & 0xF) << 16), PVM_BCC_OFFSET_SIZE - 1)
+    BitSex32Safe(((U32)*IP++ << 4) | (((U32)(Opc) & 0xF)), 19) /* sign extend at bit 19 */
 
 #define FLOAT_BINARY_OP(Operator, Opc, RegType)\
     PVM->F[PVM_GET_RD(Opc)]RegType GLUE(Operator,=) PVM->F[PVM_GET_RS(Opc)]RegType
@@ -517,6 +517,7 @@ do {\
                 goto CallStackOverflow;
 
             I32 Offset = GET_BR_IMM(Opcode, IP);
+            /* save frame */
             PVM->RetStack.Val->IP = IP;
             PVM->RetStack.Val->FP = FP().Ptr;
             PVM->RetStack.Val++;
@@ -525,6 +526,20 @@ do {\
             /* TODO: bound chk */
 
             IP += Offset;
+        } break;
+        case OP_JSR:
+        {
+            if (0 == PVM->RetStack.SizeLeft)
+                goto CallStackOverflow;
+
+            PVM->RetStack.Val->IP = IP;
+            PVM->RetStack.Val->FP = FP().Ptr;
+            PVM->RetStack.Val++;
+            PVM->RetStack.SizeLeft--;
+
+            /* TODO: bound chk */
+
+            IP = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
         } break;
         case OP_BEZ:
         {
@@ -568,6 +583,12 @@ do {\
             /* TODO: bound check */
             IP += Offset;
             PVM->R[PVM_GET_RD(Opcode)].DWord += BitSex64(PVM_GET_RS(Opcode), 3);
+        } break;
+        case OP_LDRIP:
+        {
+            I32 Offset = 0; 
+            GET_SEX_IMM(Offset, PVM_GET_IMMTYPE(Opcode), IP);
+            PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw = IP + Offset;
         } break;
 
 

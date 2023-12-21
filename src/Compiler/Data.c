@@ -51,6 +51,8 @@ PVMCompiler CompilerInit(const U8 *Source,
         .BreakCount = 0,
         .InLoop = false,
 
+        .SubroutineReferences = { 0 },
+
         .Subroutine = { {0} },
         .Emitter = PVMEmitterInit(Chunk),
     };
@@ -69,6 +71,7 @@ PVMCompiler CompilerInit(const U8 *Source,
 
 void CompilerDeinit(PVMCompiler *Compiler)
 {
+    ResolveSubroutineReferences(Compiler);
     PVMSetEntryPoint(&Compiler->Emitter, Compiler->EntryPoint);
     PVMEmitterDeinit(&Compiler->Emitter);
     GPADeinit(&Compiler->InternalAlloc);
@@ -206,6 +209,54 @@ bool IsAtStmtEnd(const PVMCompiler *Compiler)
 
 
 
+void PushSubroutineReference(PVMCompiler *Compiler, 
+        const VarSubroutine *Subroutine, U32 CallSite, PVMPatchType PatchType)
+{
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Subroutine);
+
+    U32 Count = Compiler->SubroutineReferences.Count;
+    if (Count >= Compiler->SubroutineReferences.Cap)
+    {
+        U32 NewCap = Compiler->SubroutineReferences.Cap * 2 + 8;
+        Compiler->SubroutineReferences.Data = GPAReallocateArray(
+                &Compiler->InternalAlloc, 
+                Compiler->SubroutineReferences.Data, 
+                *Compiler->SubroutineReferences.Data, 
+                NewCap
+        );
+        Compiler->SubroutineReferences.Cap = NewCap;
+    }
+    Compiler->SubroutineReferences.Data[Count].CallSite = CallSite;
+    Compiler->SubroutineReferences.Data[Count].Subroutine = Subroutine;
+    Compiler->SubroutineReferences.Data[Count].PatchType = PatchType;
+    Compiler->SubroutineReferences.Count = Count + 1;
+}
+
+void ResolveSubroutineReferences(PVMCompiler *Compiler)
+{
+    PASCAL_NONNULL(Compiler);
+    for (UInt i = 0; i < Compiler->SubroutineReferences.Count; i++)
+    {
+        PVMPatchBranch(EMITTER(), 
+                Compiler->SubroutineReferences.Data[i].CallSite,
+                Compiler->SubroutineReferences.Data[i].Subroutine->Location,
+                Compiler->SubroutineReferences.Data[i].PatchType
+        );
+    }
+    /* don't need to deallocate the internal allocator, 
+     * will get deallocated in batch */
+    //GPADeallocate(&Compiler->InternalAlloc, Compiler->SubroutineReferences.Data);
+    memset(&Compiler->SubroutineReferences, 0, sizeof(Compiler->SubroutineReferences));
+}
+
+
+
+
+
+
+
+
 void CompilerInitDebugInfo(PVMCompiler *Compiler, const Token *From)
 {
     PVMEmitDebugInfo(&Compiler->Emitter, From->Lexeme.Str, From->Lexeme.Len, From->Line);
@@ -271,37 +322,6 @@ Token *CompilerGetTmp(PVMCompiler *Compiler, UInt Idx)
 }
 
 
-
-
-
-void SubroutineDataPushRef(PascalGPA *Allocator, VarSubroutine *Subroutine, U32 CallSite)
-{
-    if (Subroutine->RefCount == Subroutine->RefCap)
-    {
-        Subroutine->RefCap = Subroutine->RefCap*2 + 8;
-        Subroutine->Refs = GPAReallocateArray(Allocator,
-                Subroutine->Refs, *Subroutine->Refs,
-                Subroutine->RefCap
-        );
-    }
-    Subroutine->Refs[Subroutine->RefCount++] = CallSite;
-}
-
-void CompilerResolveSubroutineCalls(PVMCompiler *Compiler, VarSubroutine *Subroutine, U32 SubroutineLocation)
-{
-    for (U32 i = 0; i < Subroutine->RefCount; i++)
-    {
-        PVMPatchBranch(&Compiler->Emitter, 
-                Subroutine->Refs[i], 
-                SubroutineLocation, 
-                BRANCHTYPE_UNCONDITIONAL
-        );
-    }
-    GPADeallocate(Compiler->GlobalAlloc, Subroutine->Refs);
-    Subroutine->Refs = NULL;
-    Subroutine->RefCount = 0;
-    Subroutine->RefCap = 0;
-}
 
 
 

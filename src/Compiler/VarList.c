@@ -138,7 +138,7 @@ U32 CompileVarList(PVMCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U32 
         );
 
         Location->Type = TypeAttr.Type;
-        Location->Location = VAR_MEM;
+        Location->LocationType = VAR_MEM;
         Location->As.Memory = (VarMemory) {
             .Location = EndAddr,
             .RegPtr.ID = BaseRegister,
@@ -356,7 +356,7 @@ void CompileSubroutineCall(PVMCompiler *Compiler,
     PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg, SaveRegs);
     if (!Subroutine->Defined)
     {
-        SubroutineDataPushRef(Compiler->GlobalAlloc, Subroutine, CallSite);
+        PushSubroutineReference(Compiler, Subroutine, CallSite, PATCHTYPE_BRANCH_UNCONDITIONAL);
     }
 }
 

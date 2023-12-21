@@ -36,13 +36,14 @@ struct PVMEmitter
     VarLocation ReturnValue;
 };
 
-typedef enum PVMBranchType
+typedef enum PVMPatchType
 {
-    BRANCHTYPE_UNCONDITIONAL    = 0x00FF,
-    BRANCHTYPE_FLAG             = 0x00FF,
-    BRANCHTYPE_CONDITIONAL      = 0x000F,
-    BRANCHTYPE_INC              = 0x0000,
-} PVMBranchType;
+    PATCHTYPE_SUBROUTINE_ADDR       = 0xFFFF,
+    PATCHTYPE_BRANCH_UNCONDITIONAL  = 0x00FF,
+    PATCHTYPE_BRANCH_FLAG           = 0x00FF,
+    PATCHTYPE_BRANCH_CONDITIONAL    = 0x000F,
+    PATCHTYPE_BRANCH_INC            = 0x0000,
+} PVMPatchType;
 
 
 PVMEmitter PVMEmitterInit(PVMChunk *Chunk);
@@ -79,8 +80,8 @@ U32 PVMEmitBranchOnTrueFlag(PVMEmitter *Emitter);
 U32 PVMEmitBranchAndInc(PVMEmitter *Emitter, VarRegister Reg, I8 By, U32 To);
 /* returns the offset of the branch instruction for patching if necessary */
 U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To);
-void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMBranchType Type);
-void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMBranchType Type);
+void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMPatchType Type);
+void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMPatchType Type);
 
 
 /* move and load */
@@ -91,6 +92,7 @@ void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation 
 bool PVMEmitIntoRegLocation(PVMEmitter *Emitter, VarLocation *OutTarget, bool ReadOnly, const VarLocation *Src);
 bool PVMEmitIntoReg(PVMEmitter *Emitter, VarRegister *OutTarget, bool ReadOnly, const VarLocation *Src);
 void PVMEmitLoadAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src);
+U32 PVMEmitLoadSubroutineAddr(PVMEmitter *Emitter, VarRegister Dst, VarSubroutine Subroutine);
 void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src, I32 Offset);
 
 

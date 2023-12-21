@@ -78,8 +78,6 @@ struct VarSubroutine
 {
     U32 Location;
 	bool Defined;
-    U32 RefCount, RefCap;
-    U32 *Refs;
 };
 
 typedef enum VarLocationType
@@ -97,7 +95,7 @@ typedef enum VarLocationType
 struct VarLocation 
 {
     VarType Type;
-    VarLocationType Location;
+    VarLocationType LocationType;
     union {
         VarMemory Memory;
         VarRegister Register;
@@ -110,7 +108,8 @@ struct VarLocation
 
 /* Assignment: '.Int = 1' */
 #define VAR_LOCATION_LIT(Assignment, LitType) (VarLocation) {\
-    .Type = VarTypeInit(LitType, IntegralTypeSize(LitType)), .Location = VAR_LIT, \
+    .Type = VarTypeInit(LitType, IntegralTypeSize(LitType)), \
+    .LocationType = VAR_LIT, \
     .As.Literal Assignment\
 }
 

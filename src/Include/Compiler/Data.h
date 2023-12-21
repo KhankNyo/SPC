@@ -70,12 +70,18 @@ struct PVMCompiler
     /* for exit statement to see which subroutine it's currently in */
     CompilerFrame Subroutine[PVM_MAX_SCOPE_COUNT];
 
-    /* TODO: who owns the pointee table?? */
-    PointeeTable Pointees;
-
     U32 Breaks[256];
     U32 BreakCount;
     bool InLoop;
+
+    struct {
+        struct {
+            U32 CallSite;
+            PVMPatchType PatchType;
+            const VarSubroutine *Subroutine;
+        } *Data;
+        U32 Count, Cap;
+    } SubroutineReferences;
 
     U32 EntryPoint;
     FILE *LogFile;
@@ -105,6 +111,12 @@ void CompilerPushSubroutine(PVMCompiler *Compiler, SubroutineData *Subroutine);
 void CompilerPopSubroutine(PVMCompiler *Compiler);
 VarLocation *CompilerAllocateVarLocation(PVMCompiler *Compiler);
 
+
+void PushSubroutineReference(PVMCompiler *Compiler, 
+        const VarSubroutine *Subroutine, U32 CallSite, PVMPatchType PatchType
+);
+void ResolveSubroutineReferences(PVMCompiler *Compiler);
+
 void CompilerResetTmp(PVMCompiler *Compiler);
 void CompilerPushTmp(PVMCompiler *Compiler, Token Identifier);
 TmpIdentifiers CompilerSaveTmp(PVMCompiler *Compiler);
@@ -114,15 +126,6 @@ Token *CompilerGetTmp(PVMCompiler *Compiler, UInt Idx);
 
 void CompilerInitDebugInfo(PVMCompiler *Compiler, const Token *From);
 void CompilerEmitDebugInfo(PVMCompiler *Compiler, const Token *From);
-
-U32 SubroutineDataPushParameter(PascalGPA *Allocator, 
-        SubroutineData *Subroutine, const PascalVar *Param, U32 Cap
-);
-void SubroutineDataPushRef(PascalGPA *Allocator, VarSubroutine *Subroutine, U32 CallSite);
-void CompilerResolveSubroutineCalls(PVMCompiler *Compiler, 
-        VarSubroutine *Subroutine, U32 SubroutineLocation
-);
-
 
 bool NextTokenIs(const PVMCompiler *Compiler, TokenType Type);
 bool IsAtEnd(const PVMCompiler *Compiler);

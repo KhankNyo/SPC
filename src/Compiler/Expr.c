@@ -83,11 +83,11 @@ void FreeExpr(PVMCompiler *Compiler, VarLocation Expr)
 {
     PASCAL_NONNULL(Compiler);
 
-    if (VAR_REG == Expr.Location && !Expr.As.Register.Persistent)
+    if (VAR_REG == Expr.LocationType && !Expr.As.Register.Persistent)
     {
         PVMFreeRegister(EMITTER(), Expr.As.Register);
     }
-    else if (VAR_MEM == Expr.Location && !Expr.As.Memory.RegPtr.Persistent)
+    else if (VAR_MEM == Expr.LocationType && !Expr.As.Memory.RegPtr.Persistent)
     {
         PVMFreeRegister(EMITTER(), Expr.As.Memory.RegPtr);
     }
@@ -120,7 +120,7 @@ void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLocation *L
         return;
 
     CoerceTypes(Compiler, OpToken, Location->Type.Integral, Expr.Type.Integral);
-    if (Expr.Location != VAR_MEM)
+    if (Expr.LocationType != VAR_MEM)
         ConvertTypeImplicitly(Compiler, Location->Type.Integral, &Expr);
 
     if (TYPE_POINTER == Location->Type.Integral && TYPE_POINTER == Expr.Type.Integral)
@@ -163,7 +163,7 @@ static VarType TypeOfUIntLit(U64 UInt)
 static VarLocation FactorLiteral(PVMCompiler *Compiler)
 {
     VarLocation Location = {
-        .Location = VAR_LIT,
+        .LocationType = VAR_LIT,
     };
     PASCAL_NONNULL(Compiler);
 
@@ -200,6 +200,67 @@ static VarLocation FactorLiteral(PVMCompiler *Compiler)
 }
 
 
+static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, VarLocation *Location)
+{
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Identifier);
+    PASCAL_NONNULL(Location);
+
+    VarLocation ReturnValue = { 0 };
+
+    /* builtin function */
+    if (VAR_BUILTIN == Location->LocationType)
+    {
+        OptionalReturnValue Opt = CompileCallToBuiltin(Compiler, Location->As.BuiltinSubroutine);
+        if (!Opt.HasReturnValue)
+        {
+            ErrorAt(Compiler, Identifier, "Builtin procedure does not have a return value.");
+            return ReturnValue;
+        }
+        return Opt.ReturnValue;
+    }
+
+    /* function call */
+    SubroutineData *Subroutine = &Location->Type.As.Subroutine;
+    if (NULL == Subroutine->ReturnType)
+    {
+        ErrorAt(Compiler, Identifier, "Procedure '"STRVIEW_FMT"' does not have a return value.",
+                STRVIEW_FMT_ARG(&Identifier->Lexeme)
+        );
+        return ReturnValue;
+    }
+
+
+    /* setup return reg */
+    if (TYPE_RECORD == Subroutine->ReturnType->Integral)
+    {
+        if (TYPE_RECORD != Compiler->Lhs.Type.Integral)
+        {
+            /* allocate tmp space */
+            PASCAL_UNREACHABLE("TODO: not using record return type");
+        }
+
+        /* TODO: unhack this */
+        ReturnValue = PVMSetReturnType(EMITTER(), *Subroutine->ReturnType);
+        VarRegister Arg = ReturnValue.As.Memory.RegPtr;
+        PASCAL_ASSERT(VAR_MEM == Compiler->Lhs.LocationType, "");
+
+        PVMEmitLoadAddr(EMITTER(), Arg, Compiler->Lhs.As.Memory);
+        PVMMarkRegisterAsAllocated(EMITTER(), Arg.ID);
+        CompileSubroutineCall(Compiler, Location, Identifier, &ReturnValue);
+    }
+    else
+    {
+        ReturnValue = PVMAllocateRegisterLocation(EMITTER(), *Subroutine->ReturnType);
+        CompileSubroutineCall(Compiler, Location, Identifier, &ReturnValue);
+        if (TYPE_POINTER == ReturnValue.Type.Integral)
+        {
+            ReturnValue.Type.As.Pointee = Subroutine->ReturnType->As.Pointee;
+        }
+    }
+    return ReturnValue;
+}
+
 
 
 static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
@@ -222,11 +283,18 @@ static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
     }
 
 
-    VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), VarTypeInit(TYPE_POINTER, sizeof(void*)));
+    VarType Pointee = *Variable->Type.As.Pointee;
+    VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), Pointee);
     PVMEmitMov(EMITTER(), &Ptr, Variable);
+
+    if (TYPE_FUNCTION == Pointee.Integral)
+    {
+        return FactorCall(Compiler, &Caret, &Ptr);
+    }
+
     VarLocation Memory = {
-        .Location = VAR_MEM,
-        .Type = *Variable->Type.As.Pointee,
+        .LocationType = VAR_MEM,
+        .Type = Pointee,
         .As.Memory = {
             .RegPtr = Ptr.As.Register,
             .Location = 0,
@@ -273,20 +341,20 @@ static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
 
     /* member offset + record offset = location */
     VarLocation Location = *Member;
-    if (VAR_MEM == Left->Location)
+    if (VAR_MEM == Left->LocationType)
     {
         VarLocation Value = *Member;
         Value.As.Memory.Location += Left->As.Memory.Location;
         Value.As.Memory.RegPtr = Left->As.Memory.RegPtr;
         return Value;
     }
-    else if (VAR_REG == Left->Location)
+    else if (VAR_REG == Left->LocationType)
     {
         Location.As.Memory.RegPtr = Left->As.Register;
     }
     else 
     {
-        PASCAL_UNREACHABLE("Invalid location type: %d\n", Left->Location);
+        PASCAL_UNREACHABLE("Invalid location type: %d\n", Left->LocationType);
     }
     return Location;
 }
@@ -416,9 +484,9 @@ static VarLocation ConvertTypeExplicitly(PVMCompiler *Compiler,
         return *Expr;
 
     VarLocation Converted = { 
-        .Location = Expr->Location,
+        .LocationType = Expr->LocationType,
     };
-    switch (Expr->Location)
+    switch (Expr->LocationType)
     {
     case VAR_INVALID:
     case VAR_BUILTIN:
@@ -455,69 +523,6 @@ static VarLocation ConvertTypeExplicitly(PVMCompiler *Compiler,
 }
 
 
-static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, PascalVar *Variable)
-{
-    PASCAL_NONNULL(Compiler);
-    PASCAL_NONNULL(Identifier);
-    PASCAL_NONNULL(Variable);
-    PASCAL_NONNULL(Variable->Location);
-
-    VarLocation ReturnValue = { 0 };
-    VarLocation *Location = Variable->Location;
-
-    /* builtin function */
-    if (VAR_BUILTIN == Location->Location)
-    {
-        OptionalReturnValue Opt = CompileCallToBuiltin(Compiler, Variable->Location->As.BuiltinSubroutine);
-        if (!Opt.HasReturnValue)
-        {
-            ErrorAt(Compiler, Identifier, "Builtin procedure does not have a return value.");
-            return ReturnValue;
-        }
-        return Opt.ReturnValue;
-    }
-
-    /* function call */
-    SubroutineData *Subroutine = &Location->Type.As.Subroutine;
-    if (NULL == Subroutine->ReturnType)
-    {
-        ErrorAt(Compiler, Identifier, "Procedure '"STRVIEW_FMT"' does not have a return value.",
-                STRVIEW_FMT_ARG(&Identifier->Lexeme)
-        );
-        return ReturnValue;
-    }
-
-
-    /* setup return reg */
-    if (TYPE_RECORD == Subroutine->ReturnType->Integral)
-    {
-        if (TYPE_RECORD != Compiler->Lhs.Type.Integral)
-        {
-            /* allocate tmp space */
-            PASCAL_UNREACHABLE("TODO: not using record return type");
-        }
-
-        /* TODO: unhack this */
-        ReturnValue = PVMSetReturnType(EMITTER(), *Subroutine->ReturnType);
-        VarRegister Arg = ReturnValue.As.Memory.RegPtr;
-        PASCAL_ASSERT(VAR_MEM == Compiler->Lhs.Location, "");
-
-        PVMEmitLoadAddr(EMITTER(), Arg, Compiler->Lhs.As.Memory);
-        PVMMarkRegisterAsAllocated(EMITTER(), Arg.ID);
-        CompileSubroutineCall(Compiler, Location, Identifier, &ReturnValue);
-    }
-    else
-    {
-        ReturnValue = PVMAllocateRegisterLocation(EMITTER(), *Subroutine->ReturnType);
-        CompileSubroutineCall(Compiler, Location, Identifier, &ReturnValue);
-        if (TYPE_POINTER == ReturnValue.Type.Integral)
-        {
-            ReturnValue.Type.As.Pointee = Subroutine->ReturnType->As.Pointee;
-        }
-    }
-    return ReturnValue;
-}
-
 
 static VarLocation FactorVariable(PVMCompiler *Compiler)
 {
@@ -542,13 +547,13 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
         /* typename */
         VarLocation Type = {
             .Type = Variable->Type,
-            .Location = VAR_INVALID,
+            .LocationType = VAR_INVALID,
         };
         return Type;
     }
     if (TYPE_FUNCTION == Variable->Type.Integral)
     {
-        return FactorCall(Compiler, &Identifier, Variable);
+        return FactorCall(Compiler, &Identifier, Variable->Location);
     }
     return *Variable->Location;
 Error:
@@ -576,17 +581,31 @@ static VarLocation VariableAddrOf(PVMCompiler *Compiler)
     VarLocation *Location = Variable->Location;
     PASCAL_NONNULL(Location);
     PASCAL_ASSERT(VarTypeEqual(&Variable->Type, &Location->Type), "Unreachable");
-    if (VAR_MEM != Location->Location)
+    if (VAR_MEM == Location->LocationType)
+    {
+        VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), 
+                VarTypePtr(CompilerCopyType(Compiler, Variable->Type))
+        );
+        PVMEmitLoadAddr(EMITTER(), Ptr.As.Register, Location->As.Memory);
+        return Ptr;
+    }
+    else if (VAR_SUBROUTINE == Location->LocationType)
+    {
+        VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), 
+                VarTypePtr(CompilerCopyType(Compiler, Variable->Type))
+        );
+        U32 PatchLocation = PVMEmitLoadSubroutineAddr(EMITTER(), Ptr.As.Register, Location->As.Subroutine);
+        if (!Location->As.Subroutine.Defined)
+        {
+            PushSubroutineReference(Compiler, &Location->As.Subroutine, PatchLocation, PATCHTYPE_SUBROUTINE_ADDR);
+        }
+        return Ptr;
+    }
+    else 
     {
         ErrorAt(Compiler, &AtSign, "Cannot take the address of this type of variable.");
         return *Location;
     }
-
-    VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), 
-            VarTypePtr(CompilerCopyType(Compiler, Variable->Type))
-    );
-    PVMEmitLoadAddr(EMITTER(), Ptr.As.Register, Location->As.Memory);
-    return Ptr;
 }
 
 
@@ -595,7 +614,7 @@ static VarLocation NegateLiteral(PVMCompiler *Compiler,
         const Token *OpToken, VarLiteral Literal, IntegralType LiteralType)
 {
     VarLocation Location = {
-        .Location = VAR_LIT,
+        .LocationType = VAR_LIT,
     };
     if (IntegralTypeIsInteger(LiteralType))
     {
@@ -621,7 +640,7 @@ static VarLocation NotLiteral(PVMCompiler *Compiler,
         const Token *OpToken, VarLiteral Literal, IntegralType LiteralType)
 {
     VarLocation Location = {
-        .Location = VAR_LIT,
+        .LocationType = VAR_LIT,
     };
     if (TYPE_BOOLEAN == LiteralType)
     {
@@ -648,14 +667,14 @@ static VarLocation ExprUnary(PVMCompiler *Compiler)
     Token OpToken = Compiler->Curr;
     VarLocation Value = ParsePrecedence(Compiler, PREC_FACTOR);
 
-    if (VAR_INVALID == Value.Location)
+    if (VAR_INVALID == Value.LocationType)
     {
         ErrorAt(Compiler, &OpToken, 
                 "unary operator '"STRVIEW_FMT"' cannot be applied to expression with no storage.",
                 STRVIEW_FMT_ARG(&OpToken.Lexeme)
         );
     }
-    else if (VAR_LIT == Value.Location)
+    else if (VAR_LIT == Value.LocationType)
     {
         switch (Operator)
         {
@@ -794,8 +813,8 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     PASCAL_NONNULL(OpToken);
     PASCAL_NONNULL(Left);
     PASCAL_NONNULL(Right);
-    PASCAL_ASSERT(VAR_LIT == Left->Location, "left is not a literal in %s", __func__);
-    PASCAL_ASSERT(VAR_LIT == Right->Location, "right is not a literal in %s", __func__);
+    PASCAL_ASSERT(VAR_LIT == Left->LocationType, "left is not a literal in %s", __func__);
+    PASCAL_ASSERT(VAR_LIT == Right->LocationType, "right is not a literal in %s", __func__);
 
     IntegralType Both = CoerceTypes(Compiler, OpToken, Left->Type.Integral, Right->Type.Integral);
     bool ConversionOk = ConvertTypeImplicitly(Compiler, Both, Left);
@@ -806,7 +825,7 @@ static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken
     }
 
     VarLocation Result = {
-        .Location = VAR_LIT,
+        .LocationType = VAR_LIT,
         .Type = VarTypeInit(Both, IntegralTypeSize(Both)),
     };
 
@@ -1007,12 +1026,12 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler,
     PASCAL_NONNULL(OpToken);
     PASCAL_NONNULL(Left);
     PASCAL_NONNULL(Right);
-    PASCAL_ASSERT(VAR_INVALID != Left->Location, "Unreachable");
-    PASCAL_ASSERT(VAR_INVALID != Right->Location, "Unreachable");
+    PASCAL_ASSERT(VAR_INVALID != Left->LocationType, "Unreachable");
+    PASCAL_ASSERT(VAR_INVALID != Right->LocationType, "Unreachable");
 
     VarLocation Tmp = *Left;
     VarLocation Src = *Right;
-    if (VAR_LIT == Left->Location)
+    if (VAR_LIT == Left->LocationType)
     {
         Tmp = *Right;
         Src = *Left;
@@ -1076,7 +1095,7 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler,
     case TOKEN_EQUAL:
     {
         if (IntegralTypeIsInteger(Dst.Type.Integral) 
-        && VAR_LIT != Left->Location && VAR_LIT != Right->Location
+        && VAR_LIT != Left->LocationType && VAR_LIT != Right->LocationType
         && (IntegralTypeIsSigned(Left->Type.Integral) != IntegralTypeIsSigned(Right->Type.Integral)))
         {
             ErrorAt(Compiler, OpToken, 
@@ -1122,8 +1141,8 @@ static VarLocation ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
      *      not     (1 + (2 + 3)) 
      */
     VarLocation Right = ParsePrecedence(Compiler, OperatorRule->Prec + 1);
-    bool LeftInvalid = VAR_INVALID == Left->Location;
-    bool RightInvalid = VAR_INVALID == Right.Location;
+    bool LeftInvalid = VAR_INVALID == Left->LocationType;
+    bool RightInvalid = VAR_INVALID == Right.LocationType;
 
     if (LeftInvalid || RightInvalid)
     {
@@ -1139,7 +1158,7 @@ static VarLocation ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
     {
         PASCAL_UNREACHABLE("No binary op on record type.");
     }
-    else if (VAR_LIT == Left->Location && VAR_LIT == Right.Location)
+    else if (VAR_LIT == Left->LocationType && VAR_LIT == Right.LocationType)
     {
         return LiteralExprBinary(Compiler, &OpToken, Left, &Right);
     }
@@ -1161,7 +1180,7 @@ static VarLocation ExprAnd(PVMCompiler *Compiler, VarLocation *Left)
     if (TYPE_BOOLEAN == Left->Type.Integral)
     {
         bool WasEmit = EMITTER()->ShouldEmit;
-        if (VAR_LIT == Left->Location && !Left->As.Literal.Bool)
+        if (VAR_LIT == Left->LocationType && !Left->As.Literal.Bool)
         {
             /* false and ...: don't emit right */
             EMITTER()->ShouldEmit = false;
@@ -1176,7 +1195,7 @@ static VarLocation ExprAnd(PVMCompiler *Compiler, VarLocation *Left)
         PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
         PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type.Integral, "");
 
-        PVMPatchBranchToCurrent(EMITTER(), FromLeft, BRANCHTYPE_CONDITIONAL);
+        PVMPatchBranchToCurrent(EMITTER(), FromLeft, PATCHTYPE_BRANCH_CONDITIONAL);
 
         EMITTER()->ShouldEmit = WasEmit;
     }
@@ -1208,7 +1227,7 @@ static VarLocation ExprOr(PVMCompiler *Compiler, VarLocation *Left)
     if (TYPE_BOOLEAN == Left->Type.Integral)
     {
         bool WasEmit = EMITTER()->ShouldEmit;
-        if (VAR_LIT == Left->Location && Left->As.Literal.Bool)
+        if (VAR_LIT == Left->LocationType && Left->As.Literal.Bool)
         {
             /* true or ...: don't emit right */
             EMITTER()->ShouldEmit = false;
@@ -1223,7 +1242,7 @@ static VarLocation ExprOr(PVMCompiler *Compiler, VarLocation *Left)
         PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
         PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type.Integral, "");
 
-        PVMPatchBranchToCurrent(EMITTER(), FromTrue, BRANCHTYPE_CONDITIONAL);
+        PVMPatchBranchToCurrent(EMITTER(), FromTrue, PATCHTYPE_BRANCH_CONDITIONAL);
 
         EMITTER()->ShouldEmit = WasEmit;
     }
@@ -1405,7 +1424,7 @@ bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLocation *
     {
         return true;
     }
-    switch (From->Location)
+    switch (From->LocationType)
     {
     case VAR_LIT:
     {
@@ -1440,7 +1459,7 @@ bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLocation *
             goto InvalidTypeConversion;
 
         FreeExpr(Compiler, *From);
-        From->Location = VAR_REG;
+        From->LocationType = VAR_REG;
         From->As.Register = OutTarget;
     } break;
     case VAR_FLAG:

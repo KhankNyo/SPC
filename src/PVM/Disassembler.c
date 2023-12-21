@@ -121,8 +121,8 @@ static U32 DisasmBcc(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *
 {
     const char *Rd = sIntReg[PVM_GET_RD(Opcode)];
     I32 BrOffset = BitSex32Safe(
-            ((U32)(Opcode & 0xF) << 16) | (U32)(Chunk->Code[Addr + 1]), 
-            PVM_BCC_OFFSET_SIZE - 1
+            ((U32)(Opcode & 0xF)) | ((U32)Chunk->Code[Addr + 1] << 4), 
+            19
     );
 
     int Pad = Print2Bytes(f, Opcode);
@@ -137,8 +137,8 @@ static U32 DisasmBcc(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *
 static U32 DisasmBr(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *Chunk, U32 Addr)
 {
     I32 BrOffset = BitSex32Safe(
-            (((U32)Opcode & 0xFF) << 16) | (U32)(Chunk->Code[Addr + 1]), 
-            PVM_BR_OFFSET_SIZE - 1
+            (((U32)Opcode & 0xFF)) | ((U32)Chunk->Code[Addr + 1] << 8), 
+            23
     );
 
     int Pad = Print2Bytes(f, Opcode);
@@ -280,7 +280,7 @@ static ImmediateInfo GetImmFromImmType(const PVMChunk *Chunk, U32 Addr, PVMImmTy
 }
 
 
-/* note: this function does not display the topmost 16 bytes */
+/* note: this function does not display the bottom 2 bytes */
 static void PrintImmBytes(FILE *f, const ImmediateInfo Info)
 {
     /* display hex dump of immediate as how it is represented in memory */
@@ -290,7 +290,7 @@ static void PrintImmBytes(FILE *f, const ImmediateInfo Info)
         {
             fprintf(f, "\n%*s  ", sAddrPad, "");
         }
-        UInt BitIndex = 16*(Info.Count - i - 1);
+        UInt BitIndex = 16*i;
         Print2Bytes(f, (Info.Imm >> BitIndex) & 0xFFFF);
     }
     fputc('\n', f);
@@ -308,7 +308,7 @@ static U32 DisasmRdImm(FILE *f, const char *Mnemonic, const PVMChunk *Chunk, U32
     /* display instruction */
     const char *Rd = sIntReg[PVM_GET_RD(Opcode)];
     int Pad = Print2Bytes(f, Opcode);
-    Pad += Print2Bytes(f, (Info.Imm >> (16*(Info.Count - 1))) & 0xFFFF);
+    Pad += Print2Bytes(f, Info.Imm & 0xFFFF);
 
     PrintPaddedMnemonic(f, Pad, LongMnemonic);
     Pad = fprintf(f, "%s, 0x%llx", Rd, Info.Imm);
@@ -326,7 +326,7 @@ static U32 DisasmMem(FILE *f,
     const char *Rd = RegSet[PVM_GET_RD(Opcode)];
     const char *Rs = sIntReg[PVM_GET_RS(Opcode)];
     int Pad = Print2Bytes(f, Opcode);
-    Pad += Print2Bytes(f, (Info.Imm >> (16*(Info.Count - 1))) & 0xFFFF);
+    Pad += Print2Bytes(f, Info.Imm & 0xFFFF);
 
     PrintPaddedMnemonic(f, Pad, Mnemonic);
     fprintf(f, "%s, [%s + %lld]", Rd, Rs, (I64)Info.Imm);
@@ -355,7 +355,7 @@ static U32 DisasmRdRsImm32(FILE *f, const char *Mnemonic, U16 Opcode, const PVMC
     ImmediateInfo Info = GetImmFromImmType(Chunk, Addr + 1, IMMTYPE_U32);
 
     int Pad = Print2Bytes(f, Opcode);
-    Pad += Print2Bytes(f, Info.Imm >> 16);
+    Pad += Print2Bytes(f, Info.Imm);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
 
     fprintf(f, "%s, %s, %u", 
@@ -390,7 +390,7 @@ static U32 DisasmSysOp(FILE *f, const PVMChunk *Chunk, U32 Addr, U16 Opcode)
     {
         ImmediateInfo Info = GetImmFromImmType(Chunk, Addr + 1, IMMTYPE_U32);
         int Pad = Print2Bytes(f, Opcode);
-        Pad += Print2Bytes(f, Info.Imm >> 16);
+        Pad += Print2Bytes(f, Info.Imm);
         PrintPaddedMnemonic(f, Pad, "enter");
         fprintf(f, "%u", (U32)Info.Imm);
         PrintImmBytes(f, Info);
@@ -442,9 +442,11 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_BNZ: return DisasmBcc(f, "bnz", Opcode, Chunk, Addr);
     case OP_BR: return DisasmBr(f, "br", Opcode, Chunk, Addr);
     case OP_BSR: return DisasmBr(f, "bsr", Opcode, Chunk, Addr);
+    case OP_JSR: DisasmSingleOperand(f, "jsr", Opcode); break;
     case OP_BCT: return DisasmBr(f, "bct", Opcode, Chunk, Addr);
     case OP_BCF: return DisasmBr(f, "bcf", Opcode, Chunk, Addr);
     case OP_BRI: return DisasmBri(f, "bri", Opcode, Chunk, Addr);
+    case OP_LDRIP: return DisasmRdImm(f, "ldrip", Chunk, Addr, Opcode);
 
 
     case OP_STRLT: DisasmRdRs(f, "strlt", sIntReg, Opcode); break;
