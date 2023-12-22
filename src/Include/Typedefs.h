@@ -4,7 +4,8 @@
 
 #include <stdint.h>
 
-typedef struct PVMCompiler PVMCompiler;
+typedef struct PascalCompileFlags PascalCompileFlags;
+typedef struct PascalCompiler PascalCompiler;
 typedef struct PVMEmitter PVMEmitter;
 typedef struct PascalTokenizer PascalTokenizer;
 typedef struct CompilerFrame CompilerFrame;
@@ -22,7 +23,7 @@ typedef struct SubroutineData SubroutineData;
 typedef struct SubroutineParameterList SubroutineParameterList;
 
 typedef struct OptionalReturnValue OptionalReturnValue;
-typedef OptionalReturnValue (*VarBuiltinRoutine)(PVMCompiler *, const Token *);
+typedef OptionalReturnValue (*VarBuiltinRoutine)(PascalCompiler *, const Token *);
 typedef struct SaveRegInfo SaveRegInfo;
 
 typedef union PascalStr PascalStr;

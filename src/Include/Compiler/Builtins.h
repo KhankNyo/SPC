@@ -6,15 +6,15 @@
 #include "Typedefs.h"
 #include "Compiler/Data.h"
 
-void DefineCrtSubroutines(PVMCompiler *Compiler);
-void DefineSystemSubroutines(PVMCompiler *Compiler);
+void DefineCrtSubroutines(PascalCompiler *Compiler);
+void DefineSystemSubroutines(PascalCompiler *Compiler);
 
 struct OptionalReturnValue 
 {
     bool HasReturnValue;
     VarLocation ReturnValue;
 };
-OptionalReturnValue CompileCallToBuiltin(PVMCompiler *Compiler, VarBuiltinRoutine BuiltinCallee);
+OptionalReturnValue CompileCallToBuiltin(PascalCompiler *Compiler, VarBuiltinRoutine BuiltinCallee);
 
 
 #endif /* PASCAL_BUILTINS_H */

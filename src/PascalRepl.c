@@ -12,53 +12,86 @@
 #include "Compiler/Compiler.h"
 
 
-static bool GetCommandLine(PascalVM *PVM, char *Buf, USize Bufsz);
+static bool GetCommandLine(const char *Prompt, PascalVM *PVM, PascalCompiler *Compiler, char *Buf, USize Bufsz);
 
 #define STREQU(Buffer, Literal) (0 == strncmp(Buffer, Literal, sizeof(Literal) - 1))
+#define LINE_SIZE 1024
+
+
+typedef struct NewlineData
+{
+    PascalCompiler *Compiler;
+    PascalArena *Source;
+    PascalVM *PVM;
+    char LineBuffer[LINE_SIZE];
+} NewlineData;
+
+static U8 *SaveLine(PascalArena *SaveArena, const char *Line, USize LineLength)
+{
+    U8 *CurrentLine = ArenaAllocate(SaveArena, LineLength + 1);
+    memcpy(CurrentLine, Line, LineLength);
+    CurrentLine[LineLength] = '\0';
+    return CurrentLine;
+}
+
+static const U8 *NewlineCallback(void *NewlineCallbackData)
+{
+    NewlineData *Data = NewlineCallbackData;
+    GetCommandLine("... ", Data->PVM, Data->Compiler, 
+            Data->LineBuffer, sizeof Data->LineBuffer
+    );
+    return SaveLine(Data->Source, Data->LineBuffer, strlen(Data->LineBuffer));
+}
+
 
 int PascalRepl(void)
 {
     MemInit(1024*1024);
     PascalArena Program = ArenaInit(1024*1024, 4);
-    PascalGPA Permanent = GPAInit(4 * 1024 * 1024);
 
     PascalVM PVM = PVMInit(1024, 128);
     PVMChunk Chunk = ChunkInit(1024);
-    PascalVartab Identifiers = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);
-    
-    PascalCompileFlags Flags = { 
-        .CompMode = COMPMODE_REPL,
+    PascalVartab Global = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);
+
+    PascalCompileFlags Flags = {
+        .CompMode = PASCAL_COMPMODE_REPL,
+    };
+    PascalCompiler Compiler = PascalCompilerInit(Flags, &Global, stderr, &Chunk);
+    NewlineData Data = { 
+        .PVM = &PVM,
+        .Source = &Program,
+        .Compiler = &Compiler,
+        .LineBuffer = { 0 }, 
     };
 
-    int RetVal = PASCAL_EXIT_SUCCESS;
-    static char Tmp[1024] = { 0 };
-    while (GetCommandLine(&PVM, Tmp, sizeof Tmp))
+    while (GetCommandLine("\n>>> ", &PVM, &Compiler, Data.LineBuffer, sizeof Data.LineBuffer))
     {
-        USize SourceLen = strlen(Tmp);
-        U8 *CurrentSource = ArenaAllocate(&Program, SourceLen + 1);
-        memcpy(CurrentSource, Tmp, SourceLen);
-        CurrentSource[SourceLen] = '\0';
-
-        if (PascalCompile(CurrentSource, Flags, &Identifiers, &Permanent, stderr, &Chunk))
+        const U8 *CurrentLine = SaveLine(&Program, 
+                Data.LineBuffer, strlen(Data.LineBuffer)
+        );
+        if (PascalCompileRepl(&Compiler, CurrentLine, NewlineCallback, &Data))
         {
             PVMRun(&PVM, &Chunk);
         }
-        ChunkReset(&Chunk, true);
+        else
+        {
+            Compiler.Error = false;
+        }
     }
 
-
-    GPADeinit(&Permanent);
+    PascalCompilerDeinit(&Compiler);
     ArenaDeinit(&Program);
     MemDeinit();
-    return RetVal;
+    return PASCAL_EXIT_SUCCESS;
 }
 
 
-static bool GetCommandLine(PascalVM *PVM, char *Buf, USize Bufsz)
+static bool GetCommandLine(const char *Prompt, PascalVM *PVM, PascalCompiler *Compiler, char *Buf, USize Bufsz)
 {
+    (void)Compiler;
     FILE *Out = stdout, *In = stdin;
     do {
-        printf("\n>> ");
+        printf("%s", Prompt);
         if (NULL == fgets(Buf, Bufsz, In))
             return false;
 

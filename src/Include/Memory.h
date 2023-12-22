@@ -80,6 +80,8 @@ PascalGPA GPAInit(U32 InitialCap);
 void GPADeinit(PascalGPA *GPA);
 
 void *GPAAllocate(PascalGPA *GPA, U32 ByteCount);
+#define GPAAllocateArray(pGPA, TypeName_T, U32_ElemCount)\
+    GPAAllocate(pGPA, (U32_ElemCount) * sizeof(TypeName_T))
 static inline void *GPAAllocateZero(PascalGPA *GPA, U32 ByteCount)
 {
     return memset(GPAAllocate(GPA, ByteCount), 0, ByteCount);

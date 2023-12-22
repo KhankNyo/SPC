@@ -1,6 +1,8 @@
 
 
 
+
+#include "Compiler/Compiler.h"
 #include "Compiler/Error.h"
 #include "Compiler/VarList.h"
 #include "Compiler/Expr.h"
@@ -14,7 +16,7 @@ typedef struct TypeAttribute
 } TypeAttribute;
 
 
-static bool ParseTypename(PVMCompiler *Compiler, TypeAttribute *Out)
+static bool ParseTypename(PascalCompiler *Compiler, TypeAttribute *Out)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Out);
@@ -71,7 +73,7 @@ static bool ParseTypename(PVMCompiler *Compiler, TypeAttribute *Out)
 
 
 
-static bool ParseVarList(PVMCompiler *Compiler, TypeAttribute *Out)
+static bool ParseVarList(PascalCompiler *Compiler, TypeAttribute *Out)
 {
     /* 
      *  a, b, c: typename;
@@ -105,7 +107,7 @@ static bool ParseVarList(PVMCompiler *Compiler, TypeAttribute *Out)
 
 
 /* alignment should be pow 2 */
-U32 CompileVarList(PVMCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U32 Alignment)
+U32 CompileVarList(PascalCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U32 Alignment)
 {
     /* 
      *  a, b, c: typename;
@@ -150,7 +152,7 @@ U32 CompileVarList(PVMCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U32 
 
 
 
-SubroutineParameterList CompileParameterList(PVMCompiler *Compiler, PascalVartab *Scope)
+SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVartab *Scope)
 {
     SubroutineParameterList ParameterList = ParameterListInit();
     PASCAL_NONNULL(Compiler);
@@ -204,7 +206,7 @@ SubroutineParameterList CompileParameterList(PVMCompiler *Compiler, PascalVartab
                         TypeInfo->Type, 
                         ParameterLocation
                 );
-                ParameterListPush(&ParameterList, Compiler->GlobalAlloc, Param);
+                ParameterListPush(&ParameterList, &Compiler->InternalAlloc, Param);
             }
         }
         else 
@@ -218,14 +220,14 @@ SubroutineParameterList CompileParameterList(PVMCompiler *Compiler, PascalVartab
 
 
 
-PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Name)
+PascalVar *CompileRecordDefinition(PascalCompiler *Compiler, const Token *Name)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Name);
 
     U32 TotalSize = 0;
     /* 'record' consumed */
-    PascalVartab RecordScope = VartabInit(Compiler->GlobalAlloc, 16);
+    PascalVartab RecordScope = VartabInit(&Compiler->InternalAlloc, 16);
     VarType Record = VarTypeRecord(Name->Lexeme, RecordScope, TotalSize);
     PascalVar *RecordType = DefineIdentifier(Compiler, Name, Record, NULL);
     PASCAL_NONNULL(RecordType);
@@ -259,7 +261,7 @@ PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Name)
 
 
 
-void CompilePartialArgumentList(PVMCompiler *Compiler, 
+void CompilePartialArgumentList(PascalCompiler *Compiler, 
         const Token *Callee, const SubroutineParameterList *Parameters,
         U32 StackArgSize, bool RecordReturnType)
 {
@@ -285,7 +287,6 @@ void CompilePartialArgumentList(PVMCompiler *Compiler,
                 PASCAL_NONNULL(CurrentArg);
 
                 VarLocation Arg = PVMSetArg(EMITTER(), ArgCount + RecordArg, CurrentArg->Type, &Base);
-                PASCAL_ASSERT(!PVMRegisterIsFree(EMITTER(), Arg.As.Register.ID), "reg not free");
                 CompileExprInto(Compiler, NULL, &Arg);
             }
             else
@@ -305,7 +306,7 @@ void CompilePartialArgumentList(PVMCompiler *Compiler,
     }
 }
 
-void CompileArgumentList(PVMCompiler *Compiler, 
+void CompileArgumentList(PascalCompiler *Compiler, 
         const Token *Callee, const SubroutineData *Subroutine)
 {
     PASCAL_NONNULL(Compiler);
@@ -330,7 +331,7 @@ void CompileArgumentList(PVMCompiler *Compiler,
     }
 }
 
-void CompileSubroutineCall(PVMCompiler *Compiler, 
+void CompileSubroutineCall(PascalCompiler *Compiler, 
         VarLocation *Subroutine, const Token *Callee, VarLocation *ReturnValue)
 {
     PASCAL_NONNULL(Compiler);

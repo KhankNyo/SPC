@@ -1,6 +1,8 @@
 
 #include "Common.h"
 #include "Vartab.h"
+
+#include "Compiler/Compiler.h"
 #include "Compiler/Expr.h"
 #include "Compiler/Error.h"
 #include "Compiler/Builtins.h"
@@ -17,10 +19,10 @@
             VarTypeInit(LiteralType, IntegralTypeSize(LiteralType)), Literal)
 
 #define PASCAL_BUILTIN(Name, Arg1, Arg2)\
-static OptionalReturnValue Compile##Name (PVMCompiler *, const Token *);\
+static OptionalReturnValue Compile##Name (PascalCompiler *, const Token *);\
 static VarLocation s##Name = {.Type = { .Integral = TYPE_FUNCTION }, .LocationType = VAR_BUILTIN, \
     .As.BuiltinSubroutine = Compile##Name};\
-static OptionalReturnValue Compile##Name (PVMCompiler *Arg1, const Token *Arg2)
+static OptionalReturnValue Compile##Name (PascalCompiler *Arg1, const Token *Arg2)
 
 
 
@@ -29,7 +31,7 @@ static U32 sNewlineConstHash = 0;
 
 
 
-static void CompileSysWrite(PVMCompiler *Compiler, bool Newline)
+static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
 {
     SaveRegInfo SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
     UInt ArgCount = 0;
@@ -54,7 +56,7 @@ static void CompileSysWrite(PVMCompiler *Compiler, bool Newline)
     /* newline arg */
     if (Newline)
     {
-        PascalVar *NewlineLiteral = VartabFindWithHash(Compiler->Global, 
+        PascalVar *NewlineLiteral = VartabFindWithHash(&Compiler->Global, 
                 sNewlineConstName, sizeof(sNewlineConstName) - 1, sNewlineConstHash
         );
         PASCAL_NONNULL(NewlineLiteral);
@@ -122,7 +124,7 @@ PASCAL_BUILTIN(SizeOf, Compiler, FnName)
 }
 
 
-OptionalReturnValue CompileCallToBuiltin(PVMCompiler *Compiler, VarBuiltinRoutine BuiltinCallee)
+OptionalReturnValue CompileCallToBuiltin(PascalCompiler *Compiler, VarBuiltinRoutine BuiltinCallee)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(BuiltinCallee);
@@ -137,15 +139,15 @@ OptionalReturnValue CompileCallToBuiltin(PVMCompiler *Compiler, VarBuiltinRoutin
 
 
 
-void DefineCrtSubroutines(PVMCompiler *Compiler)
+void DefineCrtSubroutines(PascalCompiler *Compiler)
 {
     (void)Compiler;
     PASCAL_UNREACHABLE("TODO");
 }
 
-void DefineSystemSubroutines(PVMCompiler *Compiler)
+void DefineSystemSubroutines(PascalCompiler *Compiler)
 {
-    PascalVartab *Scope = Compiler->Global;
+    PascalVartab *Scope = &Compiler->Global;
     sNewlineConstHash = VartabHashStr(sNewlineConstName, sizeof(sNewlineConstName) - 1);
 
     /* already defined? */

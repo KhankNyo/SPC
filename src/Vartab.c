@@ -70,6 +70,28 @@ PascalVartab VartabPredefinedIdentifiers(PascalGPA *Allocator, ISize InitialCap)
 }
 
 
+PascalVartab VartabClone(PascalGPA *Allocator, const PascalVartab *Vartab)
+{
+    if (NULL == Allocator)
+    {
+        Allocator = Vartab->Allocator;
+    }
+    PascalVartab NewTable = VartabInit(Allocator, Vartab->Cap);
+    for (ISize i = 0; i < NewTable.Cap; i++)
+    {
+        PascalVar *Slot = &Vartab->Table[i];
+        if (!IS_EMPTY(Slot))
+        {
+            VartabSet(&NewTable, 
+                    Slot->Str.Str, Slot->Str.Len, 
+                    Slot->Line, Slot->Type, Slot->Location
+            );
+        }
+    }
+    return NewTable;
+}
+
+
 
 void VartabDeinit(PascalVartab *Vartab)
 {

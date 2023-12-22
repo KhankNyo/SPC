@@ -3,7 +3,6 @@
 
 #include "Variable.h"
 #include "Tokenizer.h"
-#include "Compiler.h"
 
 #include "PVM/Chunk.h"
 #include "PVM/Isa.h"

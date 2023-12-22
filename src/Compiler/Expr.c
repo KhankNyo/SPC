@@ -2,6 +2,7 @@
 
 #include <inttypes.h>
 
+#include "Compiler/Compiler.h"
 #include "Compiler/Data.h"
 #include "Compiler/Error.h"
 #include "Compiler/Expr.h"
@@ -49,8 +50,8 @@ typedef enum Precedence
     PREC_VARIABLE,
     PREC_HIGHEST,
 } Precedence;
-typedef VarLocation (*InfixParseRoutine)(PVMCompiler *, VarLocation *);
-typedef VarLocation (*PrefixParseRoutine)(PVMCompiler *);
+typedef VarLocation (*InfixParseRoutine)(PascalCompiler *, VarLocation *);
+typedef VarLocation (*PrefixParseRoutine)(PascalCompiler *);
 
 
 #define INVALID_BINARY_OP(pOp, LType, RType) \
@@ -75,11 +76,11 @@ typedef struct PrecedenceRule
 } PrecedenceRule;
 
 static const PrecedenceRule *GetPrecedenceRule(TokenType CurrentTokenType);
-static VarLocation ParsePrecedence(PVMCompiler *Compiler, Precedence Prec);
-static VarLocation ParseAssignmentLhs(PVMCompiler *Compiler, Precedence Prec);
+static VarLocation ParsePrecedence(PascalCompiler *Compiler, Precedence Prec);
+static VarLocation ParseAssignmentLhs(PascalCompiler *Compiler, Precedence Prec);
 
 
-void FreeExpr(PVMCompiler *Compiler, VarLocation Expr)
+void FreeExpr(PascalCompiler *Compiler, VarLocation Expr)
 {
     PASCAL_NONNULL(Compiler);
 
@@ -94,12 +95,12 @@ void FreeExpr(PVMCompiler *Compiler, VarLocation Expr)
 }
 
 
-VarLocation CompileExpr(PVMCompiler *Compiler)
+VarLocation CompileExpr(PascalCompiler *Compiler)
 {
     return ParsePrecedence(Compiler, PREC_EXPR);
 }
 
-VarLocation CompileExprIntoReg(PVMCompiler *Compiler)
+VarLocation CompileExprIntoReg(PascalCompiler *Compiler)
 {
     VarLocation Expr = CompileExpr(Compiler);
     VarLocation Reg;
@@ -108,12 +109,12 @@ VarLocation CompileExprIntoReg(PVMCompiler *Compiler)
     return Reg;
 }
 
-VarLocation CompileVariableExpr(PVMCompiler *Compiler)
+VarLocation CompileVariableExpr(PascalCompiler *Compiler)
 {
     return ParseAssignmentLhs(Compiler, PREC_VARIABLE);
 }
 
-void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLocation *Location)
+void CompileExprInto(PascalCompiler *Compiler, const Token *OpToken, VarLocation *Location)
 {
     VarLocation Expr = CompileExpr(Compiler);
     if (Compiler->Error)
@@ -160,7 +161,7 @@ static VarType TypeOfUIntLit(U64 UInt)
     return VarTypeInit(TYPE_U64, 8);
 }
 
-static VarLocation FactorLiteral(PVMCompiler *Compiler)
+static VarLocation FactorLiteral(PascalCompiler *Compiler)
 {
     VarLocation Location = {
         .LocationType = VAR_LIT,
@@ -200,7 +201,7 @@ static VarLocation FactorLiteral(PVMCompiler *Compiler)
 }
 
 
-static VarLocation FactorCall(PVMCompiler *Compiler, VarLocation *Location)
+static VarLocation FactorCall(PascalCompiler *Compiler, VarLocation *Location)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Location);
@@ -279,7 +280,7 @@ static VarLocation FactorCall(PVMCompiler *Compiler, VarLocation *Location)
 
 
 
-static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
+static VarLocation VariableDeref(PascalCompiler *Compiler, VarLocation *Variable)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Variable);
@@ -326,7 +327,7 @@ static VarLocation *FindRecordMember(PascalVartab *Record, const Token *MemberNa
     return Member->Location;
 }
 
-static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
+static VarLocation VariableAccess(PascalCompiler *Compiler, VarLocation *Left)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Left);
@@ -371,7 +372,7 @@ static VarLocation VariableAccess(PVMCompiler *Compiler, VarLocation *Left)
 }
 
 
-static VarLocation FactorGrouping(PVMCompiler *Compiler)
+static VarLocation FactorGrouping(PascalCompiler *Compiler)
 {
     /* '(' consumed */
     VarLocation Group = CompileExpr(Compiler);
@@ -404,7 +405,7 @@ static bool JavascriptStrToBool(const PascalStr *Str)
 }
 
 
-static VarLiteral ConvertLiteralTypeExplicitly(PVMCompiler *Compiler, 
+static VarLiteral ConvertLiteralTypeExplicitly(PascalCompiler *Compiler, 
         const Token *Converter, IntegralType To, const VarLiteral *Lit, IntegralType LitType)
 {
     VarLiteral Converted = { 0 };
@@ -484,7 +485,7 @@ InvalidTypeConversion:
     return *Lit;
 }
 
-static VarLocation ConvertTypeExplicitly(PVMCompiler *Compiler, 
+static VarLocation ConvertTypeExplicitly(PascalCompiler *Compiler, 
         const Token *Converter, IntegralType To, const VarLocation *Expr)
 {
     PASCAL_NONNULL(Compiler);
@@ -535,7 +536,7 @@ static VarLocation ConvertTypeExplicitly(PVMCompiler *Compiler,
 
 
 
-static VarLocation FactorVariable(PVMCompiler *Compiler)
+static VarLocation FactorVariable(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
 
@@ -574,7 +575,7 @@ Error:
 }
 
 
-static VarLocation VariableAddrOf(PVMCompiler *Compiler)
+static VarLocation VariableAddrOf(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
     /* Curr is '@' */
@@ -626,7 +627,7 @@ CannotTakeAddress:
 
 
 
-static VarLocation NegateLiteral(PVMCompiler *Compiler, 
+static VarLocation NegateLiteral(PascalCompiler *Compiler, 
         const Token *OpToken, VarLiteral Literal, IntegralType LiteralType)
 {
     VarLocation Location = {
@@ -652,7 +653,7 @@ static VarLocation NegateLiteral(PVMCompiler *Compiler,
     return Location;
 }
 
-static VarLocation NotLiteral(PVMCompiler *Compiler, 
+static VarLocation NotLiteral(PascalCompiler *Compiler, 
         const Token *OpToken, VarLiteral Literal, IntegralType LiteralType)
 {
     VarLocation Location = {
@@ -677,7 +678,7 @@ static VarLocation NotLiteral(PVMCompiler *Compiler,
 }
 
 
-static VarLocation ExprUnary(PVMCompiler *Compiler)
+static VarLocation ExprUnary(PascalCompiler *Compiler)
 {
     TokenType Operator = Compiler->Curr.Type;
     Token OpToken = Compiler->Curr;
@@ -797,7 +798,7 @@ bool LiteralEqual(VarLiteral A, VarLiteral B, IntegralType Type)
 }
 
 
-static VarLocation LiteralExprBinary(PVMCompiler *Compiler, const Token *OpToken, 
+static VarLocation LiteralExprBinary(PascalCompiler *Compiler, const Token *OpToken, 
         VarLocation *Left, VarLocation *Right)
 {
 #define COMMON_BIN_OP(Operator)\
@@ -1035,7 +1036,7 @@ InvalidTypeConversion:
 }
 
 
-static VarLocation RuntimeExprBinary(PVMCompiler *Compiler, 
+static VarLocation RuntimeExprBinary(PascalCompiler *Compiler, 
         const Token *OpToken, VarLocation *Left, VarLocation *Right)
 {
     PASCAL_NONNULL(Compiler);
@@ -1146,7 +1147,7 @@ static VarLocation RuntimeExprBinary(PVMCompiler *Compiler,
 }
 
 
-static VarLocation ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
+static VarLocation ExprBinary(PascalCompiler *Compiler, VarLocation *Left)
 {
     Token OpToken = Compiler->Curr;
     const PrecedenceRule *OperatorRule = GetPrecedenceRule(OpToken.Type);
@@ -1186,7 +1187,7 @@ static VarLocation ExprBinary(PVMCompiler *Compiler, VarLocation *Left)
 }
 
 
-static VarLocation ExprAnd(PVMCompiler *Compiler, VarLocation *Left)
+static VarLocation ExprAnd(PascalCompiler *Compiler, VarLocation *Left)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Left);
@@ -1232,7 +1233,7 @@ InvalidOperands:
     return *Left;
 }
 
-static VarLocation ExprOr(PVMCompiler *Compiler, VarLocation *Left)
+static VarLocation ExprOr(PascalCompiler *Compiler, VarLocation *Left)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Left);
@@ -1328,7 +1329,7 @@ static const PrecedenceRule *GetPrecedenceRule(TokenType CurrentTokenType)
     return &sPrecedenceRuleLut[CurrentTokenType];
 }
 
-static VarLocation ParseAssignmentLhs(PVMCompiler *Compiler, Precedence Prec)
+static VarLocation ParseAssignmentLhs(PascalCompiler *Compiler, Precedence Prec)
 {
     const PrefixParseRoutine PrefixRoutine = 
         GetPrecedenceRule(Compiler->Curr.Type)->PrefixRoutine;
@@ -1359,7 +1360,7 @@ static VarLocation ParseAssignmentLhs(PVMCompiler *Compiler, Precedence Prec)
     return Left;
 }
 
-static VarLocation ParsePrecedence(PVMCompiler *Compiler, Precedence Prec)
+static VarLocation ParsePrecedence(PascalCompiler *Compiler, Precedence Prec)
 {
     ConsumeToken(Compiler);
     return ParseAssignmentLhs(Compiler, Prec);
@@ -1371,7 +1372,7 @@ static VarLocation ParsePrecedence(PVMCompiler *Compiler, Precedence Prec)
 
 
 /* returns the type that both sides should be */
-IntegralType CoerceTypes(PVMCompiler *Compiler, const Token *Op, IntegralType Left, IntegralType Right)
+IntegralType CoerceTypes(PascalCompiler *Compiler, const Token *Op, IntegralType Left, IntegralType Right)
 {
     PASCAL_ASSERT(Left >= TYPE_INVALID && Right >= TYPE_INVALID, "");
     if (Left > TYPE_COUNT || Right > TYPE_COUNT)
@@ -1433,7 +1434,7 @@ bool ConvertRegisterTypeImplicitly(PVMEmitter *Emitter,
     return true;
 }
 
-bool ConvertTypeImplicitly(PVMCompiler *Compiler, IntegralType To, VarLocation *From)
+bool ConvertTypeImplicitly(PascalCompiler *Compiler, IntegralType To, VarLocation *From)
 {
     IntegralType FromType = From->Type.Integral;
     if (To == FromType)

@@ -5,11 +5,13 @@
 
 
 #include "Memory.h"
+#include "StringView.h"
 #include "Tokenizer.h"
 #include "Vartab.h"
 #include "Variable.h"
 #include "IntegralTypes.h"
 
+#include "Compiler/Compiler.h"
 #include "Compiler/Builtins.h"
 #include "Compiler/Data.h"
 #include "Compiler/Error.h"
@@ -36,8 +38,35 @@ typedef enum Condition
 /*===============================================================================*/
 
 
+static bool CompilerGetLinesFromCallback(PascalCompiler *Compiler)
+{
+    if (NULL == Compiler->ReplCallback)
+        return false;
 
-static void CalmDownDog(PVMCompiler *Compiler)
+    const U8 *Line = Compiler->ReplCallback(Compiler->ReplUserData);
+    if (NULL == Line)
+        return false;
+
+    Compiler->Lexer = TokenizerInit(Line);
+    ConsumeToken(Compiler);
+    return true;
+}
+
+static bool NoMoreToken(PascalCompiler *Compiler)
+{
+    if (IsAtEnd(Compiler))
+    {
+        if (PASCAL_COMPMODE_REPL == Compiler->Flags.CompMode)
+        {
+            return !CompilerGetLinesFromCallback(Compiler);
+        }
+        return true;
+    }
+    return false;
+}
+
+
+static void CalmDownDog(PascalCompiler *Compiler)
 {
     Compiler->Panic = false;
     while (!IsAtStmtEnd(Compiler))
@@ -77,7 +106,7 @@ static void CalmDownDog(PVMCompiler *Compiler)
 }
 
 
-static void CalmDownAtBlock(PVMCompiler *Compiler)
+static void CalmDownAtBlock(PascalCompiler *Compiler)
 {
     Compiler->Panic = false;
     do {
@@ -113,10 +142,10 @@ static void CalmDownAtBlock(PVMCompiler *Compiler)
 /*===============================================================================*/
 
 
-static void CompileStmt(PVMCompiler *Compiler);
+static void CompileStmt(PascalCompiler *Compiler);
 
 
-static void CompileExitStmt(PVMCompiler *Compiler)
+static void CompileExitStmt(PascalCompiler *Compiler)
 {
     /* TODO: refactor this piece of shit of a function */
     PASCAL_NONNULL(Compiler);
@@ -184,26 +213,20 @@ Done:
 
 
 
-static void CompileBeginStmt(PVMCompiler *Compiler)
+static void CompileBeginStmt(PascalCompiler *Compiler)
 {
     /* begin consumed */
-    /* 
-     * this complex-looking loop is necessary bc 
-     * Pascal allows the last stmt of a begin-end block to not have a semicolon 
-     */
-    while (!IsAtEnd(Compiler) && !NextTokenIs(Compiler, TOKEN_END))
-    {
+    do {
+        if (NoMoreToken(Compiler))
+            Error(Compiler, "Expected 'end'.");
         CompileStmt(Compiler);
-        if (ConsumeIfNextIs(Compiler, TOKEN_END))
-            return;
-        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' between statements.");
-    }
-    ConsumeOrError(Compiler, TOKEN_END, "Expected 'end'.");
+    } while (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON));
+    ConsumeOrError(Compiler, TOKEN_END, "Expected ';' between statements.");
 }
 
 
 
-static UInt CompileLoopBody(PVMCompiler *Compiler)
+static UInt CompileLoopBody(PascalCompiler *Compiler)
 {
     UInt PrevBreakCount = Compiler->BreakCount;
     bool WasInLoop = Compiler->InLoop;
@@ -215,7 +238,7 @@ static UInt CompileLoopBody(PVMCompiler *Compiler)
     return PrevBreakCount;
 }
 
-static void CompilerPatchBreaks(PVMCompiler *Compiler, UInt PrevBreakCount)
+static void CompilerPatchBreaks(PascalCompiler *Compiler, UInt PrevBreakCount)
 {
     for (UInt i = PrevBreakCount; i < Compiler->BreakCount; i++)
     {
@@ -225,7 +248,7 @@ static void CompilerPatchBreaks(PVMCompiler *Compiler, UInt PrevBreakCount)
 }
 
 
-static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
+static void CompileRepeatUntilStmt(PascalCompiler *Compiler)
 {
     /* 'repeat' consumed */
     U32 LoopHead = PVMMarkBranchTarget(EMITTER());
@@ -259,7 +282,7 @@ static void CompileRepeatUntilStmt(PVMCompiler *Compiler)
 }
 
 
-static void CompileForStmt(PVMCompiler *Compiler)
+static void CompileForStmt(PascalCompiler *Compiler)
 {
     /* 
      * for i := 0 to 100 do
@@ -354,7 +377,7 @@ static void CompileForStmt(PVMCompiler *Compiler)
 }
 
 
-static void CompileWhileStmt(PVMCompiler *Compiler)
+static void CompileWhileStmt(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
 
@@ -396,14 +419,14 @@ static void CompileWhileStmt(PVMCompiler *Compiler)
     /* back to loophead */
     PVMEmitBranch(EMITTER(), LoopHead);
     /* patch the exit branch */
-    PVMPatchBranchToCurrent(EMITTER(), LoopExit, PATCHTYPE_BRANCH_CONDITIONAL);
+    PVMPatchBranchToCurrent(EMITTER(), LoopExit, PATCHTYPE_BRANCH_FLAG);
     CompilerPatchBreaks(Compiler, BreakCountBeforeBody);
 
     EMITTER()->ShouldEmit = Last;
 }
 
 
-static void CompileIfStmt(PVMCompiler *Compiler)
+static void CompileIfStmt(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
 
@@ -478,7 +501,7 @@ static void CompileIfStmt(PVMCompiler *Compiler)
 
 
 
-static void CompileCallStmt(PVMCompiler *Compiler, const Token Name, PascalVar *IdenInfo)
+static void CompileCallStmt(PascalCompiler *Compiler, const Token Name, PascalVar *IdenInfo)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(IdenInfo);
@@ -493,7 +516,7 @@ static void CompileCallStmt(PVMCompiler *Compiler, const Token Name, PascalVar *
 }
 
 
-static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignment, 
+static void CompilerEmitAssignment(PascalCompiler *Compiler, const Token *Assignment, 
         VarLocation *Left, const VarLocation *Right)
 {
     PASCAL_NONNULL(Compiler);
@@ -542,7 +565,7 @@ static void CompilerEmitAssignment(PVMCompiler *Compiler, const Token *Assignmen
     }
 }
 
-static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
+static void CompileAssignStmt(PascalCompiler *Compiler, const Token Identifier)
 {
     PASCAL_NONNULL(Compiler);
     /* iden consumed */
@@ -585,7 +608,7 @@ static void CompileAssignStmt(PVMCompiler *Compiler, const Token Identifier)
 }
 
 
-static void CompileIdenStmt(PVMCompiler *Compiler)
+static void CompileIdenStmt(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
     /* iden consumed */
@@ -625,7 +648,7 @@ static void CompileIdenStmt(PVMCompiler *Compiler)
 }
 
 
-static void CompileCaseStmt(PVMCompiler *Compiler)
+static void CompileCaseStmt(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
     /* case consumed */
@@ -726,7 +749,7 @@ static void CompileCaseStmt(PVMCompiler *Compiler)
 }
 
 
-static void CompileBreakStmt(PVMCompiler *Compiler)
+static void CompileBreakStmt(PascalCompiler *Compiler)
 {
     /* break; */
     /* break consumed */
@@ -746,7 +769,7 @@ static void CompileBreakStmt(PVMCompiler *Compiler)
     CompilerEmitDebugInfo(Compiler, Keyword);
 }
 
-static void CompileStmt(PVMCompiler *Compiler)
+static void CompileStmt(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
     switch (Compiler->Next.Type)
@@ -802,10 +825,18 @@ static void CompileStmt(PVMCompiler *Compiler)
         ConsumeToken(Compiler);
         CompileExitStmt(Compiler);
     } break;
+    case TOKEN_END:
+    case TOKEN_UNTIL:
     case TOKEN_SEMICOLON:
     {
-        /* no statement */
-        /* will be consumed by whoever called this function */
+        /* null statement */
+    } break;
+    case TOKEN_EOF:
+    {
+        if (PASCAL_COMPMODE_REPL != Compiler->Flags.CompMode)
+        {
+            Error(Compiler, "Unexpected end of file.");
+        }
     } break;
     default:
     {
@@ -845,9 +876,9 @@ static void CompileStmt(PVMCompiler *Compiler)
 /*===============================================================================*/
 
 
-static bool CompileBlock(PVMCompiler *Compiler);
+static bool CompileBlock(PascalCompiler *Compiler);
 
-static void CompileBeginBlock(PVMCompiler *Compiler)
+static void CompileBeginBlock(PascalCompiler *Compiler)
 {
     if (IsAtGlobalScope(Compiler))
         Compiler->EntryPoint = PVMGetCurrentLocation(EMITTER());
@@ -856,7 +887,7 @@ static void CompileBeginBlock(PVMCompiler *Compiler)
 
 
 static PascalVar *CompileSubroutineName(
-        PVMCompiler *Compiler, const Token *Name, bool HasReturnType, const char *SubroutineType)
+        PascalCompiler *Compiler, const Token *Name, bool HasReturnType, const char *SubroutineType)
 {
     PascalVar *SubroutineInfo = FindIdentifier(Compiler, Name);
     if (NULL == SubroutineInfo)
@@ -868,7 +899,7 @@ static PascalVar *CompileSubroutineName(
         return DefineIdentifier(Compiler, Name, Location->Type, Location);
     }
     /* redefinition in repl is fine */
-    if (COMPMODE_REPL == Compiler->Flags.CompMode)
+    if (PASCAL_COMPMODE_REPL == Compiler->Flags.CompMode)
         return SubroutineInfo;
 
     if (TYPE_FUNCTION != SubroutineInfo->Type.Integral)
@@ -905,7 +936,7 @@ static PascalVar *CompileSubroutineName(
 }
 
 
-static SubroutineParameterList CompileParameterListWithParentheses(PVMCompiler *Compiler, PascalVartab *Scope)
+static SubroutineParameterList CompileParameterListWithParentheses(PascalCompiler *Compiler, PascalVartab *Scope)
 {
     SubroutineParameterList ParameterList = { 0 };
     if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
@@ -920,7 +951,7 @@ static SubroutineParameterList CompileParameterListWithParentheses(PVMCompiler *
 }
 
 
-static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *SubroutineType)
+static void CompileSubroutineBlock(PascalCompiler *Compiler, const char *SubroutineType)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(SubroutineType);
@@ -947,7 +978,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     /* param list */
     SaveRegInfo PrevScope = PVMEmitterBeginScope(EMITTER());
     /* TODO: param list check */
-    PascalVartab Scope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+    PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
     SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
 
 
@@ -1042,7 +1073,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
 
 
 
-static void CompileVarBlock(PVMCompiler *Compiler)
+static void CompileVarBlock(PascalCompiler *Compiler)
 {
     /* 
      * var
@@ -1151,7 +1182,7 @@ static void CompileVarBlock(PVMCompiler *Compiler)
 
 
 
-static PascalVar *FindTypeName(PVMCompiler *Compiler, const Token *Name)
+static PascalVar *FindTypeName(PascalCompiler *Compiler, const Token *Name)
 {
     PascalVar *Type = GetIdenInfo(Compiler, Name, "Undefined type name.");
     if (NULL == Type)
@@ -1167,7 +1198,7 @@ static PascalVar *FindTypeName(PVMCompiler *Compiler, const Token *Name)
 }
 
 
-static void CompileTypeBlock(PVMCompiler *Compiler)
+static void CompileTypeBlock(PascalCompiler *Compiler)
 {
     /*
      * type
@@ -1212,7 +1243,7 @@ static void CompileTypeBlock(PVMCompiler *Compiler)
         }
         else if (ConsumeIfNextIs(Compiler, TOKEN_FUNCTION))
         {
-            PascalVartab Scope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+            PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
             SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
 
             ConsumeOrError(Compiler, TOKEN_COLON, "Expeccted ':' after function paramter list.");
@@ -1229,7 +1260,7 @@ static void CompileTypeBlock(PVMCompiler *Compiler)
         }
         else if (ConsumeIfNextIs(Compiler, TOKEN_PROCEDURE))
         {
-            PascalVartab Scope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+            PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
             SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
             VarType Procedure = VarTypeSubroutine(ParameterList, Scope, NULL, 0);
             VarType ProcedurePointer = VarTypePtr(CompilerCopyType(Compiler, Procedure));
@@ -1245,7 +1276,7 @@ static void CompileTypeBlock(PVMCompiler *Compiler)
 }
 
 
-static void CompileConstBlock(PVMCompiler *Compiler)
+static void CompileConstBlock(PascalCompiler *Compiler)
 {
     /* 
      * const
@@ -1288,9 +1319,9 @@ static void CompileConstBlock(PVMCompiler *Compiler)
 
 
 /* returns true if Begin is encountered */
-static bool CompileHeadlessBlock(PVMCompiler *Compiler)
+static bool CompileHeadlessBlock(PascalCompiler *Compiler)
 {
-    while (!IsAtEnd(Compiler) && !NextTokenIs(Compiler, TOKEN_BEGIN))
+    while (!NoMoreToken(Compiler) && !NextTokenIs(Compiler, TOKEN_BEGIN))
     {
         switch (Compiler->Next.Type)
         {
@@ -1331,7 +1362,7 @@ static bool CompileHeadlessBlock(PVMCompiler *Compiler)
         } break;
         default: 
         {
-            if (COMPMODE_REPL != Compiler->Flags.CompMode)
+            if (PASCAL_COMPMODE_REPL != Compiler->Flags.CompMode)
             {
                 Error(Compiler, "A block cannot start with '"STRVIEW_FMT"'.", 
                         STRVIEW_FMT_ARG(&Compiler->Next.Lexeme)
@@ -1351,21 +1382,24 @@ static bool CompileHeadlessBlock(PVMCompiler *Compiler)
 
 
 
-static bool CompileBlock(PVMCompiler *Compiler)
+static bool CompileBlock(PascalCompiler *Compiler)
 {
-    if (CompileHeadlessBlock(Compiler))
+    if (!CompileHeadlessBlock(Compiler))
+    {
+        Error(Compiler, "Expected 'Begin'.");
+        return false;
+    }
+    else
     {
         CompileBeginBlock(Compiler);
         return !Compiler->Error;
     }
-    Error(Compiler, "Expected 'Begin'.");
-    return false;
 }
 
 
 
 
-static bool CompileProgram(PVMCompiler *Compiler)
+static bool CompileProgram(PascalCompiler *Compiler)
 {
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected identifier.");
     if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
@@ -1407,52 +1441,107 @@ static bool CompileProgram(PVMCompiler *Compiler)
 
 
 
-bool PascalCompile(const U8 *Source, 
-        PascalCompileFlags Flags,
-        PascalVartab *PredefinedIdentifiers, PascalGPA *GlobalAlloc, FILE *LogFile,
-        PVMChunk *Chunk)
+
+
+
+
+
+
+PascalCompiler PascalCompilerInit(
+        PascalCompileFlags Flags, const PascalVartab *PredefinedIdentifiers, 
+        FILE *LogFile, PVMChunk *OutChunk)
 {
-    PVMCompiler Compiler = CompilerInit(Source, Flags, PredefinedIdentifiers, Chunk, GlobalAlloc, LogFile);
-    ConsumeToken(&Compiler);
+    PascalCompiler Compiler = {
+        .Flags = Flags,
+        .Builtins = {
+            .Crt = STRVIEW_INIT_CSTR("crt", 3),
+            .System = STRVIEW_INIT_CSTR("system", 6),
+        },
+        .InternalAlloc = GPAInit(4 * 1024 * 1024),
+        .InternalArena = ArenaInit(512*sizeof(VarLocation), 2),
+        .Locals = { NULL },
+        .Scope = 0,
+        .StackSize = 0,
 
-    switch (Compiler.Next.Type)
-    {
-    case TOKEN_PROGRAM:
-    {
-        ConsumeToken(&Compiler);
-        CompileProgram(&Compiler);
-    } break;
-    case TOKEN_UNIT:
-    {
-        PASCAL_UNREACHABLE("TODO: Unit");
-    } break;
-    default:
-    {
-        if (COMPMODE_REPL != Flags.CompMode)
-        {
-            Error(&Compiler, "Expected 'Program' or 'Unit' at the beginning of file.");
-            goto Out;
-        }
+        .Idens = { .Cap = STATIC_ARRAY_SIZE(Compiler.Idens.Array) },
+        .Subroutine = { 0 },
 
-        if (CompileHeadlessBlock(&Compiler))
-        {
-            CompileBeginBlock(&Compiler);
-        }
-        else 
-        {
-            Compiler.EntryPoint = PVMGetCurrentLocation(&Compiler.Emitter);
-            while (!IsAtEnd(&Compiler))
-            {
-                CompileStmt(&Compiler);
-                if (!IsAtEnd(&Compiler))
-                    ConsumeOrError(&Compiler, TOKEN_SEMICOLON, "Expected ';' between statement.");
-            }
-        }
-    } break;
+        .Lhs = { 0 },
+        .Breaks = { 0 },
+        .BreakCount = 0,
+        .InLoop = false,
+
+        .SubroutineReferences = { 0 },
+        .EntryPoint = 0,
+
+        .Error = false,
+        .LogFile = LogFile,
+        .Panic = false,
+
+        .ReplCallback = NULL,
+        .ReplUserData = NULL,
+    };
+
+    Compiler.Emitter = PVMEmitterInit(OutChunk);
+    Compiler.InternalAlloc.CoalesceOnFree = true;
+    if (NULL == PredefinedIdentifiers)
+    {
+        Compiler.Global = VartabPredefinedIdentifiers(&Compiler.InternalAlloc, 1024);
     }
-
-Out:
-    CompilerDeinit(&Compiler);
-    return !Compiler.Error;
+    else
+    {
+        Compiler.Global = VartabClone(&Compiler.InternalAlloc, PredefinedIdentifiers);
+    }
+    DefineSystemSubroutines(&Compiler);
+    return Compiler;
 }
+
+void PascalCompilerDeinit(PascalCompiler *Compiler)
+{
+    GPADeinit(&Compiler->InternalAlloc);
+    ArenaDeinit(&Compiler->InternalArena);
+    PVMEmitterDeinit(EMITTER());
+}
+
+
+
+bool PascalCompileRepl(
+        PascalCompiler *Compiler, const U8 *Line,
+        PascalReplLineCallbackFn Callback, void *Data)
+{
+    Compiler->Lexer = TokenizerInit(Line);
+    ConsumeToken(Compiler);
+    Compiler->ReplCallback = Callback;
+    Compiler->ReplUserData = Data;
+
+    U32 LastEntry = Compiler->EntryPoint;
+    CompileBlock(Compiler);
+#if 0 
+    bool BeginEncountered = CompileHeadlessBlock(Compiler);
+    if (BeginEncountered)
+    {
+        CompileBeginBlock(Compiler);
+    }
+    else 
+    {
+        do {
+            if (NoMoreToken(Compiler))
+                break;
+            CompileStmt(Compiler);
+        } while (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON) && !IsAtEnd(Compiler));
+    }
+#endif 
+
+    if (Compiler->Error)
+    {
+        Compiler->EntryPoint = LastEntry;
+        return false;
+    }
+    ResolveSubroutineReferences(Compiler);
+    PVMSetEntryPoint(EMITTER(), Compiler->EntryPoint);
+    PVMEmitExit(EMITTER());
+    return !Compiler->Error;
+}
+
+
 

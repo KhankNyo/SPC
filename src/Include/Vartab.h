@@ -19,6 +19,8 @@ struct PascalVartab
 
 
 PascalVartab VartabInit(PascalGPA *Allocator, ISize InitialCap);
+/* if Allocator is NULL, the function uses the allocator from Src */
+PascalVartab VartabClone(PascalGPA *Allocator, const PascalVartab *Src);
 PascalVartab VartabPredefinedIdentifiers(PascalGPA *Allocator, ISize InitialCap);
 void VartabDeinit(PascalVartab *Vartab);
 void VartabReset(PascalVartab *Vartab);

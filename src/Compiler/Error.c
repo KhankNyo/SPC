@@ -1,6 +1,7 @@
 
 
 #include <stdarg.h>
+#include "Compiler/Compiler.h"
 #include "Compiler/Error.h"
 
 
@@ -30,7 +31,7 @@ static void PrintAndHighlightSource(FILE *LogFile, const Token *Tok)
 }
 
 
-void VaListError(PVMCompiler *Compiler, const Token *Tok, const char *Fmt, va_list Args)
+void VaListError(PascalCompiler *Compiler, const Token *Tok, const char *Fmt, va_list Args)
 {
     Compiler->Error = true;
     if (!Compiler->Panic)
@@ -55,7 +56,7 @@ void VaListError(PVMCompiler *Compiler, const Token *Tok, const char *Fmt, va_li
     }
 }
 
-void ErrorAt(PVMCompiler *Compiler, const Token *Tok, const char *Fmt, ...)
+void ErrorAt(PascalCompiler *Compiler, const Token *Tok, const char *Fmt, ...)
 {
     va_list Args;
     va_start(Args, Fmt);
@@ -63,7 +64,7 @@ void ErrorAt(PVMCompiler *Compiler, const Token *Tok, const char *Fmt, ...)
     va_end(Args);
 }
 
-bool ConsumeOrError(PVMCompiler *Compiler, TokenType Expected, const char *ErrFmt, ...)
+bool ConsumeOrError(PascalCompiler *Compiler, TokenType Expected, const char *ErrFmt, ...)
 {
     if (!ConsumeIfNextIs(Compiler, Expected))
     {
@@ -76,7 +77,7 @@ bool ConsumeOrError(PVMCompiler *Compiler, TokenType Expected, const char *ErrFm
     return true;
 }
 
-void ErrorTypeMismatch(PVMCompiler *Compiler, 
+void ErrorTypeMismatch(PascalCompiler *Compiler, 
         const Token *At, const char *Place, const char *ExpectedType, IntegralType Got)
 {
     ErrorAt(Compiler, At, "Invalid type for %s, expected %s but got %s.",

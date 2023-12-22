@@ -4,96 +4,29 @@
 
 #include "StringView.h"
 
+#include "Compiler/Compiler.h"
 #include "Compiler/Data.h"
 #include "Compiler/Error.h"
 #include "Compiler/Builtins.h"
 
 
 
-#define ARTIFICIAL_TOKEN(StrLiteral) (Token){\
-    .Len = sizeof (StrLiteral) - 1,\
-    .Str = (const U8*)(StrLiteral),\
-    .Line = 0, .Type = TOKEN_IDENTIFIER, .LineOffset = 0\
-}
-
-
-PVMCompiler CompilerInit(const U8 *Source, 
-        PascalCompileFlags Flags,
-        PascalVartab *PredefinedIdentifiers, PVMChunk *Chunk, PascalGPA *GlobalAlloc, FILE *LogFile)
-{
-    PVMCompiler Compiler = {
-        .Lexer = TokenizerInit(Source),
-        .LogFile = LogFile,
-        .Error = false,
-        .Panic = false,
-        .Scope = 0,
-        .Flags = Flags,
-
-        .GlobalAlloc = GlobalAlloc,
-        .InternalAlloc = GPAInit(4 * 1024 * 1024),
-        /* string literals are safe */
-        .Builtins = {
-            .Crt = STRVIEW_INIT_CSTR("crt", 3),
-            .System = STRVIEW_INIT_CSTR("system", 6),
-        },
-
-        .Var = {
-            .Cap = 256,
-            .Count = 0,
-        },
-        .Global = PredefinedIdentifiers,
-        .Idens = {
-            .Cap = STATIC_ARRAY_SIZE(Compiler.Idens.Array),
-            .Count = 0,
-        },
-
-        .Breaks = { 0 },
-        .BreakCount = 0,
-        .InLoop = false,
-
-        .SubroutineReferences = { 0 },
-
-        .Subroutine = { {0} },
-        .Emitter = PVMEmitterInit(Chunk),
-    };
-
-    Compiler.Var.Location = GPAAllocate(&Compiler.InternalAlloc, sizeof(VarLocation *) * Compiler.Var.Cap);
-    for (U32 i = 0; i < Compiler.Var.Cap; i++)
-    {
-        Compiler.Var.Location[i] = 
-            GPAAllocateZero(Compiler.GlobalAlloc, sizeof Compiler.Var.Location[0][0]);
-    }
-
-
-    DefineSystemSubroutines(&Compiler);
-    return Compiler;
-}
-
-void CompilerDeinit(PVMCompiler *Compiler)
-{
-    ResolveSubroutineReferences(Compiler);
-    PVMSetEntryPoint(&Compiler->Emitter, Compiler->EntryPoint);
-    PVMEmitterDeinit(&Compiler->Emitter);
-    GPADeinit(&Compiler->InternalAlloc);
-}
 
 
 
 
 
-
-
-bool IsAtGlobalScope(const PVMCompiler *Compiler)
+bool IsAtGlobalScope(const PascalCompiler *Compiler)
 {
     return 0 == Compiler->Scope;
 }
 
 
-PascalVartab *CurrentScope(PVMCompiler *Compiler)
+PascalVartab *CurrentScope(PascalCompiler *Compiler)
 {
     if (IsAtGlobalScope(Compiler))
     {
-        return Compiler->Global;
+        return &Compiler->Global;
     }
     else 
     {
@@ -102,65 +35,36 @@ PascalVartab *CurrentScope(PVMCompiler *Compiler)
 }
 
 
-void CompilerPushScope(PVMCompiler *Compiler, PascalVartab *Scope)
+void CompilerPushScope(PascalCompiler *Compiler, PascalVartab *Scope)
 {
     Compiler->Locals[Compiler->Scope] = Scope;
     Compiler->Scope++;
 }
 
-PascalVartab *CompilerPopScope(PVMCompiler *Compiler)
+PascalVartab *CompilerPopScope(PascalCompiler *Compiler)
 {
-    /* when popping a scope, we revert Var.Count back to Var.Count of the previous scope,
-     * and in the mean time, we'd also need to refill 
-     * the vars that were taken by the scope we're about to pop */
-
-    Compiler->Scope--;
-    U32 Last = Compiler->Var.Count;
-    Compiler->Var.Count = CurrentScope(Compiler)->Count;
-
-    /* refill the variables that have been taken */
-    for (U32 i = Compiler->Var.Count; i < Last; i++)
-    {
-        Compiler->Var.Location[i] = 
-            GPAAllocateZero(Compiler->GlobalAlloc, sizeof(Compiler->Var.Location[0][0]));
-    }
-    return Compiler->Locals[Compiler->Scope];
+    return Compiler->Locals[--Compiler->Scope];
 }
 
 
-void CompilerPushSubroutine(PVMCompiler *Compiler, SubroutineData *Subroutine)
+void CompilerPushSubroutine(PascalCompiler *Compiler, SubroutineData *Subroutine)
 {
     Compiler->Subroutine[Compiler->Scope].Current = Subroutine;
-    Compiler->Subroutine[Compiler->Scope].VarCount = Compiler->Var.Count;
     CompilerPushScope(Compiler, &Subroutine->Scope);
     PASCAL_ASSERT(Compiler->Scope < (I32)STATIC_ARRAY_SIZE(Compiler->Subroutine), 
             "TODO: dynamic nested scope"
     );
 }
 
-void CompilerPopSubroutine(PVMCompiler *Compiler)
+void CompilerPopSubroutine(PascalCompiler *Compiler)
 {
     CompilerPopScope(Compiler);
 }
 
 
-VarLocation *CompilerAllocateVarLocation(PVMCompiler *Compiler)
+VarLocation *CompilerAllocateVarLocation(PascalCompiler *Compiler)
 {
-    if (Compiler->Var.Count >= Compiler->Var.Cap)
-    {
-        U32 OldCap = Compiler->Var.Cap;
-        Compiler->Var.Cap *= 2;
-        Compiler->Var.Location = GPAReallocateArray(&Compiler->InternalAlloc, 
-                Compiler->Var.Location, VarLocation, 
-                Compiler->Var.Cap
-        );
-        for (U32 i = OldCap; i < Compiler->Var.Cap; i++)
-        {
-            Compiler->Var.Location[i] = 
-                GPAAllocateZero(Compiler->GlobalAlloc, sizeof Compiler->Var.Location[0][0]);
-        }
-    }
-    return Compiler->Var.Location[Compiler->Var.Count++];
+    return ArenaAllocate(&Compiler->InternalArena, sizeof(VarLocation));
 }
 
 
@@ -168,12 +72,12 @@ VarLocation *CompilerAllocateVarLocation(PVMCompiler *Compiler)
 
 
 
-bool NextTokenIs(const PVMCompiler *Compiler, TokenType Type)
+bool NextTokenIs(const PascalCompiler *Compiler, TokenType Type)
 {
     return Type == Compiler->Next.Type;
 }
 
-bool ConsumeIfNextIs(PVMCompiler *Compiler, TokenType Type)
+bool ConsumeIfNextIs(PascalCompiler *Compiler, TokenType Type)
 {
     if (NextTokenIs(Compiler, Type))
     {
@@ -184,7 +88,7 @@ bool ConsumeIfNextIs(PVMCompiler *Compiler, TokenType Type)
 }
 
 
-void ConsumeToken(PVMCompiler *Compiler)
+void ConsumeToken(PascalCompiler *Compiler)
 {
     Compiler->Curr = Compiler->Next;
     Compiler->Next = TokenizerGetToken(&Compiler->Lexer);
@@ -194,12 +98,12 @@ void ConsumeToken(PVMCompiler *Compiler)
     }
 }
 
-bool IsAtEnd(const PVMCompiler *Compiler)
+bool IsAtEnd(const PascalCompiler *Compiler)
 {
     return NextTokenIs(Compiler, TOKEN_EOF);
 }
 
-bool IsAtStmtEnd(const PVMCompiler *Compiler)
+bool IsAtStmtEnd(const PascalCompiler *Compiler)
 {
     return IsAtEnd(Compiler) || NextTokenIs(Compiler, TOKEN_SEMICOLON);
 }
@@ -209,7 +113,7 @@ bool IsAtStmtEnd(const PVMCompiler *Compiler)
 
 
 
-void PushSubroutineReference(PVMCompiler *Compiler, 
+void PushSubroutineReference(PascalCompiler *Compiler, 
         const U32 *SubroutineLocation, U32 CallSite, PVMPatchType PatchType)
 {
     PASCAL_NONNULL(Compiler);
@@ -233,7 +137,7 @@ void PushSubroutineReference(PVMCompiler *Compiler,
     Compiler->SubroutineReferences.Count = Count + 1;
 }
 
-void ResolveSubroutineReferences(PVMCompiler *Compiler)
+void ResolveSubroutineReferences(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
     for (UInt i = 0; i < Compiler->SubroutineReferences.Count; i++)
@@ -257,12 +161,12 @@ void ResolveSubroutineReferences(PVMCompiler *Compiler)
 
 
 
-void CompilerInitDebugInfo(PVMCompiler *Compiler, const Token *From)
+void CompilerInitDebugInfo(PascalCompiler *Compiler, const Token *From)
 {
     PVMEmitDebugInfo(&Compiler->Emitter, From->Lexeme.Str, From->Lexeme.Len, From->Line);
 }
 
-void CompilerEmitDebugInfo(PVMCompiler *Compiler, const Token *From)
+void CompilerEmitDebugInfo(PascalCompiler *Compiler, const Token *From)
 {
     U32 LineLen = Compiler->Curr.Lexeme.Str - From->Lexeme.Str + Compiler->Curr.Lexeme.Len;
     if (From->Type == TOKEN_FUNCTION || From->Type == TOKEN_PROCEDURE)
@@ -277,13 +181,13 @@ void CompilerEmitDebugInfo(PVMCompiler *Compiler, const Token *From)
 
 
 
-void CompilerResetTmp(PVMCompiler *Compiler)
+void CompilerResetTmp(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
     Compiler->Idens.Count = 0;
 }
 
-void CompilerPushTmp(PVMCompiler *Compiler, Token Identifier)
+void CompilerPushTmp(PascalCompiler *Compiler, Token Identifier)
 {
     PASCAL_NONNULL(Compiler);
     if (Compiler->Idens.Count > Compiler->Idens.Cap)
@@ -294,7 +198,7 @@ void CompilerPushTmp(PVMCompiler *Compiler, Token Identifier)
     Compiler->Idens.Count++;
 }
 
-TmpIdentifiers CompilerSaveTmp(PVMCompiler *Compiler)
+TmpIdentifiers CompilerSaveTmp(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
     TmpIdentifiers Save = Compiler->Idens;
@@ -302,20 +206,20 @@ TmpIdentifiers CompilerSaveTmp(PVMCompiler *Compiler)
     return Save;
 }
 
-void CompilerUnsaveTmp(PVMCompiler *Compiler, const TmpIdentifiers *Save)
+void CompilerUnsaveTmp(PascalCompiler *Compiler, const TmpIdentifiers *Save)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Save);
     Compiler->Idens = *Save;
 }
 
-UInt CompilerGetTmpCount(const PVMCompiler *Compiler)
+UInt CompilerGetTmpCount(const PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
     return Compiler->Idens.Count;
 }
 
-Token *CompilerGetTmp(PVMCompiler *Compiler, UInt Idx)
+Token *CompilerGetTmp(PascalCompiler *Compiler, UInt Idx)
 {
     PASCAL_NONNULL(Compiler);
     return &Compiler->Idens.Array[Idx];
@@ -334,7 +238,7 @@ Token *CompilerGetTmp(PVMCompiler *Compiler, UInt Idx)
 /*===============================================================================*/
 
 
-PascalVar *FindIdentifier(PVMCompiler *Compiler, const Token *Identifier)
+PascalVar *FindIdentifier(PascalCompiler *Compiler, const Token *Identifier)
 {
     U32 Hash = VartabHashStr(Identifier->Lexeme.Str, Identifier->Lexeme.Len);
     PascalVar *Info = NULL;
@@ -348,14 +252,14 @@ PascalVar *FindIdentifier(PVMCompiler *Compiler, const Token *Identifier)
         if (NULL != Info)
             return Info;
     }
-    Info = VartabFindWithHash(Compiler->Global,
+    Info = VartabFindWithHash(&Compiler->Global,
             Identifier->Lexeme.Str, Identifier->Lexeme.Len, Hash
     );
     return Info;
 }
 
 
-PascalVar *DefineAtScope(PVMCompiler *Compiler, PascalVartab *Scope,
+PascalVar *DefineAtScope(PascalCompiler *Compiler, PascalVartab *Scope,
         const Token *Identifier, VarType Type, VarLocation *Location)
 {
     PascalVar *AlreadyDefined = VartabFindWithHash(Scope, 
@@ -385,13 +289,13 @@ PascalVar *DefineAtScope(PVMCompiler *Compiler, PascalVartab *Scope,
     );
 }
 
-PascalVar *DefineIdentifier(PVMCompiler *Compiler, 
+PascalVar *DefineIdentifier(PascalCompiler *Compiler, 
         const Token *Identifier, VarType Type, VarLocation *Location)
 {
     return DefineAtScope(Compiler, CurrentScope(Compiler), Identifier, Type, Location);
 }
 
-PascalVar *DefineParameter(PVMCompiler *Compiler,
+PascalVar *DefineParameter(PascalCompiler *Compiler,
         const Token *Identifier, VarType Type, VarLocation *Location)
 {
     PascalVar *AlreadyDefined = VartabFindWithHash(CurrentScope(Compiler), 
@@ -411,16 +315,16 @@ PascalVar *DefineParameter(PVMCompiler *Compiler,
     );
 }
 
-PascalVar *DefineGlobal(PVMCompiler *Compiler,
+PascalVar *DefineGlobal(PascalCompiler *Compiler,
         const Token *Identifier, VarType Type, VarLocation *Location)
 {
-    return DefineAtScope(Compiler, Compiler->Global, Identifier, Type, Location);
+    return DefineAtScope(Compiler, &Compiler->Global, Identifier, Type, Location);
 }
 
 
 
 /* reports error if identifier is not found */
-PascalVar *GetIdenInfo(PVMCompiler *Compiler, const Token *Identifier, const char *ErrFmt, ...)
+PascalVar *GetIdenInfo(PascalCompiler *Compiler, const Token *Identifier, const char *ErrFmt, ...)
 {
     PascalVar *Info = FindIdentifier(Compiler, Identifier);
     if (NULL == Info)
@@ -436,9 +340,9 @@ PascalVar *GetIdenInfo(PVMCompiler *Compiler, const Token *Identifier, const cha
 
 
 
-VarType *CompilerCopyType(PVMCompiler *Compiler, VarType Type)
+VarType *CompilerCopyType(PascalCompiler *Compiler, VarType Type)
 {
-    VarType *Copy = GPAAllocate(Compiler->GlobalAlloc, sizeof Type);
+    VarType *Copy = ArenaAllocate(&Compiler->InternalArena, sizeof Type);
     *Copy = Type;
     return Copy;
 }

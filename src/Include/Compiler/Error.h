@@ -4,12 +4,12 @@
 
 #include "Compiler/Data.h"
 
-void VaListError(PVMCompiler *Compiler, const Token *Tok, const char *Fmt, va_list Args);
-void ErrorAt(PVMCompiler *Compiler, const Token *Tok, const char *Fmt, ...);
-void ErrorTypeMismatch(PVMCompiler *Compiler, 
+void VaListError(PascalCompiler *Compiler, const Token *Tok, const char *Fmt, va_list Args);
+void ErrorAt(PascalCompiler *Compiler, const Token *Tok, const char *Fmt, ...);
+void ErrorTypeMismatch(PascalCompiler *Compiler, 
         const Token *At, const char *Place, const char *ExpectedType, IntegralType Got
 );
-bool ConsumeOrError(PVMCompiler *Compiler, TokenType Expected, const char *ErrFmt, ...);
+bool ConsumeOrError(PascalCompiler *Compiler, TokenType Expected, const char *ErrFmt, ...);
 #define Error(pCompiler, ...) ErrorAt(pCompiler, &(pCompiler)->Next, __VA_ARGS__)
 
 
