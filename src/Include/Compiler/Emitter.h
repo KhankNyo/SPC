@@ -68,6 +68,7 @@ VarRegister PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type);
 VarLocation PVMAllocateRegisterLocation(PVMEmitter *Emitter, VarType Type);
 void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, U32 RegID);
 void PVMMarkRegisterAsFreed(PVMEmitter *Emitter, UInt Reg);
+bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt Reg);
 
 
 /* Branching instructions */

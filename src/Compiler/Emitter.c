@@ -119,7 +119,7 @@ static U32 Write32(PVMEmitter *Emitter, U32 DWord)
 }
 
 
-static bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt Reg)
+bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt Reg)
 {
     PASCAL_NONNULL(Emitter);
     return ((Emitter->Reglist >> Reg) & 1) == 0;
@@ -1953,6 +1953,7 @@ VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType ArgType, I32 
                 .Persistent = false,
             },
         };
+        PVMMarkArgAsOccupied(Emitter, &ArgReg);
 
         if (IntegralTypeIsFloat(ArgType.Integral))
             ArgReg.As.Register.ID += PVM_REG_COUNT;

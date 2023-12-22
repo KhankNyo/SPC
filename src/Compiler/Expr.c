@@ -200,13 +200,13 @@ static VarLocation FactorLiteral(PVMCompiler *Compiler)
 }
 
 
-static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, VarLocation *Location)
+static VarLocation FactorCall(PVMCompiler *Compiler, VarLocation *Location)
 {
     PASCAL_NONNULL(Compiler);
-    PASCAL_NONNULL(Identifier);
     PASCAL_NONNULL(Location);
 
     VarLocation ReturnValue = { 0 };
+    Token Callee = Compiler->Curr;
 
     /* builtin function */
     if (VAR_BUILTIN == Location->LocationType)
@@ -214,18 +214,34 @@ static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, Va
         OptionalReturnValue Opt = CompileCallToBuiltin(Compiler, Location->As.BuiltinSubroutine);
         if (!Opt.HasReturnValue)
         {
-            ErrorAt(Compiler, Identifier, "Builtin procedure does not have a return value.");
+            ErrorAt(Compiler, &Callee, "Builtin procedure does not have a return value.");
             return ReturnValue;
         }
         return Opt.ReturnValue;
     }
 
-    /* function call */
-    SubroutineData *Subroutine = &Location->Type.As.Subroutine;
+    /* function pointer  */
+    SubroutineData *Subroutine = NULL;
+    if (TYPE_POINTER == Location->Type.Integral)
+    {
+        if (NULL == Location->Type.As.Pointee
+        || TYPE_FUNCTION != Location->Type.As.Pointee->Integral)
+        {
+            ErrorAt(Compiler, &Callee, "Cannot call %s", VarTypeToStr(Location->Type));
+            return ReturnValue;
+        }
+        Subroutine = &Location->Type.As.Pointee->As.Subroutine;
+    }
+    else 
+    {
+        Subroutine = &Location->Type.As.Subroutine;
+    }
+
+    /* no return value, but in expression */
     if (NULL == Subroutine->ReturnType)
     {
-        ErrorAt(Compiler, Identifier, "Procedure '"STRVIEW_FMT"' does not have a return value.",
-                STRVIEW_FMT_ARG(&Identifier->Lexeme)
+        ErrorAt(Compiler, &Callee, "Procedure '"STRVIEW_FMT"' does not have a return value.",
+                STRVIEW_FMT_ARG(&Callee.Lexeme)
         );
         return ReturnValue;
     }
@@ -247,12 +263,12 @@ static VarLocation FactorCall(PVMCompiler *Compiler, const Token *Identifier, Va
 
         PVMEmitLoadAddr(EMITTER(), Arg, Compiler->Lhs.As.Memory);
         PVMMarkRegisterAsAllocated(EMITTER(), Arg.ID);
-        CompileSubroutineCall(Compiler, Location, Identifier, &ReturnValue);
+        CompileSubroutineCall(Compiler, Location, &Callee, &ReturnValue);
     }
     else
     {
         ReturnValue = PVMAllocateRegisterLocation(EMITTER(), *Subroutine->ReturnType);
-        CompileSubroutineCall(Compiler, Location, Identifier, &ReturnValue);
+        CompileSubroutineCall(Compiler, Location, &Callee, &ReturnValue);
         if (TYPE_POINTER == ReturnValue.Type.Integral)
         {
             ReturnValue.Type.As.Pointee = Subroutine->ReturnType->As.Pointee;
@@ -286,11 +302,6 @@ static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
     VarType Pointee = *Variable->Type.As.Pointee;
     VarLocation Ptr;
     PVMEmitIntoRegLocation(EMITTER(), &Ptr, true, Variable);
-
-    if (TYPE_FUNCTION == Pointee.Integral)
-    {
-        return FactorCall(Compiler, &Caret, &Ptr);
-    }
 
     VarLocation Memory = {
         .LocationType = VAR_MEM,
@@ -553,9 +564,9 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
         return Type;
     }
     /* has a location, function? */
-    if (TYPE_FUNCTION == Variable->Type.Integral)
+    if (TYPE_FUNCTION == Variable->Location->Type.Integral)
     {
-        return FactorCall(Compiler, &Identifier, Variable->Location);
+        return FactorCall(Compiler, Variable->Location);
     }
     return *Variable->Location;
 Error:
@@ -587,6 +598,8 @@ static VarLocation VariableAddrOf(PVMCompiler *Compiler)
 
     VarType Pointer = VarTypePtr(CompilerCopyType(Compiler, Variable->Type));
     VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), Pointer);
+
+    /* address of subroutine */
     if (VAR_SUBROUTINE == Variable->Location->LocationType)
     {
         U32 CallSite = PVMEmitLoadSubroutineAddr(EMITTER(), Ptr.As.Register, 0);
@@ -597,6 +610,8 @@ static VarLocation VariableAddrOf(PVMCompiler *Compiler)
         );
         return Ptr;
     }
+
+    /* address of memory */
     if (VAR_MEM == Variable->Location->LocationType)
     {
         PASCAL_ASSERT(VarTypeEqual(&Variable->Type, &Variable->Location->Type), "Unreachable");
@@ -1280,7 +1295,7 @@ static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] =
     [TOKEN_DOT]             = { NULL,               VariableAccess, PREC_VARIABLE },
     [TOKEN_AT]              = { VariableAddrOf,     NULL,           PREC_SINGLE },
 
-    [TOKEN_LEFT_PAREN]      = { FactorGrouping,     NULL,           PREC_FACTOR },
+    [TOKEN_LEFT_PAREN]      = { FactorGrouping,     FactorCall,     PREC_VARIABLE },
     [TOKEN_NOT]             = { ExprUnary,          NULL,           PREC_FACTOR },
 
     [TOKEN_STAR]            = { NULL,               ExprBinary,     PREC_TERM },

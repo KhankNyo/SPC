@@ -945,6 +945,7 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     
 
     /* param list */
+    SaveRegInfo PrevScope = PVMEmitterBeginScope(EMITTER());
     /* TODO: param list check */
     PascalVartab Scope = VartabInit(Compiler->GlobalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
     SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
@@ -1017,8 +1018,6 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
     {
         /* begin subroutine scope */
         CompilerPushSubroutine(Compiler, Subroutine);
-        /* TODO: uncomment this when implementing closure */
-        //SaveRegInfo PrevScope = PVMEmitterBeginScope(EMITTER());
         Location->As.SubroutineLocation = PVMGetCurrentLocation(EMITTER());
 
 
@@ -1035,21 +1034,9 @@ static void CompileSubroutineBlock(PVMCompiler *Compiler, const char *Subroutine
         PVMEmitExit(EMITTER());
         CompilerEmitDebugInfo(Compiler, &End);
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s body.", SubroutineType);
-
-
-        /* force free all argument registers */
-        UInt ArgregCount = PVM_ARGREG_COUNT;
-        if (ArgregCount > Subroutine->ParameterList.Count)
-            ArgregCount = Subroutine->ParameterList.Count;
-        for (UInt i = 0; i < ArgregCount; i++)
-        {
-            VarRegister RegisterParameter = Subroutine->ParameterList.Params[i].Location->As.Register;
-            PVMMarkRegisterAsFreed(EMITTER(), RegisterParameter.ID);
-        }
-
         CompilerPopSubroutine(Compiler);
-        //PVMEmitterEndScope(EMITTER(), PrevScope);
     }
+    PVMEmitterEndScope(EMITTER(), PrevScope);
 }
 
 

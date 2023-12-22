@@ -260,17 +260,17 @@ PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Name)
 
 
 void CompilePartialArgumentList(PVMCompiler *Compiler, 
-        const Token *FunctionName, const SubroutineParameterList *Parameters,
+        const Token *Callee, const SubroutineParameterList *Parameters,
         U32 StackArgSize, bool RecordReturnType)
 {
     PASCAL_NONNULL(Compiler);
-    PASCAL_NONNULL(FunctionName);
+    PASCAL_NONNULL(Callee);
     PASCAL_NONNULL(Compiler);
 
     UInt ExpectedArgCount = Parameters->Count;
     UInt ArgCount = 0;
     /* no args */
-    if (ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
+    if (!ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
     {
         PASCAL_ASSERT(Compiler->Flags.CallConv == CALLCONV_MSX64, 
                 "TODO: other calling convention"
@@ -285,6 +285,7 @@ void CompilePartialArgumentList(PVMCompiler *Compiler,
                 PASCAL_NONNULL(CurrentArg);
 
                 VarLocation Arg = PVMSetArg(EMITTER(), ArgCount + RecordArg, CurrentArg->Type, &Base);
+                PASCAL_ASSERT(!PVMRegisterIsFree(EMITTER(), Arg.As.Register.ID), "reg not free");
                 CompileExprInto(Compiler, NULL, &Arg);
             }
             else
@@ -298,50 +299,57 @@ void CompilePartialArgumentList(PVMCompiler *Compiler,
     }
     if (ArgCount != ExpectedArgCount)
     {
-        ErrorAt(Compiler, FunctionName, 
+        ErrorAt(Compiler, Callee, 
                 "Expected %d arguments but %d were given.", ExpectedArgCount, ArgCount
         );
     }
 }
 
 void CompileArgumentList(PVMCompiler *Compiler, 
-        const Token *FunctionName, const SubroutineData *Subroutine)
+        const Token *Callee, const SubroutineData *Subroutine)
 {
     PASCAL_NONNULL(Compiler);
-    PASCAL_NONNULL(FunctionName);
+    PASCAL_NONNULL(Callee);
     PASCAL_NONNULL(Subroutine);
-    if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
-    {
-        bool RecordReturnType = Subroutine->ReturnType 
-            && TYPE_RECORD == Subroutine->ReturnType->Integral;
 
+    bool RecordReturnType = Subroutine->ReturnType 
+        && TYPE_RECORD == Subroutine->ReturnType->Integral;
+    if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN)
+    || TOKEN_LEFT_PAREN == Compiler->Curr.Type)
+    {
         CompilePartialArgumentList(Compiler, 
-                FunctionName, &Subroutine->ParameterList, Subroutine->StackArgSize, 
+                Callee, &Subroutine->ParameterList, Subroutine->StackArgSize, 
                 RecordReturnType
         );
     }
     else if (Subroutine->ParameterList.Count != 0)
     {
-        ErrorAt(Compiler, FunctionName, "Expected %d arguments but none were given.", 
+        ErrorAt(Compiler, Callee, "Expected %d arguments but none were given.", 
                 Subroutine->ParameterList.Count
         );
     }
 }
 
 void CompileSubroutineCall(PVMCompiler *Compiler, 
-        VarLocation *Callee, const Token *Name, VarLocation *ReturnValue)
+        VarLocation *Subroutine, const Token *Callee, VarLocation *ReturnValue)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Callee);
-    PASCAL_NONNULL(Name);
+    PASCAL_NONNULL(Subroutine);
 
     U32 CallSite = SUBROUTINE_INVALID_LOCATION;
     UInt ReturnReg = NO_RETURN_REG;
     SaveRegInfo SaveRegs = { 0 };
 
-    bool CallingFunctionPointer = TYPE_POINTER == Callee->Type.Integral;
-    SubroutineData *CalleeData = &Callee->Type.As.Subroutine;
-    U32 SubroutineLocation = Callee->As.SubroutineLocation;
+    U32 SubroutineLocation = Subroutine->As.SubroutineLocation;
+    bool CallingFunctionPointer = TYPE_POINTER == Subroutine->Type.Integral;
+    SubroutineData *Info = &Subroutine->Type.As.Subroutine;
+    if (CallingFunctionPointer)
+    {
+        PASCAL_NONNULL(Subroutine->Type.As.Pointee);
+        Info = &Subroutine->Type.As.Pointee->As.Subroutine;
+    }
+
 
     /* return value is not discarded */
     if (NULL != ReturnValue)
@@ -349,9 +357,9 @@ void CompileSubroutineCall(PVMCompiler *Compiler,
         ReturnReg = ReturnValue->As.Register.ID;
         /* call the function */
         SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
-        CompileArgumentList(Compiler, Name, CalleeData);
+        CompileArgumentList(Compiler, Callee, Info);
         if (CallingFunctionPointer)
-            PVMEmitCallPtr(EMITTER(), Callee);
+            PVMEmitCallPtr(EMITTER(), Subroutine);
         else
             CallSite = PVMEmitCall(EMITTER(), SubroutineLocation);
 
@@ -363,9 +371,9 @@ void CompileSubroutineCall(PVMCompiler *Compiler,
     {
         /* calling a procedure, or function without caring about its return value */
         SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
-        CompileArgumentList(Compiler, Name, CalleeData);
+        CompileArgumentList(Compiler, Callee, Info);
         if (CallingFunctionPointer)
-            PVMEmitCallPtr(EMITTER(), Callee);
+            PVMEmitCallPtr(EMITTER(), Subroutine);
         else
             CallSite = PVMEmitCall(EMITTER(), SubroutineLocation);
     }
@@ -374,16 +382,16 @@ void CompileSubroutineCall(PVMCompiler *Compiler,
     if (!CallingFunctionPointer)
     {
         PushSubroutineReference(Compiler, 
-                &Callee->As.SubroutineLocation, 
+                &Subroutine->As.SubroutineLocation, 
                 CallSite, 
                 PATCHTYPE_BRANCH_UNCONDITIONAL
         );
     }
 
     /* deallocate stack args */
-    if (CalleeData->StackArgSize) 
+    if (Info->StackArgSize) 
     {
-        PVMEmitStackAllocation(EMITTER(), -CalleeData->StackArgSize);
+        PVMEmitStackAllocation(EMITTER(), -Info->StackArgSize);
     }
     PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg, SaveRegs);
 }
