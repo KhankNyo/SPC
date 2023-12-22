@@ -160,8 +160,15 @@ void DefineSystemSubroutines(PVMCompiler *Compiler)
         .Type.Size = sizeof(PascalStr),
         .LocationType = VAR_MEM,
     };
+    static VarLocation NilConstant = {
+        .As.Literal.Ptr.As.Raw = NULL,
+        .LocationType = VAR_LIT,
+    };
     NewlineConstant.As.Memory = PVMEmitGlobalData(EMITTER(), "\1\n", sizeof("\n"));
+    NilConstant.Type = VarTypePtr(NULL);
     DEFINE_BUILTIN_LIT(Scope, sNewlineConstName, TYPE_STRING, &NewlineConstant);
+    VartabSet(Scope, (const U8*)"nil", 3, 0, NilConstant.Type, &NilConstant);
+    //DEFINE_BUILTIN_LIT(Scope, "nil", TYPE_POINTER, &NilConstant);
 
     DEFINE_BUILTIN_FN(Scope, "WRITELN", sWriteln);
     DEFINE_BUILTIN_FN(Scope, "WRITE", sWrite);

@@ -113,6 +113,11 @@ static U32 WriteOp32(PVMEmitter *Emitter, U16 Opcode, U16 SecondHalf)
     return Location;
 }
 
+static U32 Write32(PVMEmitter *Emitter, U32 DWord)
+{
+    return WriteOp32(Emitter, DWord, DWord >> 16);
+}
+
 
 static bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt Reg)
 {
@@ -408,7 +413,7 @@ static void StoreToPtr(PVMEmitter *Emitter,
         } break;
         default: PASCAL_UNREACHABLE("TODO: Dst.Size > 8"); break;
         }
-        WriteOp32(Emitter, Offset, (U32)Offset >> 16);
+        Write32(Emitter, Offset);
     }
 }
 
@@ -440,7 +445,7 @@ do {\
         WriteOp16(Emitter, Offset);\
     } else {\
         WriteOp16(Emitter, PVM_OP(LD ## FloatType ## L, Dst->ID, Base.ID));\
-        WriteOp32(Emitter, Offset, (U32)Offset >> 16);\
+        Write32(Emitter, Offset);\
     }\
 } while (0)
 
@@ -464,14 +469,42 @@ do {\
 }
 
 
+
+void PVMEmitLoadAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src)
+{
+    PASCAL_NONNULL(Emitter);
+
+    UInt Base = Src.RegPtr.ID;
+    UInt Rd = Dst.ID;
+    I32 Offset = Src.Location;
+    if (0 == Offset)
+    {
+        if (Rd == Base)
+            return;
+
+        if (UINTPTR_MAX == UINT32_MAX)
+            WriteOp16(Emitter, PVM_OP(MOV32, Rd, Base));
+        else 
+            WriteOp16(Emitter, PVM_OP(MOV64, Rd, Base));
+    }
+    else if (IN_I16(Offset))
+    {
+        WriteOp32(Emitter, PVM_OP(LEA, Rd, Base), Offset);
+    }
+    else 
+    {
+        WriteOp16(Emitter, PVM_OP(LEAL, Rd, Base));
+        Write32(Emitter, Offset);
+    }
+}
+
 static void DerefIntoIntReg(PVMEmitter *Emitter, 
-        VarRegister *Dst, IntegralType DstType, 
+        VarRegister Dst, IntegralType DstType, 
         VarRegister Base, I32 Offset, IntegralType SrcType)
 {
     PASCAL_NONNULL(Emitter);
-    PASCAL_NONNULL(Dst);
 #define LOAD_OP(LongMode, ExtendType, DstSize, SrcSize, Base)\
-    WriteOp16(Emitter, PVM_OP(LD ## ExtendType ## DstSize ## SrcSize ## LongMode, Dst->ID, Base))
+    WriteOp16(Emitter, PVM_OP(LD ## ExtendType ## DstSize ## SrcSize ## LongMode, Dst.ID, Base))
 #define LOAD_INTO(LongMode, ExtendType, DstSize, Base) do {\
     switch (SrcType) {\
     CASE_PTR64(:)\
@@ -501,9 +534,10 @@ static void DerefIntoIntReg(PVMEmitter *Emitter,
     case TYPE_U8:\
     case TYPE_U16:\
     case TYPE_U32: LOAD_INTO(LongMode, ZEX, 32, Base); break;\
-    CASE_OBJREF32(:)\
+    CASE_OBJREF32(:) \
     CASE_OBJREF64(:) {\
-        WriteOp16(Emitter, PVM_OP(LEA ## LongMode, Dst->ID, Base));\
+        PVMEmitLoadAddr(Emitter, Dst, (VarMemory) {.Location = Offset, .RegPtr.ID = Base});\
+        return;\
     } break;\
     default: PASCAL_UNREACHABLE("Unhandled case in %s: %s", __func__, IntegralTypeToStr(DstType)); break;\
     }\
@@ -517,7 +551,7 @@ static void DerefIntoIntReg(PVMEmitter *Emitter,
     else
     {
         LOAD(Base.ID, L);
-        WriteOp32(Emitter, Offset, (U32)Offset >> 16);
+        Write32(Emitter, Offset);
     }
 
 #undef LOAD
@@ -543,7 +577,7 @@ static void DerefIntoReg(PVMEmitter *Emitter,
     else
     {
         DerefIntoIntReg(Emitter,
-                Dst, DstType,
+                *Dst, DstType,
                 Base, Src.Location, SrcType
         );
     }
@@ -990,7 +1024,7 @@ void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation 
     bool OwningSrcPtr = PVMEmitIntoReg(Emitter, &SrcPtr, true, Src);
 
     WriteOp16(Emitter, PVM_OP(MEMCPY, DstPtr.ID, SrcPtr.ID));
-    WriteOp32(Emitter, Dst->Type.Size, Dst->Type.Size >> 16);
+    Write32(Emitter, Dst->Type.Size);
 
     if (OwningDstPtr)
     {
@@ -1003,41 +1037,14 @@ void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation 
 }
 
 
-void PVMEmitLoadAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src)
-{
-    PASCAL_NONNULL(Emitter);
 
-    UInt Base = Src.RegPtr.ID;
-    UInt Rd = Dst.ID;
-    I32 Offset = Src.Location;
-    if (0 == Offset)
-    {
-        if (Rd == Base)
-            return;
-
-        if (UINTPTR_MAX == UINT32_MAX)
-            WriteOp16(Emitter, PVM_OP(MOV32, Rd, Base));
-        else 
-            WriteOp16(Emitter, PVM_OP(MOV64, Rd, Base));
-    }
-    else if (IN_I16(Offset))
-    {
-        WriteOp32(Emitter, PVM_OP(LEA, Rd, Base), Offset);
-    }
-    else 
-    {
-        WriteOp16(Emitter, PVM_OP(LEAL, Rd, Base));
-        WriteOp32(Emitter, Offset, Offset >> 16);
-    }
-}
-
-U32 PVMEmitLoadSubroutineAddr(PVMEmitter *Emitter, VarRegister Dst, VarSubroutine Src)
+U32 PVMEmitLoadSubroutineAddr(PVMEmitter *Emitter, VarRegister Dst, U32 SubroutineAddr)
 {
     PASCAL_NONNULL(Emitter);
     const PVMImmType ImmType = IMMTYPE_I32;
-    I32 Offset = Src.Location - (PVMGetCurrentLocation(Emitter) + 3);
+    I32 Offset = SubroutineAddr - (PVMGetCurrentLocation(Emitter) + 3);
     WriteOp16(Emitter, PVM_IMM_OP(LDRIP, Dst.ID, ImmType));
-    return WriteOp32(Emitter, Offset, (U32)Offset >> 16);
+    return Write32(Emitter, Offset);
 }
 
 void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src, I32 Offset)
@@ -1282,15 +1289,31 @@ void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I64 Imm)
         else if (IN_U16(Imm))
             WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_U16), Imm);
         else if (IN_I32(Imm))
-            WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_I32), Imm);
+        {
+            WriteOp16(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_I32));
+            Write32(Emitter, Imm);
+        }
         else if (IN_U32(Imm))
-            WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_U32), Imm);
+        {
+            WriteOp16(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_U32));
+            Write32(Emitter, Imm);
+        }
         else if (IN_I48(Imm))
+        {
             WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_I48), Imm);
+            Write32(Emitter, Imm >> 16);
+        }
         else if (IN_U48(Imm))
+        {
             WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_U48), Imm);
+            Write32(Emitter, Imm >> 16);
+        }
         else
-            WriteOp32(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_U64), Imm);
+        {
+            WriteOp16(Emitter, PVM_OP(ADDI64, Target.ID, IMMTYPE_U64));
+            Write32(Emitter, Imm);
+            Write32(Emitter, Imm >> 32);
+        }
     }
     else if (IS_SMALL_IMM(Imm))
         WriteOp16(Emitter, PVM_OP(ADDQI, Target.ID, Imm));
@@ -1299,15 +1322,31 @@ void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I64 Imm)
     else if (IN_U16(Imm))
         WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_U16), Imm);
     else if (IN_I32(Imm))
-        WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_I32), Imm);
+    {
+        WriteOp16(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_I32));
+        Write32(Emitter, Imm);
+    }
     else if (IN_U32(Imm))
-        WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_U32), Imm);
+    {
+        WriteOp16(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_U32));
+        Write32(Emitter, Imm);
+    }
     else if (IN_I48(Imm))
+    {
         WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_I48), Imm);
+        Write32(Emitter, Imm >> 16);
+    }
     else if (IN_U48(Imm))
+    {
         WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_U48), Imm);
+        Write32(Emitter, Imm >> 16);
+    }
     else
-        WriteOp32(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_U64), Imm);
+    {
+        WriteOp16(Emitter, PVM_OP(ADDI, Target.ID, IMMTYPE_U64));
+        Write32(Emitter, Imm);
+        Write32(Emitter, Imm >> 32);
+    }    
 
     if (IsOwning)
     {
@@ -2154,15 +2193,27 @@ SaveRegInfo PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 }
 
 
-U32 PVMEmitCall(PVMEmitter *Emitter, const VarSubroutine *Callee)
+U32 PVMEmitCall(PVMEmitter *Emitter, U32 Location)
 {
     PASCAL_NONNULL(Emitter);
-    PASCAL_NONNULL(Callee);
 
     U32 CurrentLocation = PVMCurrentChunk(Emitter)->Count;
-    U32 Location = Callee->Location - CurrentLocation - PVM_BRANCH_INS_SIZE;
-    WriteOp32(Emitter, PVM_BSR(Location & 0xFF), Location >> 8);
+    U32 Offset = Location - CurrentLocation - PVM_BRANCH_INS_SIZE;
+    WriteOp32(Emitter, PVM_BSR(Offset & 0xFF), Offset >> 8);
     return CurrentLocation;
+}
+
+void PVMEmitCallPtr(PVMEmitter *Emitter, const VarLocation *Ptr)
+{
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(Ptr);
+    VarRegister Callee;
+    bool Owning = PVMEmitIntoReg(Emitter, &Callee, true, Ptr);
+    WriteOp16(Emitter, PVM_OP(JSR, Callee.ID, 0));
+    if (Owning)
+    {
+        PVMFreeRegister(Emitter, Callee);
+    }
 }
 
 

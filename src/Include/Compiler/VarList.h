@@ -19,9 +19,15 @@ U32 CompileVarList(PVMCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U32 
 /* returns the record, or NULL on error */
 PascalVar *CompileRecordDefinition(PVMCompiler *Compiler, const Token *Name);
 
-/* nothing can be NULL */
+/* nothing can be NULL, expects next token to be '(' */
 void CompileArgumentList(PVMCompiler *Compiler, 
         const Token *FunctionName, const SubroutineData *Subroutine
+);
+
+/* nothing can be NULL, expects current token to be '(' */
+void CompilePartialArgumentList(PVMCompiler *Compiler, 
+        const Token *FunctionName, const SubroutineParameterList *ParameterList, 
+        U32 StackArgSize, bool RecordReturnType
 );
 
 /* NULL can be passed into OutReturnValue */

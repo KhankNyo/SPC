@@ -125,7 +125,7 @@ void CompileExprInto(PVMCompiler *Compiler, const Token *OpToken, VarLocation *L
 
     if (TYPE_POINTER == Location->Type.Integral && TYPE_POINTER == Expr.Type.Integral)
     {
-        if (VarTypeEqual(&Location->Type, &Expr.Type))
+        if (!VarTypeEqual(&Location->Type, &Expr.Type))
         {
             if (NULL == OpToken)
                 OpToken = &Compiler->Curr;
@@ -284,8 +284,8 @@ static VarLocation VariableDeref(PVMCompiler *Compiler, VarLocation *Variable)
 
 
     VarType Pointee = *Variable->Type.As.Pointee;
-    VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), Pointee);
-    PVMEmitMov(EMITTER(), &Ptr, Variable);
+    VarLocation Ptr;
+    PVMEmitIntoRegLocation(EMITTER(), &Ptr, true, Variable);
 
     if (TYPE_FUNCTION == Pointee.Integral)
     {
@@ -534,6 +534,7 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
     if (NULL == Variable)
         goto Error;
 
+    /* typename that does not have a location */
     if (NULL == Variable->Location)
     {
         /* type casting */
@@ -551,6 +552,7 @@ static VarLocation FactorVariable(PVMCompiler *Compiler)
         };
         return Type;
     }
+    /* has a location, function? */
     if (TYPE_FUNCTION == Variable->Type.Integral)
     {
         return FactorCall(Compiler, &Identifier, Variable->Location);
@@ -563,6 +565,7 @@ Error:
 
 static VarLocation VariableAddrOf(PVMCompiler *Compiler)
 {
+    PASCAL_NONNULL(Compiler);
     /* Curr is '@' */
 
     Token AtSign = Compiler->Curr;
@@ -578,34 +581,32 @@ static VarLocation VariableAddrOf(PVMCompiler *Compiler)
     {
         PASCAL_UNREACHABLE("TODO: addr of record field");
     }
-    VarLocation *Location = Variable->Location;
-    PASCAL_NONNULL(Location);
-    PASCAL_ASSERT(VarTypeEqual(&Variable->Type, &Location->Type), "Unreachable");
-    if (VAR_MEM == Location->LocationType)
+
+    if (NULL == Variable->Location)
+        goto CannotTakeAddress;
+
+    VarType Pointer = VarTypePtr(CompilerCopyType(Compiler, Variable->Type));
+    VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), Pointer);
+    if (VAR_SUBROUTINE == Variable->Location->LocationType)
     {
-        VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), 
-                VarTypePtr(CompilerCopyType(Compiler, Variable->Type))
+        U32 CallSite = PVMEmitLoadSubroutineAddr(EMITTER(), Ptr.As.Register, 0);
+        PushSubroutineReference(Compiler, 
+                &Variable->Location->As.SubroutineLocation, 
+                CallSite, 
+                PATCHTYPE_SUBROUTINE_ADDR
         );
-        PVMEmitLoadAddr(EMITTER(), Ptr.As.Register, Location->As.Memory);
         return Ptr;
     }
-    else if (VAR_SUBROUTINE == Location->LocationType)
+    if (VAR_MEM == Variable->Location->LocationType)
     {
-        VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), 
-                VarTypePtr(CompilerCopyType(Compiler, Variable->Type))
-        );
-        U32 PatchLocation = PVMEmitLoadSubroutineAddr(EMITTER(), Ptr.As.Register, Location->As.Subroutine);
-        if (!Location->As.Subroutine.Defined)
-        {
-            PushSubroutineReference(Compiler, &Location->As.Subroutine, PatchLocation, PATCHTYPE_SUBROUTINE_ADDR);
-        }
+        PASCAL_ASSERT(VarTypeEqual(&Variable->Type, &Variable->Location->Type), "Unreachable");
+        PVMEmitLoadAddr(EMITTER(), Ptr.As.Register, Variable->Location->As.Memory);
         return Ptr;
     }
-    else 
-    {
-        ErrorAt(Compiler, &AtSign, "Cannot take the address of this type of variable.");
-        return *Location;
-    }
+
+CannotTakeAddress:
+    ErrorAt(Compiler, &AtSign, "Cannot take the address this type of variable.");
+    return Ptr;
 }
 
 

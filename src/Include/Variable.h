@@ -17,6 +17,7 @@ struct SubroutineParameterList
     U32 Count;
 };
 
+#define SUBROUTINE_INVALID_LOCATION ((U32)-1)
 struct SubroutineData
 {
     /* owns by the compiler */
@@ -74,11 +75,6 @@ struct VarMemory
     VarRegister RegPtr;
 };
 
-struct VarSubroutine
-{
-    U32 Location;
-	bool Defined;
-};
 
 typedef enum VarLocationType
 {
@@ -99,9 +95,9 @@ struct VarLocation
     union {
         VarMemory Memory;
         VarRegister Register;
-        VarSubroutine Subroutine;
         VarLiteral Literal;
         VarBuiltinRoutine BuiltinSubroutine;
+        U32 SubroutineLocation;
     } As;
 };
 
@@ -184,6 +180,13 @@ static inline VarType VarTypePtr(VarType *Pointee)
         .Size = sizeof(void*),
         .As.Pointee = Pointee,
     };
+}
+
+static inline IntegralType PointerTypeOf(VarType Pointer)
+{
+    if (NULL == Pointer.As.Pointee)
+        return TYPE_INVALID;
+    return Pointer.As.Pointee->Integral;
 }
 
 static inline VarType VarTypeRecord(StringView Name, PascalVartab FieldTable, U32 Size)

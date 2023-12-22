@@ -92,7 +92,7 @@ void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation 
 bool PVMEmitIntoRegLocation(PVMEmitter *Emitter, VarLocation *OutTarget, bool ReadOnly, const VarLocation *Src);
 bool PVMEmitIntoReg(PVMEmitter *Emitter, VarRegister *OutTarget, bool ReadOnly, const VarLocation *Src);
 void PVMEmitLoadAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src);
-U32 PVMEmitLoadSubroutineAddr(PVMEmitter *Emitter, VarRegister Dst, VarSubroutine Subroutine);
+U32 PVMEmitLoadSubroutineAddr(PVMEmitter *Emitter, VarRegister Dst, U32 SubroutineAddr);
 void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src, I32 Offset);
 
 
@@ -160,7 +160,8 @@ VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
 #define NO_RETURN_REG PVM_REG_COUNT
 SaveRegInfo PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
 /* returns the location of the call instruction in case it needs a patch later on */
-U32 PVMEmitCall(PVMEmitter *Emitter, const VarSubroutine *Callee);
+U32 PVMEmitCall(PVMEmitter *Emitter, U32 Location);
+void PVMEmitCallPtr(PVMEmitter *Emitter, const VarLocation *Ptr);
 void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID, SaveRegInfo Save);
 
 

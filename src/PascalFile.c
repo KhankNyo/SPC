@@ -79,6 +79,7 @@ static bool PascalRun(const U8 *Source)
         goto CompileError;
 
     PascalVM VM = PVMInit(1024, 128);
+    VM.Disassemble = true;
 
     bool NoError = PVMRun(&VM, &Code);
 

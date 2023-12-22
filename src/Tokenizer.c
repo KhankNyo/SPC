@@ -87,7 +87,7 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
     {
         return ConsumeNumber(Lexer);
     }
-    if (IsAlpha(PrevChr))
+    if ('_' == PrevChr || IsAlpha(PrevChr))
     {
         return ConsumeWord(Lexer);
     }
@@ -210,7 +210,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_IF", "TOKEN_IMPLEMENTATION", "TOKEN_IN", "TOKEN_INLINE", "TOKEN_INFERFACE", 
         "TOKEN_LABEL", 
         "TOKEN_MOD", 
-        "TOKEN_NIL", "TOKEN_NOT",
+        "TOKEN_NOT",
         "TOKEN_OBJECT", "TOKEN_OF", "TOKEN_ON", "TOKEN_OPERATOR", "TOKEN_OR", 
         "TOKEN_PACKED", "TOKEN_PROCEDURE", "TOKEN_PROGRAM", 
         "TOKEN_RECORD", "TOKEN_REPEAT", "TOKEN_RESULT",
@@ -712,7 +712,6 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
             {.Str = (const U8 *)"OD", .Len = 2, .Type = TOKEN_MOD},
         },
         ['N'] = {
-            {.Str = (const U8 *)"IL", .Len = 2, .Type = TOKEN_NIL},
             {.Str = (const U8 *)"OT", .Len = 2, .Type = TOKEN_NOT},
         },
         ['O'] = {

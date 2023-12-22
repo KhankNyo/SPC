@@ -210,10 +210,10 @@ bool IsAtStmtEnd(const PVMCompiler *Compiler)
 
 
 void PushSubroutineReference(PVMCompiler *Compiler, 
-        const VarSubroutine *Subroutine, U32 CallSite, PVMPatchType PatchType)
+        const U32 *SubroutineLocation, U32 CallSite, PVMPatchType PatchType)
 {
     PASCAL_NONNULL(Compiler);
-    PASCAL_NONNULL(Subroutine);
+    PASCAL_NONNULL(SubroutineLocation);
 
     U32 Count = Compiler->SubroutineReferences.Count;
     if (Count >= Compiler->SubroutineReferences.Cap)
@@ -228,7 +228,7 @@ void PushSubroutineReference(PVMCompiler *Compiler,
         Compiler->SubroutineReferences.Cap = NewCap;
     }
     Compiler->SubroutineReferences.Data[Count].CallSite = CallSite;
-    Compiler->SubroutineReferences.Data[Count].Subroutine = Subroutine;
+    Compiler->SubroutineReferences.Data[Count].SubroutineLocation = SubroutineLocation;
     Compiler->SubroutineReferences.Data[Count].PatchType = PatchType;
     Compiler->SubroutineReferences.Count = Count + 1;
 }
@@ -240,7 +240,7 @@ void ResolveSubroutineReferences(PVMCompiler *Compiler)
     {
         PVMPatchBranch(EMITTER(), 
                 Compiler->SubroutineReferences.Data[i].CallSite,
-                Compiler->SubroutineReferences.Data[i].Subroutine->Location,
+                *Compiler->SubroutineReferences.Data[i].SubroutineLocation,
                 Compiler->SubroutineReferences.Data[i].PatchType
         );
     }

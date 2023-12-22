@@ -78,7 +78,7 @@ struct PVMCompiler
         struct {
             U32 CallSite;
             PVMPatchType PatchType;
-            const VarSubroutine *Subroutine;
+            const U32 *SubroutineLocation;
         } *Data;
         U32 Count, Cap;
     } SubroutineReferences;
@@ -113,7 +113,7 @@ VarLocation *CompilerAllocateVarLocation(PVMCompiler *Compiler);
 
 
 void PushSubroutineReference(PVMCompiler *Compiler, 
-        const VarSubroutine *Subroutine, U32 CallSite, PVMPatchType PatchType
+        const U32 *SubroutineLocation, U32 CallSite, PVMPatchType PatchType
 );
 void ResolveSubroutineReferences(PVMCompiler *Compiler);
 
