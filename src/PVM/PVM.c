@@ -511,7 +511,7 @@ do {\
             IP += Offset;
             PASCAL_ASSERT(IP < Chunk->Code + Chunk->Count, "Unreachable");
         } break;
-        case OP_BSR:
+        case OP_CALL:
         {
             if (0 == PVM->RetStack.SizeLeft)
                 goto CallStackOverflow;
@@ -527,7 +527,7 @@ do {\
 
             IP += Offset;
         } break;
-        case OP_JSR:
+        case OP_CALLPTR:
         {
             if (0 == PVM->RetStack.SizeLeft)
                 goto CallStackOverflow;
