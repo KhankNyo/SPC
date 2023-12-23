@@ -339,49 +339,44 @@ void CompileSubroutineCall(PascalCompiler *Compiler,
     PASCAL_NONNULL(Subroutine);
 
     U32 CallSite = SUBROUTINE_INVALID_LOCATION;
-    UInt ReturnReg = NO_RETURN_REG;
-    SaveRegInfo SaveRegs = { 0 };
+    UInt ReturnReg = NULL == ReturnValue 
+        ? NO_RETURN_REG : ReturnValue->As.Register.ID;
 
     U32 SubroutineLocation = Subroutine->As.SubroutineLocation;
-    bool CallingFunctionPointer = TYPE_POINTER == Subroutine->Type.Integral;
-    SubroutineData *Info = &Subroutine->Type.As.Subroutine;
-    if (CallingFunctionPointer)
-    {
-        PASCAL_NONNULL(Subroutine->Type.As.Pointee);
-        Info = &Subroutine->Type.As.Pointee->As.Subroutine;
-    }
+    const VarType *SubroutineType = &Subroutine->Type;
+    const SubroutineData *Info = &Subroutine->Type.As.Subroutine;
+    I32 CallStackSize = Info->StackArgSize;
 
-
-    /* return value is not discarded */
-    if (NULL != ReturnValue)
+    SaveRegInfo SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
+    /* calling a function pointer */
+    if (TYPE_POINTER == Subroutine->Type.Integral)
     {
-        ReturnReg = ReturnValue->As.Register.ID;
-        /* call the function */
-        SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
-        CompileArgumentList(Compiler, Callee, Info);
-        if (CallingFunctionPointer)
-            PVMEmitCallPtr(EMITTER(), Subroutine);
+        SubroutineType = Subroutine->Type.As.Pointee;
+        PASCAL_NONNULL(SubroutineType);
+        Info = &SubroutineType->As.Subroutine;
+
+        if (VAR_REG == Subroutine->LocationType 
+        && PVMRegIsSaved(SaveRegs, Subroutine->As.Register.ID))
+        {
+            VarLocation FunctionPointer = PVMRetreiveSavedCallerReg(EMITTER(), 
+                    SaveRegs, 
+                    Subroutine->As.Register.ID, 
+                    *SubroutineType
+            );
+            CompileArgumentList(Compiler, Callee, Info);
+            PVMEmitCallPtr(EMITTER(), &FunctionPointer);
+        }
         else
-            CallSite = PVMEmitCall(EMITTER(), SubroutineLocation);
-
-        /* carefully move return reg into the return location */
-        VarLocation Tmp = PVMSetReturnType(EMITTER(), ReturnValue->Type);
-        PVMEmitMov(EMITTER(), ReturnValue, &Tmp);
+        {
+            CompileArgumentList(Compiler, Callee, Info);
+            PVMEmitCallPtr(EMITTER(), Subroutine);
+        }
+        FreeExpr(Compiler, *Subroutine);
     }
     else
     {
-        /* calling a procedure, or function without caring about its return value */
-        SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
         CompileArgumentList(Compiler, Callee, Info);
-        if (CallingFunctionPointer)
-            PVMEmitCallPtr(EMITTER(), Subroutine);
-        else
-            CallSite = PVMEmitCall(EMITTER(), SubroutineLocation);
-    }
-
-
-    if (!CallingFunctionPointer)
-    {
+        CallSite = PVMEmitCall(EMITTER(), SubroutineLocation);
         PushSubroutineReference(Compiler, 
                 &Subroutine->As.SubroutineLocation, 
                 CallSite, 
@@ -389,10 +384,17 @@ void CompileSubroutineCall(PascalCompiler *Compiler,
         );
     }
 
+    /* return value is not discarded */
+    if (NULL != ReturnValue)
+    {
+        VarLocation Tmp = PVMSetReturnType(EMITTER(), ReturnValue->Type);
+        PVMEmitMov(EMITTER(), ReturnValue, &Tmp);
+    }
+
     /* deallocate stack args */
     if (Info->StackArgSize) 
     {
-        PVMEmitStackAllocation(EMITTER(), -Info->StackArgSize);
+        PVMEmitStackAllocation(EMITTER(), -CallStackSize);
     }
     PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg, SaveRegs);
 }

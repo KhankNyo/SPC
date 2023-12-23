@@ -17,6 +17,7 @@ struct SaveRegInfo
 {
     U32 Size;
     U32 Regs;
+    U32 RegLocation[PVM_REG_COUNT + PVM_FREG_COUNT];
 };
 
 struct PVMEmitter 
@@ -159,6 +160,9 @@ VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
 /* call instructions */
 #define NO_RETURN_REG PVM_REG_COUNT
 SaveRegInfo PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
+bool PVMRegIsSaved(SaveRegInfo Saved, UInt RegID);
+VarLocation PVMRetreiveSavedCallerReg(PVMEmitter *Emitter, SaveRegInfo Saved, UInt RegID, VarType Type);
+
 /* returns the location of the call instruction in case it needs a patch later on */
 U32 PVMEmitCall(PVMEmitter *Emitter, U32 Location);
 void PVMEmitCallPtr(PVMEmitter *Emitter, const VarLocation *Ptr);

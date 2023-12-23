@@ -264,8 +264,8 @@ typedef enum PVMImmType
     (BIT_POS32(OP_BR, 8, 8)\
      | BIT_POS32(LowerByte, 8, 0))
 
-#define PVM_BSR(LowerByte)\
-    (BIT_POS32(OP_BSR, 8, 8)\
+#define PVM_CALL(LowerByte)\
+    (BIT_POS32(OP_CALL, 8, 8)\
      | BIT_POS32(LowerByte, 8, 0))
 
 #define PVM_BR_COND(Cond, LowerByte)\

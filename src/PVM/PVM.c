@@ -204,6 +204,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
 #define FLOAT_SET_IF(Operator, Opc, RegType)\
     PVM->Condition = PVM->F[PVM_GET_RD(Opc)]RegType Operator PVM->F[PVM_GET_RS(Opc)]RegType
 
+/* starting from R(Base) to R(Base + 8) */
 #define PUSH_MULTIPLE(RegType, Base, Opc) do{\
     UInt RegList = PVM_GET_REGLIST(Opc);\
     UInt Base_ = Base;\
@@ -218,6 +219,7 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
     }\
 } while (0)
 
+/* starting from R(Base + 8) to R(Base) */
 #define POP_MULTIPLE(RegType, Base, Opc) do{\
     UInt RegList = PVM_GET_REGLIST(Opc);\
     UInt Base_ = Base;\
@@ -300,8 +302,8 @@ do {\
 
 
     U16 *IP = Chunk->Code + Chunk->EntryPoint;
-    SP().Ptr = PVM->Stack.Start;
-    FP().Ptr = SP().Ptr;
+    FP().Ptr = PVM->Stack.Start;
+    SP().Ptr.Byte = PVM->Stack.Start.Byte - sizeof(PVMGPR);
     PVM->R[PVM_REG_GP].Ptr.Raw = Chunk->Global.Data.As.Raw;
     PVMReturnValue ReturnValue = PVM_NO_ERROR;
     U32 StreamOffset = 0;

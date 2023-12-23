@@ -13,13 +13,13 @@
 #define EMPTY_REGLIST 0xE000
 
 #if UINTPTR_MAX == UINT32_MAX
-#  define CASE_PTR32(Colon) case TYPE_POINTER Colon
+#  define CASE_PTR32(Colon) case TYPE_POINTER Colon case TYPE_FUNCTION Colon
 #  define CASE_PTR64(Colon)
 #  define CASE_OBJREF32(Colon) case TYPE_STRING Colon case TYPE_RECORD Colon
 #  define CASE_OBJREF64(Colon)
 #else
 #  define CASE_PTR32(Colon)
-#  define CASE_PTR64(Colon) case TYPE_POINTER Colon
+#  define CASE_PTR64(Colon) case TYPE_POINTER Colon case TYPE_FUNCTION Colon
 #  define CASE_OBJREF32(Colon)
 #  define CASE_OBJREF64(Colon) case TYPE_STRING Colon case TYPE_RECORD Colon
 #endif
@@ -2190,8 +2190,33 @@ SaveRegInfo PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
     {
         WriteOp16(Emitter, PVM_REGLIST(FPSHH, Info.Regs >> 26));
     }
-    Emitter->StackSpace += BitCount(Info.Regs) * sizeof(PVMGPR);
+    for (UInt i = 0; i < STATIC_ARRAY_SIZE(Info.RegLocation); i++)
+    {
+        if ((Info.Regs >> i) & 0x1)
+        {
+            Info.RegLocation[i] = Emitter->StackSpace;
+            Emitter->StackSpace += sizeof(PVMGPR);
+        }
+    }
     return Info;
+}
+
+bool PVMRegIsSaved(SaveRegInfo Saved, UInt RegID)
+{
+    return (Saved.Regs & (1 << RegID)) != 0;
+}
+
+VarLocation PVMRetreiveSavedCallerReg(PVMEmitter *Emitter, SaveRegInfo Saved, UInt RegID, VarType Type)
+{
+    VarLocation RegLocation = {
+        .LocationType = VAR_MEM,
+        .Type = Type,
+        .As.Memory = {
+            .Location = Saved.RegLocation[RegID],
+            .RegPtr = Emitter->Reg.FP.As.Register,
+        },
+    };
+    return RegLocation;
 }
 
 
@@ -2201,7 +2226,7 @@ U32 PVMEmitCall(PVMEmitter *Emitter, U32 Location)
 
     U32 CurrentLocation = PVMCurrentChunk(Emitter)->Count;
     U32 Offset = Location - CurrentLocation - PVM_BRANCH_INS_SIZE;
-    WriteOp32(Emitter, PVM_BSR(Offset & 0xFF), Offset >> 8);
+    WriteOp32(Emitter, PVM_CALL(Offset & 0xFF), Offset >> 8);
     return CurrentLocation;
 }
 
@@ -2211,7 +2236,7 @@ void PVMEmitCallPtr(PVMEmitter *Emitter, const VarLocation *Ptr)
     PASCAL_NONNULL(Ptr);
     VarRegister Callee;
     bool Owning = PVMEmitIntoReg(Emitter, &Callee, true, Ptr);
-    WriteOp16(Emitter, PVM_OP(JSR, Callee.ID, 0));
+    WriteOp16(Emitter, PVM_OP(CALLPTR, Callee.ID, 0));
     if (Owning)
     {
         PVMFreeRegister(Emitter, Callee);
