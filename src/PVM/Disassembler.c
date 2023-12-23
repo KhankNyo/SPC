@@ -302,7 +302,7 @@ static U32 DisasmRdImm(FILE *f, const char *Mnemonic, const PVMChunk *Chunk, U32
     ImmediateInfo Info = GetImmFromImmType(Chunk, Addr + 1, PVM_GET_IMMTYPE(Opcode));
     char LongMnemonic[64] = { 0 };
     snprintf(LongMnemonic, sizeof LongMnemonic, "%s%s%d", Mnemonic, 
-            Info.SexIndex ? "sex64_" : "zex64_", Info.Count*16
+            Info.SexIndex ? "i" : "u", Info.Count*16
     );
 
     /* display instruction */
@@ -442,12 +442,12 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_BEZ: return DisasmBcc(f, "bez", Opcode, Chunk, Addr);
     case OP_BNZ: return DisasmBcc(f, "bnz", Opcode, Chunk, Addr);
     case OP_BR: return DisasmBr(f, "br", Opcode, Chunk, Addr);
-    case OP_BSR: return DisasmBr(f, "bsr", Opcode, Chunk, Addr);
-    case OP_JSR: DisasmSingleOperand(f, "jsr", Opcode); break;
+    case OP_CALL: return DisasmBr(f, "call", Opcode, Chunk, Addr);
+    case OP_CALLPTR: DisasmSingleOperand(f, "callptr", Opcode); break;
     case OP_BCT: return DisasmBr(f, "bct", Opcode, Chunk, Addr);
     case OP_BCF: return DisasmBr(f, "bcf", Opcode, Chunk, Addr);
     case OP_BRI: return DisasmBri(f, "bri", Opcode, Chunk, Addr);
-    case OP_LDRIP: return DisasmRdImm(f, "ldrip", Chunk, Addr, Opcode);
+    case OP_LDRIP: return DisasmRdImm(f, "ldra", Chunk, Addr, Opcode);
 
 
     case OP_STRLT: DisasmRdRs(f, "strlt", sIntReg, Opcode); break;
