@@ -410,6 +410,7 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
 
     switch (PVM_GET_OP(Opcode))
     {
+    default: DisasmMnemonic(f, "???", Opcode);
     case OP_SYS:
     {
         return DisasmSysOp(f, Chunk, Addr, Opcode);

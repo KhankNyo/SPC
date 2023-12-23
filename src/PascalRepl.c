@@ -77,6 +77,7 @@ int PascalRepl(void)
         {
             Compiler.Error = false;
         }
+        ChunkReset(&Chunk, true);
     }
 
     PascalCompilerDeinit(&Compiler);

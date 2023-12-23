@@ -58,7 +58,7 @@ static bool NoMoreToken(PascalCompiler *Compiler)
     {
         if (PASCAL_COMPMODE_REPL == Compiler->Flags.CompMode)
         {
-            return !CompilerGetLinesFromCallback(Compiler);
+            return Compiler->Error || !CompilerGetLinesFromCallback(Compiler);
         }
         return true;
     }
@@ -69,6 +69,7 @@ static bool NoMoreToken(PascalCompiler *Compiler)
 static void CalmDownDog(PascalCompiler *Compiler)
 {
     Compiler->Panic = false;
+
     while (!IsAtStmtEnd(Compiler))
     {
         if (Compiler->Curr.Type == TOKEN_SEMICOLON)
@@ -109,6 +110,12 @@ static void CalmDownDog(PascalCompiler *Compiler)
 static void CalmDownAtBlock(PascalCompiler *Compiler)
 {
     Compiler->Panic = false;
+    if (PASCAL_COMPMODE_REPL == Compiler->Flags.CompMode)
+    {
+        while (!IsAtEnd(Compiler))
+            ConsumeToken(Compiler);
+        return;
+    }
     do {
         if (TOKEN_SEMICOLON == Compiler->Curr.Type)
         {
@@ -988,6 +995,10 @@ static void CompileSubroutineBlock(PascalCompiler *Compiler, const char *Subrout
     UInt RecordReturn = 0; 
     if (ShouldHaveReturnType)
     {
+        if (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON))
+        {
+            ErrorAt(Compiler, &Compiler->Curr, "Must specify a return type for function.");
+        }
         ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' before function return type.");
         ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected function return type.");
         PascalVar *ReturnTypeInfo = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined return type.");
@@ -1516,21 +1527,7 @@ bool PascalCompileRepl(
 
     U32 LastEntry = Compiler->EntryPoint;
     CompileBlock(Compiler);
-#if 0 
-    bool BeginEncountered = CompileHeadlessBlock(Compiler);
-    if (BeginEncountered)
-    {
-        CompileBeginBlock(Compiler);
-    }
-    else 
-    {
-        do {
-            if (NoMoreToken(Compiler))
-                break;
-            CompileStmt(Compiler);
-        } while (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON) && !IsAtEnd(Compiler));
-    }
-#endif 
+    ConsumeOrError(Compiler, TOKEN_DOT, "Expected '.' at end.");
 
     if (Compiler->Error)
     {
@@ -1539,7 +1536,7 @@ bool PascalCompileRepl(
     }
     ResolveSubroutineReferences(Compiler);
     PVMSetEntryPoint(EMITTER(), Compiler->EntryPoint);
-    PVMEmitExit(EMITTER());
+    PVMEmitterDeinit(EMITTER());
     return !Compiler->Error;
 }
 

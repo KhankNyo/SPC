@@ -81,6 +81,7 @@ void PVMEmitterDeinit(PVMEmitter *Emitter)
 {
     PASCAL_NONNULL(Emitter);
     PVMEmitExit(Emitter);
+    Emitter->Reglist = EMPTY_REGLIST;
 }
 
 
