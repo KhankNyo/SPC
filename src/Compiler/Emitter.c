@@ -1902,7 +1902,6 @@ VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType ParamType, 
                 .Persistent = true,
             },
         };
-        PVMMarkRegisterAsAllocated(Emitter, ArgNumber);
 
         if (IntegralTypeIsFloat(ParamType.Integral))
             RegParam.As.Register.ID += PVM_REG_COUNT;
@@ -1913,6 +1912,7 @@ VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType ParamType, 
             RegParam.As.Memory.RegPtr = Reg;
             RegParam.As.Memory.Location = 0;
         }
+        PVMMarkRegisterAsAllocated(Emitter, RegParam.As.Register.ID);
         return RegParam;
     }
 

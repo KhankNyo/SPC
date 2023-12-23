@@ -200,6 +200,9 @@ SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVar
                 VarLocation *ParameterLocation = CompilerAllocateVarLocation(Compiler);
                 PASCAL_NONNULL(ParameterLocation);
                 ParameterLocation->Type = TypeInfo->Type;
+
+                /* we don't set the location here since it is up to the caller to do that
+                 * (should just be CompileSubroutineBlock()) */
                 PascalVar *Param = DefineAtScope(
                         Compiler, Scope, 
                         CompilerGetTmp(Compiler, i), 
