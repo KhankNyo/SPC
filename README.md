@@ -34,5 +34,7 @@
 - const, var, and constref parameters
 - char, array type, and reconsider string
 - file, text type
+- x86, x64, ARM backend
+- different calling conventions
 
 
