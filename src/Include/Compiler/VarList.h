@@ -19,16 +19,6 @@ U32 CompileVarList(PascalCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U
 /* returns the record, or NULL on error */
 PascalVar *CompileRecordDefinition(PascalCompiler *Compiler, const Token *Name);
 
-/* nothing can be NULL, expects next token to be '(' */
-void CompileArgumentList(PascalCompiler *Compiler, 
-        const Token *FunctionName, const SubroutineData *Subroutine
-);
-
-/* nothing can be NULL, expects current token to be '(' */
-void CompilePartialArgumentList(PascalCompiler *Compiler, 
-        const Token *FunctionName, const SubroutineParameterList *ParameterList, 
-        U32 StackArgSize, bool RecordReturnType
-);
 
 /* NULL can be passed into OutReturnValue */
 void CompileSubroutineCall(PascalCompiler *Compiler,

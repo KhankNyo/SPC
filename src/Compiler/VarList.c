@@ -261,7 +261,7 @@ PascalVar *CompileRecordDefinition(PascalCompiler *Compiler, const Token *Name)
 
 
 
-void CompilePartialArgumentList(PascalCompiler *Compiler, 
+static void CompilePartialArgumentList(PascalCompiler *Compiler, 
         const Token *Callee, const SubroutineParameterList *Parameters,
         U32 StackArgSize, bool RecordReturnType)
 {
@@ -288,6 +288,7 @@ void CompilePartialArgumentList(PascalCompiler *Compiler,
 
                 VarLocation Arg = PVMSetArg(EMITTER(), ArgCount + RecordArg, CurrentArg->Type, &Base);
                 CompileExprInto(Compiler, NULL, &Arg);
+                PVMMarkArgAsOccupied(EMITTER(), &Arg);
             }
             else
             {
@@ -306,7 +307,7 @@ void CompilePartialArgumentList(PascalCompiler *Compiler,
     }
 }
 
-void CompileArgumentList(PascalCompiler *Compiler, 
+static void CompileArgumentList(PascalCompiler *Compiler, 
         const Token *Callee, const SubroutineData *Subroutine)
 {
     PASCAL_NONNULL(Compiler);

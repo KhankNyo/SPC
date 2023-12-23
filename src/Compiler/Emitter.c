@@ -1954,7 +1954,6 @@ VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType ArgType, I32 
                 .Persistent = false,
             },
         };
-        PVMMarkArgAsOccupied(Emitter, &ArgReg);
 
         if (IntegralTypeIsFloat(ArgType.Integral))
             ArgReg.As.Register.ID += PVM_REG_COUNT;
@@ -2195,6 +2194,12 @@ SaveRegInfo PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
         if ((Info.Regs >> i) & 0x1)
         {
             Info.RegLocation[i] = Emitter->StackSpace;
+            /* free registers that are not in EMPTY_REGLIST */
+            VarRegister Register = {
+                .ID = i,
+                .Persistent = EMPTY_REGLIST & ((U32)1 << i),
+            };
+            PVMFreeRegister(Emitter, Register);
             Emitter->StackSpace += sizeof(PVMGPR);
         }
     }
