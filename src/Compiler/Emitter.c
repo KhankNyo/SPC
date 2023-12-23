@@ -1894,7 +1894,7 @@ VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType ParamType, 
     /* params in register */
     if (ArgNumber < PVM_ARGREG_COUNT)
     {
-        VarLocation RegParam = {
+        VarLocation Location = {
             .Type = ParamType,
             .LocationType = VAR_REG,
             .As.Register = {
@@ -1902,18 +1902,21 @@ VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType ParamType, 
                 .Persistent = true,
             },
         };
+        VarRegister *Register = &Location.As.Register;
 
         if (IntegralTypeIsFloat(ParamType.Integral))
-            RegParam.As.Register.ID += PVM_REG_COUNT;
-        if (TYPE_RECORD == ParamType.Integral)
         {
-            VarRegister Reg = RegParam.As.Register;
-            RegParam.LocationType = VAR_MEM;
-            RegParam.As.Memory.RegPtr = Reg;
-            RegParam.As.Memory.Location = 0;
+            Register->ID += PVM_REG_COUNT;
         }
-        PVMMarkRegisterAsAllocated(Emitter, RegParam.As.Register.ID);
-        return RegParam;
+        else if (TYPE_RECORD == ParamType.Integral)
+        {
+            VarRegister Tmp = *Register;
+            Location.LocationType = VAR_MEM;
+            Location.As.Memory.RegPtr = Tmp;
+            Location.As.Memory.Location = 0;
+        }
+        PVMMarkRegisterAsAllocated(Emitter, Register->ID);
+        return Location;
     }
 
     /* params on stack */

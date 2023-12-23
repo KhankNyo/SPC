@@ -406,7 +406,7 @@ static U32 DisasmSysOp(FILE *f, const PVMChunk *Chunk, U32 Addr, U16 Opcode)
 U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
 {
     U16 Opcode = Chunk->Code[Addr];
-    fprintf(f, "%*u: ", sAddrPad, Addr);
+    fprintf(f, "%*u: ", sAddrPad, Addr*2);
 
     switch (PVM_GET_OP(Opcode))
     {
