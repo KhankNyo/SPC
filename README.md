@@ -23,11 +23,16 @@
 - write, writeln (no file parameter)
 - sizeof
 
+
 # TODO:
-- range, set and array, file type, and rewrtie readln and writeln
-- char type, and rewrite string as well
-- const subroutine parameters
-- passing by reference
-- calling functions that return a record without using the return value
+### Critical:
+- rewrite PascalFile
+- ignoring record return value
+- rewrite tests
+
+### Features:
+- const, var, and constref parameters
+- char, array type, and reconsider string
+- file, text type
 
 
