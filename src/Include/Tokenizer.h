@@ -54,7 +54,7 @@ typedef enum TokenType
     TOKEN_COLON_EQUAL,
     TOKEN_LEFT_BRACKET, TOKEN_RIGHT_BRACKET, 
     TOKEN_LEFT_PAREN, TOKEN_RIGHT_PAREN, 
-    TOKEN_CARET, TOKEN_AT, TOKEN_HASHTAG, TOKEN_AMPERSAND,
+    TOKEN_CARET, TOKEN_AT, TOKEN_HASHTAG,
 
     /* others */
     TOKEN_NUMBER_LITERAL, TOKEN_INTEGER_LITERAL, 
@@ -82,7 +82,7 @@ struct Token
 
 
 /* initializes PascalTokenizer struct with a Pascal source file */
-PascalTokenizer TokenizerInit(const U8 *Source);
+PascalTokenizer TokenizerInit(const U8 *Source, UInt Line);
 
 /* returns the consumed token in the source file, 
  * or TOKEN_EOF if there are none left */

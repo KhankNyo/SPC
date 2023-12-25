@@ -48,6 +48,7 @@ typedef enum PVMPatchType
 
 PVMEmitter PVMEmitterInit(PVMChunk *Chunk);
 void PVMEmitterDeinit(PVMEmitter *Emitter);
+void PVMEmitterReset(PVMEmitter *Emitter, bool PreserveFunctions);
 
 void PVMSetEntryPoint(PVMEmitter *Emitter, U32 EntryPoint);
 SaveRegInfo PVMEmitterBeginScope(PVMEmitter *Emitter);
@@ -158,7 +159,7 @@ VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
 
 
 /* call instructions */
-#define NO_RETURN_REG PVM_REG_COUNT
+#define NO_RETURN_REG (2*PVM_REG_COUNT)
 SaveRegInfo PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID);
 bool PVMRegIsSaved(SaveRegInfo Saved, UInt RegID);
 VarLocation PVMRetreiveSavedCallerReg(PVMEmitter *Emitter, SaveRegInfo Saved, UInt RegID, VarType Type);

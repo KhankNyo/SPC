@@ -15,7 +15,6 @@
 
 static U8 *LoadFile(const U8 *FileName, U32 MemorySize);
 static void UnloadFile(U8 *FileContents);
-static bool PascalRun(const U8 *Source);
 
 
 
@@ -25,10 +24,29 @@ int PascalRunFile(const U8 *InFileName, const U8 *OutFileName)
     if (NULL == Source)
         return PASCAL_EXIT_FAILURE;
 
-    PascalRun(Source);
+    int Status = PASCAL_EXIT_FAILURE;
+    PascalVartab Predefined = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);
+    PascalCompileFlags Flags = { 
+        .CompMode = PASCAL_COMPMODE_PROGRAM, 
+        .CallConv = CALLCONV_MSX64 
+    };
+    PVMChunk Chunk = ChunkInit(1024);
+    PascalCompiler Compiler = PascalCompilerInit(Flags, &Predefined, stderr, &Chunk);
+    if (PascalCompileProgram(&Compiler, Source))
+    {
+        PascalVM PVM = PVMInit(1024, 128);
+        PVM.Disassemble = true;
+        PVMRun(&PVM, &Chunk);
+    }
+    else
+    {
+        Status = PASCAL_EXIT_FAILURE;
+    }
 
+
+    PascalCompilerDeinit(&Compiler);
     UnloadFile(Source);
-    return PASCAL_EXIT_SUCCESS;
+    return Status;
 }
 
 
@@ -67,30 +85,5 @@ static void UnloadFile(U8 *FileContent)
     (void)FileContent;
     MemDeinit();
 }
-
-
-static bool PascalRun(const U8 *Source)
-{
-    PascalVartab Identifiers = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);    
-
-    PVMChunk Code = ChunkInit(1024);
-    PascalCompileFlags Flags = { 0 };
-    if (!PascalCompile(Source, Flags, &Identifiers, MemGetAllocator(), stderr, &Code))
-        goto CompileError;
-
-    PascalVM VM = PVMInit(1024, 128);
-    VM.Disassemble = true;
-
-    bool NoError = PVMRun(&VM, &Code);
-
-    PVMDeinit(&VM);
-    ChunkDeinit(&Code);
-    return NoError;
-
-CompileError:
-    ChunkDeinit(&Code);
-    return false;
-}
-
 
 

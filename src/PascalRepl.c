@@ -37,10 +37,11 @@ static U8 *SaveLine(PascalArena *SaveArena, const char *Line, USize LineLength)
 static const U8 *NewlineCallback(void *NewlineCallbackData)
 {
     NewlineData *Data = NewlineCallbackData;
-    GetCommandLine("... ", Data->PVM, Data->Compiler, 
-            Data->LineBuffer, sizeof Data->LineBuffer
-    );
-    return SaveLine(Data->Source, Data->LineBuffer, strlen(Data->LineBuffer));
+    if (GetCommandLine("... ", Data->PVM, Data->Compiler, Data->LineBuffer, sizeof Data->LineBuffer))
+    {
+        return SaveLine(Data->Source, Data->LineBuffer, strlen(Data->LineBuffer));
+    }
+    return NULL;
 }
 
 
@@ -55,6 +56,7 @@ int PascalRepl(void)
 
     PascalCompileFlags Flags = {
         .CompMode = PASCAL_COMPMODE_REPL,
+        .CallConv = CALLCONV_MSX64,
     };
     PascalCompiler Compiler = PascalCompilerInit(Flags, &Global, stderr, &Chunk);
     NewlineData Data = { 
@@ -64,7 +66,7 @@ int PascalRepl(void)
         .LineBuffer = { 0 }, 
     };
 
-    while (GetCommandLine("\n>>> ", &PVM, &Compiler, Data.LineBuffer, sizeof Data.LineBuffer))
+    while (GetCommandLine(">>> ", &PVM, &Compiler, Data.LineBuffer, sizeof Data.LineBuffer))
     {
         const U8 *CurrentLine = SaveLine(&Program, 
                 Data.LineBuffer, strlen(Data.LineBuffer)
@@ -73,11 +75,8 @@ int PascalRepl(void)
         {
             PVMRun(&PVM, &Chunk);
         }
-        else
-        {
-            Compiler.Error = false;
-        }
-        ChunkReset(&Chunk, true);
+        PascalCompilerReset(&Compiler, true);
+        fputc('\n', stdout);
     }
 
     PascalCompilerDeinit(&Compiler);

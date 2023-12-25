@@ -43,7 +43,7 @@ static void RuntimeError(const PascalVM *PVM, const char *Fmt, ...)
 {
     va_list Args;
     va_start(Args, Fmt);
-    if (NULL == PVM->LogFile)
+    if (NULL != PVM->LogFile)
     {
         fprintf(PVM->LogFile, "Runtime Error: [line %d]:\n\t", PVM->Error.Line);
         fprintf(PVM->LogFile, Fmt, Args);
@@ -331,13 +331,13 @@ do {\
                 /* stack scope, return */
                 PVM->RetStack.Val--;
                 IP = PVM->RetStack.Val->IP;
-                SP().Ptr = FP().Ptr;
+                SP().Ptr.Byte = FP().Ptr.Byte - sizeof(PVMGPR);
                 FP().Ptr = PVM->RetStack.Val->FP;
                 PVM->RetStack.SizeLeft++;
             } break;
             case OP_SYS_ENTER:
             {
-                FP() = SP();
+                FP().Ptr.Byte = SP().Ptr.Byte + sizeof(PVMGPR);
                 U32 StackSize = 0;
                 GET_SEX_IMM(StackSize, IMMTYPE_U32, IP);
                 SP().Ptr.Byte += StackSize;
@@ -807,6 +807,11 @@ do {\
         case OP_SGE64: INTEGER_SET_IF(>=, Opcode, .DWord); break;
         case OP_ISLE64: INTEGER_SET_IF(<=, Opcode, .SDWord); break;
         case OP_ISGE64: INTEGER_SET_IF(>=, Opcode, .SDWord); break;
+
+        default:
+        {
+            goto IllegalInstruction;
+        } break;
         }
     }
 DivisionBy0:
@@ -814,6 +819,9 @@ DivisionBy0:
     goto Exit;
 CallStackOverflow:
     ReturnValue = PVM_CALLSTACK_OVERFLOW;
+    goto Exit;
+IllegalInstruction:
+    ReturnValue = PVM_ILLEGAL_INSTRUCTION;
     goto Exit;
 
 Exit:

@@ -47,7 +47,7 @@ static bool CompilerGetLinesFromCallback(PascalCompiler *Compiler)
     if (NULL == Line)
         return false;
 
-    Compiler->Lexer = TokenizerInit(Line);
+    Compiler->Lexer = TokenizerInit(Line, ++Compiler->Line);
     ConsumeToken(Compiler);
     return true;
 }
@@ -1412,6 +1412,9 @@ static bool CompileBlock(PascalCompiler *Compiler)
 
 static bool CompileProgram(PascalCompiler *Compiler)
 {
+    /* 'program' consumed */
+
+    /* program iden; */
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected identifier.");
     if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
     {
@@ -1424,8 +1427,10 @@ static bool CompileProgram(PascalCompiler *Compiler)
         } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
         ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' instead");
     }
-
     ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' instead.");
+
+
+    /* uses iden, iden2; */
     if (ConsumeIfNextIs(Compiler, TOKEN_USES))
     {
         do {
@@ -1444,8 +1449,7 @@ static bool CompileProgram(PascalCompiler *Compiler)
 
 
     CompileBlock(Compiler);
-    ConsumeOrError(Compiler, TOKEN_DOT, "Expected '.' instead.");
-    return !Compiler->Error;
+    return ConsumeOrError(Compiler, TOKEN_DOT, "Expected '.' instead.");
 }
 
 
@@ -1491,6 +1495,8 @@ PascalCompiler PascalCompilerInit(
 
         .ReplCallback = NULL,
         .ReplUserData = NULL,
+
+        .Line = 1,
     };
 
     Compiler.Emitter = PVMEmitterInit(OutChunk);
@@ -1514,13 +1520,29 @@ void PascalCompilerDeinit(PascalCompiler *Compiler)
     PVMEmitterDeinit(EMITTER());
 }
 
+void PascalCompilerReset(PascalCompiler *Compiler, bool PreserveFunctions)
+{
+    Compiler->SubroutineReferences.Count = 0;
+    Compiler->Curr = (Token) { 0 };
+    Compiler->Next = (Token) { 0 };
+    Compiler->Panic = false;
+    Compiler->Error = false;
+    Compiler->StackSize = 0;
+    Compiler->BreakCount = 0;
+    Compiler->InLoop = false;
+    Compiler->Line++;
+    memset(Compiler->Locals, 0, sizeof Compiler->Locals);
+    PVMEmitterReset(EMITTER(), PreserveFunctions);
+}
+
 
 
 bool PascalCompileRepl(
         PascalCompiler *Compiler, const U8 *Line,
         PascalReplLineCallbackFn Callback, void *Data)
 {
-    Compiler->Lexer = TokenizerInit(Line);
+    Compiler->Lexer = TokenizerInit(Line, Compiler->Line);
+
     ConsumeToken(Compiler);
     Compiler->ReplCallback = Callback;
     Compiler->ReplUserData = Data;
@@ -1539,6 +1561,15 @@ bool PascalCompileRepl(
     PVMEmitterDeinit(EMITTER());
     return !Compiler->Error;
 }
+
+
+bool PascalCompileProgram(PascalCompiler *Compiler, const U8 *Source)
+{
+    Compiler->Lexer = TokenizerInit(Source, 1);
+    ConsumeToken(Compiler);
+    return CompileProgram(Compiler);
+}
+
 
 
 

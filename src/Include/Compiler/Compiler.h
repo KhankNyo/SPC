@@ -69,7 +69,8 @@ struct PascalCompiler
 
     /* TODO: dynamic */
     /* for exit statement to see which subroutine it's currently in 
-     * during compilation of closures */
+     * during compilation of closures,
+     * TODO: add closures */
     CompilerFrame Subroutine[PVM_MAX_SCOPE_COUNT];
 
     U32 Breaks[256];
@@ -85,6 +86,7 @@ struct PascalCompiler
         U32 Count, Cap;
     } SubroutineReferences;
 
+    U32 Line;
     U32 EntryPoint;
     FILE *LogFile;
     bool Error, Panic;
@@ -98,30 +100,25 @@ PascalCompiler PascalCompilerInit(
         FILE *LogFile, PVMChunk *OutChunk
 );
 void PascalCompilerDeinit(PascalCompiler *Compiler);
+void PascalCompilerReset(PascalCompiler *Compiler, bool PreserveFunctions);
+
 
 /* NOTE: when executing callback, previous line SHOULD NOT BE FREED, 
  * because variables from the new line might reference ones from previous lines */
+/* returns true if compilation is successful, false otherwise */
 bool PascalCompileRepl(
         PascalCompiler *Compiler, const U8 *Line,  
         PascalReplLineCallbackFn Callback, void *CallbackData
 );
 
+/* returns true if compilation is successful, false otherwise */
+bool PascalCompileProgram(
+        PascalCompiler *Compiler, const U8 *Source
+);
 
 
 
-/* Returns true on success, false on failure and logs error to log file */
-bool PascalCompile(const U8 *Source, 
-        PascalCompileFlags Flags,
-        PascalVartab *PredefinedIdentifiers, 
-        PascalGPA *GlobalAlloc, FILE *LogFile,
-        PVMChunk *OutChunk
-)
-{
-    UNUSED(Source, Flags, PredefinedIdentifiers, GlobalAlloc, LogFile);
-    UNUSED(OutChunk);
-    PASCAL_UNREACHABLE("TODO: PascalFile");
-    return false;
-}
+
 
 
 #endif /* PASCAL_VM_COMPILER_H */

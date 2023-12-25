@@ -82,21 +82,29 @@ void PVMEmitterDeinit(PVMEmitter *Emitter)
     PASCAL_NONNULL(Emitter);
     PVMEmitExit(Emitter);
     Emitter->Reglist = EMPTY_REGLIST;
+    Emitter->StackSpace = 0;
+    PVMEmitterReset(Emitter, false);
 }
-
-
-
-
-
-
-
-
 
 static PVMChunk *PVMCurrentChunk(PVMEmitter *Emitter)
 {
     PASCAL_NONNULL(Emitter);
     return Emitter->Chunk;
 }
+
+void PVMEmitterReset(PVMEmitter *Emitter, bool PreserveFunctions)
+{
+    ChunkReset(PVMCurrentChunk(Emitter), PreserveFunctions);
+    Emitter->Reglist = EMPTY_REGLIST;
+    Emitter->StackSpace = 0;
+    Emitter->SpilledRegCount = 0;
+}
+
+
+
+
+
+
 
 
 static U32 WriteOp16(PVMEmitter *Emitter, U16 Opcode)
@@ -136,6 +144,49 @@ void PVMMarkRegisterAsFreed(PVMEmitter *Emitter, UInt Reg)
 {
     PASCAL_NONNULL(Emitter);
     Emitter->Reglist &= ~((U32)1 << Reg);
+}
+
+
+static SaveRegInfo PVMEmitPushRegList(PVMEmitter *Emitter, U32 RegList)
+{
+    SaveRegInfo Info = {
+        .Regs = RegList,
+        .Size = sizeof(PVMGPR) * BitCount(RegList),
+        .RegLocation = { 0 },
+    };
+    if (Info.Regs & 0xFF)
+    {
+        WriteOp16(Emitter, PVM_REGLIST(PSHL, Info.Regs & 0xFF));
+    }
+    if ((Info.Regs >> 8) & 0xFF)
+    {
+        WriteOp16(Emitter, PVM_REGLIST(PSHH, Info.Regs >> 8));
+    }
+    if ((Info.Regs >> 16) & 0xFF)
+    {
+        WriteOp16(Emitter, PVM_REGLIST(FPSHL, Info.Regs >> 16));
+    }
+    if ((Info.Regs >> 24) & 0xFF)
+    {
+        WriteOp16(Emitter, PVM_REGLIST(FPSHH, Info.Regs >> 26));
+    }
+
+    for (UInt i = 0; i < STATIC_ARRAY_SIZE(Info.RegLocation); i++)
+    {
+        if ((Info.Regs >> i) & 0x1)
+        {
+            Info.RegLocation[i] = Emitter->StackSpace;
+            /* free registers that are not in EMPTY_REGLIST */
+            VarRegister Register = {
+                .ID = i,
+                .Persistent = EMPTY_REGLIST & ((U32)1 << i),
+            };
+            PVMFreeRegister(Emitter, Register);
+            Emitter->StackSpace += sizeof(PVMGPR);
+        }
+    }
+
+    return Info;
 }
 
 static void PVMEmitPushReg(PVMEmitter *Emitter, UInt Reg)
@@ -1971,7 +2022,7 @@ VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType ArgType, I32 
         .LocationType = VAR_MEM,
         .As.Memory = {
             .RegPtr = Emitter->Reg.FP.As.Register,
-            .Location = ArgOffset,
+            .Location = ArgOffset + sizeof(PVMGPR),
         },
     };
     return Mem;
@@ -2171,42 +2222,7 @@ VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size)
 SaveRegInfo PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 {
     PASCAL_NONNULL(Emitter);
-    SaveRegInfo Info = {
-        .Regs = Emitter->Reglist & ~(((U16)1 << ReturnRegID) | EMPTY_REGLIST),
-    };
-    Info.Size = BitCount(Info.Regs) * sizeof(PVMGPR);
-
-    if (Info.Regs & 0xFF)
-    {
-        WriteOp16(Emitter, PVM_REGLIST(PSHL, Info.Regs & 0xFF));
-    }
-    if ((Info.Regs >> 8) & 0xFF)
-    {
-        WriteOp16(Emitter, PVM_REGLIST(PSHH, Info.Regs >> 8));
-    }
-    if ((Info.Regs >> 16) & 0xFF)
-    {
-        WriteOp16(Emitter, PVM_REGLIST(FPSHL, Info.Regs >> 16));
-    }
-    if ((Info.Regs >> 24) & 0xFF)
-    {
-        WriteOp16(Emitter, PVM_REGLIST(FPSHH, Info.Regs >> 26));
-    }
-    for (UInt i = 0; i < STATIC_ARRAY_SIZE(Info.RegLocation); i++)
-    {
-        if ((Info.Regs >> i) & 0x1)
-        {
-            Info.RegLocation[i] = Emitter->StackSpace;
-            /* free registers that are not in EMPTY_REGLIST */
-            VarRegister Register = {
-                .ID = i,
-                .Persistent = EMPTY_REGLIST & ((U32)1 << i),
-            };
-            PVMFreeRegister(Emitter, Register);
-            Emitter->StackSpace += sizeof(PVMGPR);
-        }
-    }
-    return Info;
+    return PVMEmitPushRegList(Emitter, Emitter->Reglist & ~(((U32)1 << ReturnRegID) | EMPTY_REGLIST));
 }
 
 bool PVMRegIsSaved(SaveRegInfo Saved, UInt RegID)
@@ -2220,7 +2236,7 @@ VarLocation PVMRetreiveSavedCallerReg(PVMEmitter *Emitter, SaveRegInfo Saved, UI
         .LocationType = VAR_MEM,
         .Type = Type,
         .As.Memory = {
-            .Location = Saved.RegLocation[RegID],
+            .Location = Saved.RegLocation[RegID] + sizeof(PVMGPR),
             .RegPtr = Emitter->Reg.FP.As.Register,
         },
     };

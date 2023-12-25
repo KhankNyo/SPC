@@ -10,6 +10,7 @@
 static bool TokenizerIsAtEnd(const PascalTokenizer *Lexer);
 static bool IsNumber(U8 ch);
 static bool IsAlpha(U8 ch);
+static bool IsAlphaNum(U8 Ch);
 static bool IsHex(U8 ch);
 
 /* updates the Line and LineOffset field, only call when a newline si encountered */
@@ -43,6 +44,9 @@ static Token ErrorToken(PascalTokenizer *Lexer, const char *Msg);
 /* consumes a hexadecimal literal and return its token */
 static Token ConsumeHex(PascalTokenizer *Lexer);
 
+/* consumes an octal literal and return its token */
+static Token ConsumeOct(PascalTokenizer *Lexer);
+
 /* consumes a binary literal and return its token */
 static Token ConsumeBinary(PascalTokenizer *Lexer);
 
@@ -65,12 +69,12 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer);
 
 
 
-PascalTokenizer TokenizerInit(const U8 *Source)
+PascalTokenizer TokenizerInit(const U8 *Source, U32 Line)
 {
     return (PascalTokenizer) {
         .Start = Source,
         .Curr = Source,
-        .Line = 1,
+        .Line = Line,
         .LinePtr = Source,
     };
 }
@@ -96,7 +100,7 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
     {
     case '\'': return ConsumeString(Lexer);
     case '$': return ConsumeHex(Lexer);
-    case '&': return MakeToken(Lexer, TOKEN_AMPERSAND);
+    case '&': return ConsumeOct(Lexer);
     case '^': return MakeToken(Lexer, TOKEN_CARET);
     case '@': return MakeToken(Lexer, TOKEN_AT);
     case '[': return MakeToken(Lexer, TOKEN_LEFT_BRACKET);
@@ -234,7 +238,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_COLON_EQUAL",
         "TOKEN_LEFT_BRACKET", "TOKEN_RIGHT_BRACKET", 
         "TOKEN_LEFT_PAREN", "TOKEN_RIGHT_PAREN",
-        "TOKEN_CARET", "TOKEN_AT", "TOKEN_HASHTAG", "TOKEN_AMPERSAND",
+        "TOKEN_CARET", "TOKEN_AT", "TOKEN_HASHTAG",
 
         "TOKEN_NUMBER_LITERAL", "TOKEN_INTEGER_LITERAL", 
         "TOKEN_STRING_LITERAL", 
@@ -280,6 +284,11 @@ static bool IsAlpha(U8 ch)
 {
     return (('A' <= ch) && (ch <= 'Z'))
         || (('a' <= ch) && (ch <= 'z'));
+}
+
+static bool IsAlphaNum(U8 Ch)
+{
+    return IsAlpha(Ch) || IsNumber(Ch);
 }
 
 static bool IsHex(U8 ch)
@@ -448,6 +457,17 @@ static U64 ConsumeBinaryNumber(PascalTokenizer *Lexer)
     return Bin;
 }
 
+static U64 ConsumeOctalNumber(PascalTokenizer *Lexer)
+{
+    U64 Oct = 0;
+    while ('0' <= *Lexer->Curr || *Lexer->Curr <= '7')
+    {
+        Oct *= 8;
+        Oct += AdvanceChrPtr(Lexer) - '0';
+    }
+    return Oct;
+}
+
 static U64 ConsumeInteger(PascalTokenizer *Lexer)
 {
     U64 n = 0;
@@ -463,8 +483,8 @@ static U64 ConsumeInteger(PascalTokenizer *Lexer)
 static Token ConsumeHex(PascalTokenizer *Lexer)
 {
     U64 Hex = ConsumeHexNumber(Lexer);
-    if (IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
-        return ErrorToken(Lexer, "Invalid character after number.");
+    if (IsAlphaNum(*Lexer->Curr) || '_' == *Lexer->Curr)
+        return ErrorToken(Lexer, "Invalid character after hexadecimal number.");
 
     Token HexNumber = MakeToken(Lexer, TOKEN_INTEGER_LITERAL);
     HexNumber.Literal.Int = Hex;
@@ -474,18 +494,28 @@ static Token ConsumeHex(PascalTokenizer *Lexer)
 static Token ConsumeBinary(PascalTokenizer *Lexer)
 {
     U64 Bin = ConsumeBinaryNumber(Lexer);
-    if (IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
-        return ErrorToken(Lexer, "Invalid character after number.");
+    if (IsAlphaNum(*Lexer->Curr) || '_' == *Lexer->Curr)
+        return ErrorToken(Lexer, "Invalid character after binary number.");
 
     Token BinNumber = MakeToken(Lexer, TOKEN_INTEGER_LITERAL);
     BinNumber.Literal.Int = Bin;
     return BinNumber;
 }
 
+static Token ConsumeOct(PascalTokenizer *Lexer)
+{
+    U64 Oct = ConsumeOctalNumber(Lexer);
+    if (IsAlphaNum(*Lexer->Curr) || '_' == *Lexer->Curr)
+        return ErrorToken(Lexer, "Invalid character after octal number.");
+
+    Token OctNumber = MakeToken(Lexer, TOKEN_INTEGER_LITERAL);
+    OctNumber.Literal.Int = Oct;
+    return OctNumber;
+}
+
 static Token ConsumeNumber(PascalTokenizer *Lexer)
 {
     TokenType Type = TOKEN_INTEGER_LITERAL;
-
     if ('0' == Lexer->Start[0] && ('X' == CHR_TO_UPPER(Lexer->Start[1])))
     {
         AdvanceChrPtr(Lexer); /* skip 'x' in 0x */
@@ -640,7 +670,7 @@ static Token ConsumeString(PascalTokenizer *Lexer)
 
 static Token ConsumeWord(PascalTokenizer *Lexer)
 {
-    while (IsNumber(*Lexer->Curr) || IsAlpha(*Lexer->Curr) || '_' == *Lexer->Curr)
+    while (IsAlphaNum(*Lexer->Curr) || '_' == *Lexer->Curr)
     {
         AdvanceChrPtr(Lexer);
     }
@@ -657,7 +687,7 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
         UInt Type;
     } Keyword;
 
-    static Keyword KeywordLut[][6] = 
+    static const Keyword KeywordLut[][6] = 
     {
         ['A'] = {
             {.Str = (const U8 *)"ND",   .Len = 2, .Type = TOKEN_AND}, 
@@ -771,7 +801,7 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
     UInt LexemeLen = Lexer->Curr - Lexer->Start;
     for (UInt i = 0; i < STATIC_ARRAY_SIZE(KeywordLut[Key]); i++)
     {
-        Keyword *KeywordSlot = &KeywordLut[Key][i];
+        const Keyword *KeywordSlot = &KeywordLut[Key][i];
         if (0 == KeywordSlot->Len)
             break;
 
