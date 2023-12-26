@@ -1573,6 +1573,7 @@ bool PascalCompileProgram(PascalCompiler *Compiler, const U8 *Source)
         NoError = CompileProgram(Compiler);
         ResolveSubroutineReferences(Compiler);
         PVMSetEntryPoint(EMITTER(), Compiler->EntryPoint);
+        PVMEmitExit(EMITTER());
         return NoError;
     }
     else if (ConsumeIfNextIs(Compiler, TOKEN_UNIT))

@@ -1065,41 +1065,46 @@ static VarLocation RuntimeExprBinary(PascalCompiler *Compiler,
     }
 
     VarLocation Dst;
-    PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
     switch (OpToken->Type)
     {
     case TOKEN_PLUS: 
     {
+        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
         PVMEmitAdd(EMITTER(), &Dst, &Src);
     } break;
     case TOKEN_MINUS:
     {
+        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
         PVMEmitSub(EMITTER(), &Dst, &Src);
     } break;
-
     case TOKEN_STAR:
     {
+        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
         PVMEmitMul(EMITTER(), &Dst, &Src);
     } break;
     case TOKEN_DIV:
     case TOKEN_SLASH:
     {
+        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
         PVMEmitDiv(EMITTER(), &Dst, &Src);
     } break;
     case TOKEN_MOD:
     {
+        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
         PVMEmitMod(EMITTER(), &Dst, &Src);
     } break;
 
     case TOKEN_SHL:
     case TOKEN_LESS_LESS:
     {
+        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
         PVMEmitShl(EMITTER(), &Dst, &Src);
     } break;
 
     case TOKEN_GREATER_GREATER:
     case TOKEN_SHR:
     {
+        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
         PVMEmitShr(EMITTER(), &Dst, &Src);
     } break;
 
@@ -1110,6 +1115,9 @@ static VarLocation RuntimeExprBinary(PascalCompiler *Compiler,
     case TOKEN_LESS_GREATER:
     case TOKEN_EQUAL:
     {
+        /* flag will be set instead of register */
+        PVMEmitIntoRegLocation(EMITTER(), &Dst, true, &Tmp);
+
         if (IntegralTypeIsInteger(Dst.Type.Integral) 
         && VAR_LIT != Left->LocationType && VAR_LIT != Right->LocationType
         && (IntegralTypeIsSigned(Left->Type.Integral) != IntegralTypeIsSigned(Right->Type.Integral)))
@@ -1127,18 +1135,25 @@ static VarLocation RuntimeExprBinary(PascalCompiler *Compiler,
     } break;
     case TOKEN_AND:
     {
+        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
         PVMEmitAnd(EMITTER(), &Dst, &Src);
     } break;
     case TOKEN_OR:
     {
+        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
         PVMEmitOr(EMITTER(), &Dst, &Src);
     } break;
     case TOKEN_XOR:
     {
+        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
         PVMEmitXor(EMITTER(), &Dst, &Src);
     } break;
 
-    default: PASCAL_UNREACHABLE("Unhandled binary op: "STRVIEW_FMT, STRVIEW_FMT_ARG(&OpToken->Lexeme)); break;
+    default: 
+    {
+        PASCAL_UNREACHABLE("Unhandled binary op: "STRVIEW_FMT, STRVIEW_FMT_ARG(&OpToken->Lexeme));
+        return Src;
+    } break;
     }
 
     FreeExpr(Compiler, Src);

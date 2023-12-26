@@ -980,6 +980,13 @@ void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To)
     switch (PVM_GET_OP(*Code)) 
     {
     case OP_BRI:
+    {
+        /* i: increment immediate */
+        /* 0xCCRi 0xIIII */
+        Offset -= 1;
+        Code[1] = Offset;
+    } break;
+    
     case OP_BNZ:
     case OP_BEZ:
     {
@@ -1005,7 +1012,7 @@ void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To)
         /* 0xCCCC 0xIIII 0xIIII */
         Offset -= 3;
         Code[1] = Offset;
-        Code[1] = Offset >> 16;
+        Code[2] = Offset >> 16;
     } break;
 
     default: PASCAL_UNREACHABLE("Not a branch or IP-relative instruction."); break;
