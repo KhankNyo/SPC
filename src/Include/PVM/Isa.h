@@ -278,10 +278,10 @@ typedef enum PVMImmType
      | BIT_POS32(ImmType, 4, 0))
 
 
-#define PVM_GET_OP(OpcodeHalf) (PVMOp)(((Opcode) >> 8) & 0xFF)
-#define PVM_GET_RD(OpcodeHalf) (((Opcode) >> 4) & 0xF)
-#define PVM_GET_RS(OpcodeHalf) ((Opcode) & 0xF)
-#define PVM_GET_REGLIST(OpcodeHalf) ((Opcode) & 0xFF)
+#define PVM_GET_OP(OpcodeHalf) (PVMOp)(((OpcodeHalf) >> 8) & 0xFF)
+#define PVM_GET_RD(OpcodeHalf) (((OpcodeHalf) >> 4) & 0xF)
+#define PVM_GET_RS(OpcodeHalf) ((OpcodeHalf) & 0xF)
+#define PVM_GET_REGLIST(OpcodeHalf) ((OpcodeHalf) & 0xFF)
 #define PVM_GET_IMMTYPE(OpcodeHalf) (PVMImmType)((OpcodeHalf) & 0xF)
 
 #define PVM_GET_SYS_OP(OpcodeHalf) (PVMSysOp)((OpcodeHalf) & 0xFF)

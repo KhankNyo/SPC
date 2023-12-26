@@ -26,9 +26,6 @@
 
 # TODO:
 ### Critical:
-- revamp 'enter' instruction to take the number of argument register to push on stack
--   NOTE: to do that, CompileArgumentList and CompileParameterList will treat param locations differently
-- rewrite PascalFile
 - ignoring record return value
 - rewrite tests
 

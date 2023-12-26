@@ -36,16 +36,6 @@ struct PVMEmitter
     VarLocation ReturnValue;
 };
 
-typedef enum PVMPatchType
-{
-    PATCHTYPE_SUBROUTINE_ADDR       = 0xFFFF,
-    PATCHTYPE_BRANCH_UNCONDITIONAL  = 0x00FF,
-    PATCHTYPE_BRANCH_FLAG           = 0x00FF,
-    PATCHTYPE_BRANCH_CONDITIONAL    = 0x000F,
-    PATCHTYPE_BRANCH_INC            = 0x0000,
-} PVMPatchType;
-
-
 PVMEmitter PVMEmitterInit(PVMChunk *Chunk);
 void PVMEmitterDeinit(PVMEmitter *Emitter);
 void PVMEmitterReset(PVMEmitter *Emitter, bool PreserveFunctions);
@@ -82,8 +72,8 @@ U32 PVMEmitBranchOnTrueFlag(PVMEmitter *Emitter);
 U32 PVMEmitBranchAndInc(PVMEmitter *Emitter, VarRegister Reg, I8 By, U32 To);
 /* returns the offset of the branch instruction for patching if necessary */
 U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To);
-void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMPatchType Type);
-void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMPatchType Type);
+void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To);
+void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From);
 
 
 /* move and load */

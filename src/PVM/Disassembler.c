@@ -129,7 +129,7 @@ static U32 DisasmBcc(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *
     Pad += Print2Bytes(f, Chunk->Code[Addr + 1]);
     Addr += 2;
     PrintPaddedMnemonic(f, Pad, Mnemonic);
-    fprintf(f, "%s, [%u]\n", Rd, Addr + BrOffset);
+    fprintf(f, "%s, [%u]\n", Rd, 2*(Addr + BrOffset));
     return Addr;
 }
 
@@ -148,7 +148,7 @@ static U32 DisasmBr(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *C
     const LineDebugInfo *SubroutineInfo = ChunkGetConstDebugInfo(Chunk, SubroutineLocation);
 
     PrintPaddedMnemonic(f, Pad, Mnemonic);
-    Pad = fprintf(f, "[%u]", Addr + BrOffset);
+    Pad = fprintf(f, "[%u]", 2*(Addr + BrOffset));
     if (NULL != SubroutineInfo)
     {
         PrintComment(f, Pad, "line %d: '%.*s'\n", 

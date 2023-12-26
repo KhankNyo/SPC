@@ -80,7 +80,6 @@ struct PascalCompiler
     struct {
         struct {
             U32 CallSite;
-            PVMPatchType PatchType;
             const U32 *SubroutineLocation;
         } *Data;
         U32 Count, Cap;

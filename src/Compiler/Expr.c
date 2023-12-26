@@ -606,8 +606,7 @@ static VarLocation VariableAddrOf(PascalCompiler *Compiler)
         U32 CallSite = PVMEmitLoadSubroutineAddr(EMITTER(), Ptr.As.Register, 0);
         PushSubroutineReference(Compiler, 
                 &Variable->Location->As.SubroutineLocation, 
-                CallSite, 
-                PATCHTYPE_SUBROUTINE_ADDR
+                CallSite
         );
         return Ptr;
     }
@@ -1212,7 +1211,7 @@ static VarLocation ExprAnd(PascalCompiler *Compiler, VarLocation *Left)
         PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
         PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type.Integral, "");
 
-        PVMPatchBranchToCurrent(EMITTER(), FromLeft, PATCHTYPE_BRANCH_CONDITIONAL);
+        PVMPatchBranchToCurrent(EMITTER(), FromLeft);
 
         EMITTER()->ShouldEmit = WasEmit;
     }
@@ -1259,7 +1258,7 @@ static VarLocation ExprOr(PascalCompiler *Compiler, VarLocation *Left)
         PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
         PASCAL_ASSERT(TYPE_BOOLEAN == Right.Type.Integral, "");
 
-        PVMPatchBranchToCurrent(EMITTER(), FromTrue, PATCHTYPE_BRANCH_CONDITIONAL);
+        PVMPatchBranchToCurrent(EMITTER(), FromTrue);
 
         EMITTER()->ShouldEmit = WasEmit;
     }

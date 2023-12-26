@@ -114,7 +114,7 @@ bool IsAtStmtEnd(const PascalCompiler *Compiler)
 
 
 void PushSubroutineReference(PascalCompiler *Compiler, 
-        const U32 *SubroutineLocation, U32 CallSite, PVMPatchType PatchType)
+        const U32 *SubroutineLocation, U32 CallSite)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(SubroutineLocation);
@@ -133,7 +133,6 @@ void PushSubroutineReference(PascalCompiler *Compiler,
     }
     Compiler->SubroutineReferences.Data[Count].CallSite = CallSite;
     Compiler->SubroutineReferences.Data[Count].SubroutineLocation = SubroutineLocation;
-    Compiler->SubroutineReferences.Data[Count].PatchType = PatchType;
     Compiler->SubroutineReferences.Count = Count + 1;
 }
 
@@ -144,8 +143,7 @@ void ResolveSubroutineReferences(PascalCompiler *Compiler)
     {
         PVMPatchBranch(EMITTER(), 
                 Compiler->SubroutineReferences.Data[i].CallSite,
-                *Compiler->SubroutineReferences.Data[i].SubroutineLocation,
-                Compiler->SubroutineReferences.Data[i].PatchType
+                *Compiler->SubroutineReferences.Data[i].SubroutineLocation
         );
     }
     /* don't need to deallocate the internal allocator, 

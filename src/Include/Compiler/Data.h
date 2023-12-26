@@ -59,9 +59,7 @@ void CompilerPopSubroutine(PascalCompiler *Compiler);
 VarLocation *CompilerAllocateVarLocation(PascalCompiler *Compiler);
 
 
-void PushSubroutineReference(PascalCompiler *Compiler, 
-        const U32 *SubroutineLocation, U32 CallSite, PVMPatchType PatchType
-);
+void PushSubroutineReference(PascalCompiler *Compiler, const U32 *SubroutineLocation, U32 CallSite);
 void ResolveSubroutineReferences(PascalCompiler *Compiler);
 
 void CompilerResetTmp(PascalCompiler *Compiler);

@@ -383,8 +383,7 @@ void CompileSubroutineCall(PascalCompiler *Compiler,
         CallSite = PVMEmitCall(EMITTER(), SubroutineLocation);
         PushSubroutineReference(Compiler, 
                 &Subroutine->As.SubroutineLocation, 
-                CallSite, 
-                PATCHTYPE_BRANCH_UNCONDITIONAL
+                CallSite
         );
     }
 

@@ -249,7 +249,7 @@ static void CompilerPatchBreaks(PascalCompiler *Compiler, UInt PrevBreakCount)
 {
     for (UInt i = PrevBreakCount; i < Compiler->BreakCount; i++)
     {
-        PVMPatchBranchToCurrent(EMITTER(), Compiler->Breaks[i], PATCHTYPE_BRANCH_UNCONDITIONAL);
+        PVMPatchBranchToCurrent(EMITTER(), Compiler->Breaks[i]);
     }
     Compiler->BreakCount = PrevBreakCount;
 }
@@ -282,7 +282,7 @@ static void CompileRepeatUntilStmt(PascalCompiler *Compiler)
     }
 
     U32 ToHead = PVMEmitBranchIfFalse(EMITTER(), &Tmp);
-    PVMPatchBranch(EMITTER(), ToHead, LoopHead, PATCHTYPE_BRANCH_CONDITIONAL);
+    PVMPatchBranch(EMITTER(), ToHead, LoopHead);
     FreeExpr(Compiler, Tmp);
 
     CompilerEmitDebugInfo(Compiler, &UntilKeyword);
@@ -373,7 +373,7 @@ static void CompileForStmt(PascalCompiler *Compiler)
 
     /* loop end */
     PVMEmitDebugInfo(EMITTER(), Compiler->Curr.Lexeme.Str, Compiler->Curr.Lexeme.Len, Compiler->Curr.Line);
-    PVMPatchBranchToCurrent(EMITTER(), LoopExit, PATCHTYPE_BRANCH_FLAG);
+    PVMPatchBranchToCurrent(EMITTER(), LoopExit);
     CompilerPatchBreaks(Compiler, BreakCountBeforeBody);
 
     /* move the result of the counter variable */
@@ -426,7 +426,7 @@ static void CompileWhileStmt(PascalCompiler *Compiler)
     /* back to loophead */
     PVMEmitBranch(EMITTER(), LoopHead);
     /* patch the exit branch */
-    PVMPatchBranchToCurrent(EMITTER(), LoopExit, PATCHTYPE_BRANCH_FLAG);
+    PVMPatchBranchToCurrent(EMITTER(), LoopExit);
     CompilerPatchBreaks(Compiler, BreakCountBeforeBody);
 
     EMITTER()->ShouldEmit = Last;
@@ -489,18 +489,18 @@ static void CompileIfStmt(PascalCompiler *Compiler)
         if (COND_UNKNOWN == IfCond)
             FromEndIf = PVMEmitBranch(EMITTER(), 0);
 
-        PVMPatchBranchToCurrent(EMITTER(), FromIf, PATCHTYPE_BRANCH_CONDITIONAL);
+        PVMPatchBranchToCurrent(EMITTER(), FromIf);
         CompilerInitDebugInfo(Compiler, &Compiler->Curr);
         CompilerEmitDebugInfo(Compiler, &Compiler->Curr);
 
         CompileStmt(Compiler);
 
         if (COND_UNKNOWN == IfCond)
-            PVMPatchBranchToCurrent(EMITTER(), FromEndIf, PATCHTYPE_BRANCH_UNCONDITIONAL);
+            PVMPatchBranchToCurrent(EMITTER(), FromEndIf);
     }
     else if (COND_UNKNOWN == IfCond)
     {
-        PVMPatchBranchToCurrent(EMITTER(), FromIf, PATCHTYPE_BRANCH_CONDITIONAL);
+        PVMPatchBranchToCurrent(EMITTER(), FromIf);
     }
     EMITTER()->ShouldEmit = Last;
 }
@@ -719,7 +719,7 @@ static void CompileCaseStmt(PascalCompiler *Compiler)
 
             /* end of statement */
             OutBranch[CaseCount++] = PVMEmitBranch(EMITTER(), 0);
-            PVMPatchBranchToCurrent(EMITTER(), NextCase, PATCHTYPE_BRANCH_CONDITIONAL);
+            PVMPatchBranchToCurrent(EMITTER(), NextCase);
             EMITTER()->ShouldEmit = Last;
 
             if (NextTokenIs(Compiler, TOKEN_END) || NextTokenIs(Compiler, TOKEN_ELSE))
@@ -747,7 +747,7 @@ static void CompileCaseStmt(PascalCompiler *Compiler)
     if (!ExprIsConstant)
     {
         for (U32 i = 0; i < CaseCount; i++)
-            PVMPatchBranchToCurrent(EMITTER(), OutBranch[i], PATCHTYPE_BRANCH_UNCONDITIONAL);
+            PVMPatchBranchToCurrent(EMITTER(), OutBranch[i]);
     }
 
     ConsumeOrError(Compiler, TOKEN_END, "Expected 'end' after statement.");
@@ -1542,8 +1542,8 @@ bool PascalCompileRepl(
         PascalReplLineCallbackFn Callback, void *Data)
 {
     Compiler->Lexer = TokenizerInit(Line, Compiler->Line);
-
     ConsumeToken(Compiler);
+
     Compiler->ReplCallback = Callback;
     Compiler->ReplUserData = Data;
 
@@ -1558,7 +1558,7 @@ bool PascalCompileRepl(
     }
     ResolveSubroutineReferences(Compiler);
     PVMSetEntryPoint(EMITTER(), Compiler->EntryPoint);
-    PVMEmitterDeinit(EMITTER());
+    PVMEmitExit(EMITTER());
     return !Compiler->Error;
 }
 
@@ -1567,7 +1567,23 @@ bool PascalCompileProgram(PascalCompiler *Compiler, const U8 *Source)
 {
     Compiler->Lexer = TokenizerInit(Source, 1);
     ConsumeToken(Compiler);
-    return CompileProgram(Compiler);
+    bool NoError = false;
+    if (ConsumeIfNextIs(Compiler, TOKEN_PROGRAM))
+    {
+        NoError = CompileProgram(Compiler);
+        ResolveSubroutineReferences(Compiler);
+        PVMSetEntryPoint(EMITTER(), Compiler->EntryPoint);
+        return NoError;
+    }
+    else if (ConsumeIfNextIs(Compiler, TOKEN_UNIT))
+    {
+        PASCAL_UNREACHABLE("TODO: Unit");
+    }
+    else
+    {
+        Error(Compiler, "Expected 'program' or 'unit' at the start of file.");
+    }
+    return NoError;
 }
 
 

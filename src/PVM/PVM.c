@@ -642,7 +642,7 @@ do {\
 
         case OP_MOV32:       MOVE_INTEGER(Opcode, .Word.First, .Word.First); break;
         case OP_MOVZEX32_8:  MOVE_INTEGER(Opcode, .Word.First, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
-        case OP_MOVZEX32_16: MOVE_INTEGER(Opocde, .Word.First, .Half.First); break;
+        case OP_MOVZEX32_16: MOVE_INTEGER(Opcode, .Word.First, .Half.First); break;
         case OP_MOV64:       MOVE_INTEGER(Opcode, .DWord, .DWord); break;
         case OP_MOVZEX64_8:  MOVE_INTEGER(Opcode, .DWord, .Byte[PVM_LEAST_SIGNIF_BYTE]); break;
         case OP_MOVZEX64_16: MOVE_INTEGER(Opcode, .DWord, .Half.First); break;

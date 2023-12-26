@@ -81,8 +81,6 @@ void PVMEmitterDeinit(PVMEmitter *Emitter)
 {
     PASCAL_NONNULL(Emitter);
     PVMEmitExit(Emitter);
-    Emitter->Reglist = EMPTY_REGLIST;
-    Emitter->StackSpace = 0;
     PVMEmitterReset(Emitter, false);
 }
 
@@ -965,23 +963,58 @@ U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To)
     return WriteOp32(Emitter, PVM_BR(Offset & 0xFF), Offset >> 8);
 }
 
-void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To, PVMPatchType Type)
+void PVMPatchBranch(PVMEmitter *Emitter, U32 From, U32 To)
 {
     PASCAL_NONNULL(Emitter);
     if (!Emitter->ShouldEmit) 
         return;
 
-    /* size of the branch instruction is 2 16 opcode word */
-    U32 Offset = To - From - PVM_BRANCH_INS_SIZE;
-    U32 Mask = Type;
-    PVMCurrentChunk(Emitter)->Code[From] = 
-        (PVMCurrentChunk(Emitter)->Code[From] & ~Mask) | (Mask & Offset);
-    PVMCurrentChunk(Emitter)->Code[From + 1] = Offset >> BitCount(Mask);
+    U16 *Code = &PVMCurrentChunk(Emitter)->Code[From];
+    I32 Offset = To - From;
+
+    /*
+     *  C: opcode
+     *  R: register
+     *  I: immediate offset
+     */
+    switch (PVM_GET_OP(*Code)) 
+    {
+    case OP_BRI:
+    case OP_BNZ:
+    case OP_BEZ:
+    {
+        /* 0xCCRI 0xIIII */
+        Offset -= 2;
+        Code[0] = (Code[0] & 0xFFF0) | (((U32)Offset) & 0xF);
+        Code[1] = Offset >> 4;
+    } break;
+
+    case OP_BCF:
+    case OP_BCT:
+    case OP_BR:
+    case OP_CALL:
+    {
+        /* 0xCCII 0xIIII */
+        Offset -= 2;
+        Code[0] = (Code[0] & 0xFF00) | (((U32)Offset) & 0xFF);
+        Code[1] = Offset >> 8;
+    } break;
+
+    case OP_LDRIP:
+    {
+        /* 0xCCCC 0xIIII 0xIIII */
+        Offset -= 3;
+        Code[1] = Offset;
+        Code[1] = Offset >> 16;
+    } break;
+
+    default: PASCAL_UNREACHABLE("Not a branch or IP-relative instruction."); break;
+    }
 }
 
-void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From, PVMPatchType Type)
+void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From)
 {
-    PVMPatchBranch(Emitter, From, PVMCurrentChunk(Emitter)->Count, Type);
+    PVMPatchBranch(Emitter, From, PVMCurrentChunk(Emitter)->Count);
 }
 
 
@@ -1095,8 +1128,9 @@ U32 PVMEmitLoadSubroutineAddr(PVMEmitter *Emitter, VarRegister Dst, U32 Subrouti
     PASCAL_NONNULL(Emitter);
     const PVMImmType ImmType = IMMTYPE_I32;
     I32 Offset = SubroutineAddr - (PVMGetCurrentLocation(Emitter) + 3);
-    WriteOp16(Emitter, PVM_IMM_OP(LDRIP, Dst.ID, ImmType));
-    return Write32(Emitter, Offset);
+    U32 Location = WriteOp16(Emitter, PVM_IMM_OP(LDRIP, Dst.ID, ImmType));
+    Write32(Emitter, Offset);
+    return Location;
 }
 
 void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src, I32 Offset)
