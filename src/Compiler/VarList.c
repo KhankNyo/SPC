@@ -375,6 +375,7 @@ void CompileSubroutineCall(PascalCompiler *Compiler,
             CompileArgumentList(Compiler, Callee, Info);
             PVMEmitCallPtr(EMITTER(), Subroutine);
         }
+        /* we're owning the function pointer, so we free it */
         FreeExpr(Compiler, *Subroutine);
     }
     else
@@ -387,7 +388,7 @@ void CompileSubroutineCall(PascalCompiler *Compiler,
         );
     }
 
-    /* return value is not discarded */
+    /* wants return value */
     if (NULL != ReturnValue)
     {
         VarLocation Tmp = PVMSetReturnType(EMITTER(), ReturnValue->Type);

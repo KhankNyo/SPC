@@ -1,4 +1,4 @@
-
+program Benchmark000;
 
 var 
     i, top: uint32;

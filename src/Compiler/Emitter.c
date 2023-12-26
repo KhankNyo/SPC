@@ -135,7 +135,10 @@ bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt Reg)
 void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, UInt Reg)
 {
     PASCAL_NONNULL(Emitter);
-    Emitter->Reglist |= (U32)1 << Reg;
+    if (PVM_REG_COUNT + PVM_FREG_COUNT >= Reg)
+    {
+        Emitter->Reglist |= (U32)1 << Reg;
+    }
 }
 
 void PVMMarkRegisterAsFreed(PVMEmitter *Emitter, UInt Reg)
@@ -2006,6 +2009,8 @@ VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType ParamType, 
             Location.LocationType = VAR_MEM;
             Location.As.Memory.RegPtr = Tmp;
             Location.As.Memory.Location = 0;
+
+            Register = &Location.As.Memory.RegPtr;
         }
         PVMMarkRegisterAsAllocated(Emitter, Register->ID);
         return Location;

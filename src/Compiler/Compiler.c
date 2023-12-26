@@ -275,7 +275,7 @@ static void CompileRepeatUntilStmt(PascalCompiler *Compiler)
     Token UntilKeyword = Compiler->Curr;
     CompilerInitDebugInfo(Compiler, &UntilKeyword);
 
-    VarLocation Tmp = CompileExprIntoReg(Compiler);
+    VarLocation Tmp = CompileExpr(Compiler);
     if (TYPE_BOOLEAN != Tmp.Type.Integral)
     {
         ErrorTypeMismatch(Compiler, &UntilKeyword, "until loop condition", "boolean", Tmp.Type.Integral);
