@@ -18,6 +18,7 @@ typedef enum IntegralType
     TYPE_POINTER,
     TYPE_STRING,
     TYPE_RECORD,
+    TYPE_CHAR,
 
     TYPE_COUNT,
 } IntegralType;
@@ -47,6 +48,7 @@ static inline const char *IntegralTypeToStr(IntegralType Type)
         [TYPE_STRING] = "string",
         [TYPE_RECORD] = "record",
         [TYPE_POINTER] = "pointer",
+        [TYPE_CHAR] = "char",
     };
     PASCAL_STATIC_ASSERT(TYPE_COUNT == STATIC_ARRAY_SIZE(StrLut), "Missing type");
     if (Type < TYPE_COUNT)
@@ -61,6 +63,7 @@ static inline U32 IntegralTypeSize(IntegralType Type)
     case TYPE_BOOLEAN:
     case TYPE_I8:
     case TYPE_U8:
+    case TYPE_CHAR:
         return 1;
     case TYPE_I16:
     case TYPE_U16:
@@ -123,7 +126,7 @@ static inline bool IntegralTypeIsCompatibleWithF64(IntegralType Type)
 
 static inline bool IntegralTypeIsOrdinal(IntegralType Type)
 {
-    return IntegralTypeIsCompatibleWithF64(Type) || TYPE_BOOLEAN == Type;
+    return IntegralTypeIsCompatibleWithF64(Type) || TYPE_BOOLEAN == Type || TYPE_CHAR == Type;
 }
 
 

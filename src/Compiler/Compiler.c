@@ -259,14 +259,12 @@ static void CompileRepeatUntilStmt(PascalCompiler *Compiler)
 {
     /* 'repeat' consumed */
     U32 LoopHead = PVMMarkBranchTarget(EMITTER());
-    while (!IsAtEnd(Compiler) && !NextTokenIs(Compiler, TOKEN_UNTIL))
+    if (!NextTokenIs(Compiler, TOKEN_UNTIL))
     {
-        CompileStmt(Compiler);
-        if (NextTokenIs(Compiler, TOKEN_UNTIL))
-            break;
-        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' in between statements.");
+        do {
+            CompileStmt(Compiler);
+        } while (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON));
     }
-
 
     /* nothing to compile, exit and reports error */
     if (!ConsumeOrError(Compiler, TOKEN_UNTIL, "Expected 'until'."))
@@ -1162,7 +1160,7 @@ static void CompileVarBlock(PascalCompiler *Compiler)
                         &Constant.As.Literal, Constant.Type.Size, Constant.Type.Integral
                 );
             }
-            else 
+            else /* stack variable */
             {
                 CompileExprInto(Compiler, &EqualSign, Variable->Location);
             }
@@ -1233,12 +1231,14 @@ static void CompileTypeBlock(PascalCompiler *Compiler)
 
         if (ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER))
         {
+            /* typename */
             const Token TypeName = Compiler->Curr;
             PascalVar *Type = GetIdenInfo(Compiler, &TypeName, "Undefined type name.");
-                DefineIdentifier(Compiler, &Identifier, Type->Type, NULL);
+            DefineIdentifier(Compiler, &Identifier, Type->Type, NULL);
         }
         else if (ConsumeIfNextIs(Compiler, TOKEN_CARET))
         {
+            /* pointer type */
             if (!ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected type name."))
                 continue;
             PascalVar *Type = FindTypeName(Compiler, &Compiler->Curr);

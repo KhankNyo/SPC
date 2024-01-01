@@ -170,6 +170,12 @@ static VarLocation FactorLiteral(PascalCompiler *Compiler)
 
     switch (Compiler->Curr.Type)
     {
+    case TOKEN_CHAR_LITERAL:
+    {
+        U8 Chr = Compiler->Curr.Literal.Chr;
+        Location.As.Literal.Chr = Chr;
+        Location.Type = VarTypeInit(TYPE_CHAR, 1);
+    } break;
     case TOKEN_INTEGER_LITERAL:
     {
         U64 Int = Compiler->Curr.Literal.Int;
@@ -1299,6 +1305,7 @@ InvalidOperands:
 
 static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] = 
 {
+    [TOKEN_CHAR_LITERAL]    = { FactorLiteral,      NULL,           PREC_SINGLE },
     [TOKEN_INTEGER_LITERAL] = { FactorLiteral,      NULL,           PREC_SINGLE },
     [TOKEN_NUMBER_LITERAL]  = { FactorLiteral,      NULL,           PREC_SINGLE },
     [TOKEN_STRING_LITERAL]  = { FactorLiteral,      NULL,           PREC_SINGLE },

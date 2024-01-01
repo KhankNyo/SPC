@@ -59,6 +59,7 @@ typedef enum TokenType
     /* others */
     TOKEN_NUMBER_LITERAL, TOKEN_INTEGER_LITERAL, 
     TOKEN_STRING_LITERAL, 
+    TOKEN_CHAR_LITERAL,
     TOKEN_IDENTIFIER,
 
     TOKEN_TYPE_COUNT
@@ -69,7 +70,7 @@ struct Token
 {
     StringView Lexeme;
     union {
-        U64 Int;
+        U64 Int, Chr;
         F64 Real;
         PascalStr Str;
         const char *Err;

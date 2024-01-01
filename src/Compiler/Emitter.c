@@ -642,7 +642,7 @@ static void MoveLiteralIntoReg(PVMEmitter *Emitter,
 {
     if (!Emitter->ShouldEmit)
         return;
-    if (TYPE_POINTER == DstType || IntegralTypeIsInteger(DstType))
+    if (TYPE_POINTER == DstType || IntegralTypeIsInteger(DstType) || TYPE_CHAR == DstType)
     {
         ChunkWriteMovImm(PVMCurrentChunk(Emitter), 
                 Rd->ID, Literal->Int
@@ -2186,6 +2186,7 @@ void PVMInitializeGlobal(PVMEmitter *Emitter,
 
     switch (Type)
     {
+    case TYPE_CHAR:
     case TYPE_BOOLEAN:
     case TYPE_U8:
     case TYPE_I8:

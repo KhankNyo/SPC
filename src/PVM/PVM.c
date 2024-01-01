@@ -54,7 +54,6 @@ static void RuntimeError(const PascalVM *PVM, const char *Fmt, ...)
 static const PascalStr *RuntimeTypeToStr(IntegralType Type, PVMGPR Data)
 {
 #define INTEGER_TO_STR(Fmt, RegType) do {\
-    char *Str = (char *)PStrGetPtr(&Tmp);\
     int Len = snprintf(Str, PSTR_MAX_LEN, Fmt, Data RegType);\
     PStrSetLen(&Tmp, Len);\
 } while (0)
@@ -67,6 +66,11 @@ static const PascalStr *RuntimeTypeToStr(IntegralType Type, PVMGPR Data)
     {
     case TYPE_STRING: return Data.Ptr.Raw;
 
+    case TYPE_CHAR:
+    {
+        int Len = snprintf(Str, PSTR_MAX_LEN, "%c", Data.SWord.First);
+        PStrSetLen(&Tmp, Len);
+    } break;
     case TYPE_I8:  INTEGER_TO_STR("%"PRIi8, .SByte[PVM_LEAST_SIGNIF_BYTE]); break;
     case TYPE_I16: INTEGER_TO_STR("%"PRIi16, .SHalf.First); break;
     case TYPE_I32: INTEGER_TO_STR("%"PRIi32, .SWord.First); break;

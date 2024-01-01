@@ -22,8 +22,16 @@ static void PrintAndHighlightSource(FILE *LogFile, const Token *Tok)
     char Highlighter = '^';
     U32 Len = LineLen(LineStart);
 
+    /* offending LOC */
     fprintf(LogFile, "\n    \"%.*s\"", Len, LineStart);
-    fprintf(LogFile, "\n    %*s", Tok->LineOffset, "");
+
+    /* highligher */
+    fprintf(LogFile, "\n    ");
+    for (U32 i = 0; i < Tok->LineOffset; i++)
+    {
+        char WhiteSpace = '\t' == LineStart[i] ? '\t' : ' ';
+        fputc(WhiteSpace, LogFile);
+    }
     for (U32 i = 0; i < Tok->Lexeme.Len; i++)
     {
         fputc(Highlighter, LogFile);

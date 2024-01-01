@@ -242,6 +242,7 @@ const U8 *TokenTypeToStr(TokenType Type)
 
         "TOKEN_NUMBER_LITERAL", "TOKEN_INTEGER_LITERAL", 
         "TOKEN_STRING_LITERAL", 
+        "TOKEN_CHAR_LITERAL", 
         "TOKEN_IDENTIFIER"
     };
     PASCAL_STATIC_ASSERT(STATIC_ARRAY_SIZE(TokenNameLut) == TOKEN_TYPE_COUNT, "Missing types in string lookup table");
@@ -429,7 +430,7 @@ static Token ErrorToken(PascalTokenizer *Lexer, const char *ErrMsg)
 }
 
 
-static U64 ConsumeHexNumber(PascalTokenizer *Lexer)
+static U64 ConsumeHexadecimalNumber(PascalTokenizer *Lexer)
 {
     U64 Hex = 0;
     while (IsHex(*Lexer->Curr))
@@ -482,13 +483,13 @@ static U64 ConsumeInteger(PascalTokenizer *Lexer)
 
 static Token ConsumeHex(PascalTokenizer *Lexer)
 {
-    U64 Hex = ConsumeHexNumber(Lexer);
+    U64 Hex = ConsumeHexadecimalNumber(Lexer);
     if (IsAlphaNum(*Lexer->Curr) || '_' == *Lexer->Curr)
         return ErrorToken(Lexer, "Invalid character after hexadecimal number.");
 
-    Token HexNumber = MakeToken(Lexer, TOKEN_INTEGER_LITERAL);
-    HexNumber.Literal.Int = Hex;
-    return HexNumber;
+    Token HexadecimalNumber = MakeToken(Lexer, TOKEN_INTEGER_LITERAL);
+    HexadecimalNumber.Literal.Int = Hex;
+    return HexadecimalNumber;
 }
 
 static Token ConsumeBinary(PascalTokenizer *Lexer)
@@ -610,11 +611,8 @@ Error:
 static Token ConsumeString(PascalTokenizer *Lexer)
 {
     Lexer->Curr = Lexer->Start;
-    UInt Trim;
     PascalStr Literal = PStrInit(0);
     do {
-        Trim = 2; /* trim both the opening and closing quotes */
-
         /* skip beginning "'" */
         AdvanceChrPtr(Lexer);
 
@@ -637,11 +635,15 @@ static Token ConsumeString(PascalTokenizer *Lexer)
             U8 EscCode = 0;
             if (AdvanceIfEqual(Lexer, '$'))
             {
-                EscCode = ConsumeHexNumber(Lexer);
+                EscCode = ConsumeHexadecimalNumber(Lexer);
             }
             else if (AdvanceIfEqual(Lexer, '%'))
             {
                 EscCode = ConsumeBinaryNumber(Lexer);
+            }
+            else if (AdvanceIfEqual(Lexer, '&'))
+            {
+                EscCode = ConsumeOctalNumber(Lexer);
             }
             else 
             {
@@ -649,7 +651,6 @@ static Token ConsumeString(PascalTokenizer *Lexer)
             }
 
             PStrAppendChr(&Literal, EscCode);
-            Trim = 1; /* don't want to trim the last character of the number */
         }
     } while (!TokenizerIsAtEnd(Lexer) && ('\'' == *Lexer->Curr));
 
@@ -657,13 +658,23 @@ static Token ConsumeString(PascalTokenizer *Lexer)
     if (TokenizerIsAtEnd(Lexer))
         return ErrorToken(Lexer, "Unterminated string literal.");
 
-    Token StringToken = MakeToken(Lexer, TOKEN_STRING_LITERAL);
+    if (1 == PStrGetLen(&Literal))
+    {
+        Token CharToken = MakeToken(Lexer, TOKEN_CHAR_LITERAL);
 
-    /* consume opening and closing quotes */
-    StringToken.Lexeme.Str++;
-    StringToken.Lexeme.Len -= Trim;
-    StringToken.Literal.Str = Literal;
-    return StringToken;
+        CharToken.Literal.Chr = *PStrGetConstPtr(&Literal);
+        PStrDeinit(&Literal);
+        return CharToken;
+    }
+    else 
+    {
+        Token StringToken = MakeToken(Lexer, TOKEN_STRING_LITERAL);
+
+        /* consume opening and closing quotes */
+        StringToken.Literal.Str = Literal;
+        /* ownership transfered */
+        return StringToken;
+    }
 }
 
 

@@ -56,7 +56,7 @@ struct PascalVar
 
 union VarLiteral 
 {
-    U64 Int;
+    U64 Int, Chr;
     F64 Flt;
     bool Bool;
     GenericPtr Ptr;
