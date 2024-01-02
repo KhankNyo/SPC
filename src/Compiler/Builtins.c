@@ -35,7 +35,8 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
 {
     SaveRegInfo SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
     UInt ArgCount = 0;
-    VarLocation File = VAR_LOCATION_LIT(.Ptr.As.Raw = stdout, TYPE_POINTER);
+
+    SaveRegInfo RegList = { 0 };
     if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
     {
         if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
@@ -43,10 +44,9 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
             /* TODO: file argument */
             do {
                 VarLocation Arg =  CompileExpr(Compiler);
-                PVMEmitPushMultiple(EMITTER(), 2, 
-                        &VAR_LOCATION_LIT(.Int = Arg.Type.Integral, TYPE_U32), 
-                        &Arg
-                );
+                VarLocation ArgType = VAR_LOCATION_LIT(.Int = Arg.Type.Integral, TYPE_U32);
+                PVMQueueAndCommitOnFull(EMITTER(), &RegList, &Arg);
+                PVMQueueAndCommitOnFull(EMITTER(), &RegList, &ArgType);
                 ArgCount++;
             } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
         }
@@ -60,12 +60,15 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
                 sNewlineConstName, sizeof(sNewlineConstName) - 1, sNewlineConstHash
         );
         PASCAL_NONNULL(NewlineLiteral);
-        PVMEmitPushMultiple(EMITTER(), 2, 
-                &VAR_LOCATION_LIT(.Int = TYPE_STRING, TYPE_U32), 
-                NewlineLiteral->Location
-        );
+        PVMQueueAndCommitOnFull(EMITTER(), &RegList, NewlineLiteral->Location);
+        PVMQueueAndCommitOnFull(EMITTER(), &RegList, &VAR_LOCATION_LIT(.Int = TYPE_STRING, TYPE_U32));
         ArgCount++;
     }
+
+    /* pushes the queue */
+    PVMQueueCommit(EMITTER(), &RegList);
+    PVMQueueRefresh(EMITTER(), &RegList);
+
 
     /* arg count reg */
     VarLocation ArgCountReg = {
@@ -73,15 +76,16 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
         .LocationType = VAR_REG,
         .As.Register.ID = 0,
     };
-    PVMEmitMov(EMITTER(), &ArgCountReg, &VAR_LOCATION_LIT(.Int = ArgCount, ArgCountReg.Type.Integral));
+    PVMEmitMove(EMITTER(), &ArgCountReg, &VAR_LOCATION_LIT(.Int = ArgCount, ArgCountReg.Type.Integral));
 
     /* file ptr reg */
+    VarLocation File = VAR_LOCATION_LIT(.Ptr.As.Raw = stdout, TYPE_POINTER);
     VarLocation FilePtrReg = {
         .Type = VarTypeInit(TYPE_POINTER, sizeof(void*)),
         .LocationType = VAR_REG,
         .As.Register.ID = 1,
     };
-    PVMEmitMov(EMITTER(), &FilePtrReg, &File);
+    PVMEmitMove(EMITTER(), &FilePtrReg, &File);
 
     /* syscall */
     PVMEmitWrite(EMITTER());

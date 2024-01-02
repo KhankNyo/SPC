@@ -365,8 +365,9 @@ do {\
                 PASCAL_NONNULL(OutFile);
                 for (U32 i = 0; i < ArgCount; i++)
                 {
+                    PVMGPR Value = (*Ptr++);
                     IntegralType Type = (*Ptr++).DWord;
-                    const PascalStr *PStr = RuntimeTypeToStr(Type, *Ptr++);
+                    const PascalStr *PStr = RuntimeTypeToStr(Type, Value);
                     fprintf(OutFile, "%.*s", 
                             (int)PStrGetLen(PStr), PStrGetConstPtr(PStr)
                     );

@@ -143,8 +143,8 @@ static inline bool VarTypeEqual(const VarType *A, const VarType *B)
 
     if (TYPE_POINTER == A->Integral)
     {
-        /* opaque pointer, kind of a 'void *' */
-        if (A->As.Pointee == NULL && B->As.Pointee == NULL)
+        /* opaque pointer, aka 'void *' in C */
+        if (A->As.Pointee == NULL || B->As.Pointee == NULL)
             return true;
 
         /* chase the pointer */

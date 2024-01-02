@@ -26,8 +26,8 @@ static void PrintAndHighlightSource(FILE *LogFile, const Token *Tok)
     fprintf(LogFile, "\n    \"%.*s\"", Len, LineStart);
 
     /* highligher */
-    fprintf(LogFile, "\n    ");
-    for (U32 i = 0; i < Tok->LineOffset; i++)
+    fprintf(LogFile, "\n     ");
+    for (int i = 0; i < (int)Tok->LineOffset - 1; i++)
     {
         char WhiteSpace = '\t' == LineStart[i] ? '\t' : ' ';
         fputc(WhiteSpace, LogFile);

@@ -359,6 +359,7 @@ void CompileSubroutineCall(PascalCompiler *Compiler,
         PASCAL_NONNULL(SubroutineType);
         Info = &SubroutineType->As.Subroutine;
 
+        /* is the function pointer in one of the registers being saved? */
         if (VAR_REG == Subroutine->LocationType 
         && PVMRegIsSaved(SaveRegs, Subroutine->As.Register.ID))
         {
@@ -392,7 +393,7 @@ void CompileSubroutineCall(PascalCompiler *Compiler,
     if (NULL != ReturnValue)
     {
         VarLocation Tmp = PVMSetReturnType(EMITTER(), ReturnValue->Type);
-        PVMEmitMov(EMITTER(), ReturnValue, &Tmp);
+        PVMEmitMove(EMITTER(), ReturnValue, &Tmp);
     }
 
     /* deallocate stack args */

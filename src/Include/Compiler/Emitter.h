@@ -77,7 +77,7 @@ void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From);
 
 
 /* move and load */
-void PVMEmitMov(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitMove(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 /* returns true if the caller owns OutTarget, false otherwise, 
  * call PVMFreeRegister to dipose OutTarget if true is returned */
@@ -103,22 +103,22 @@ void PVMEmitIntToFltTypeConversion(PVMEmitter *Emitter,
 );
 
 /* arith instructions */
-void PVMEmitAddImm(PVMEmitter *Emitter, VarLocation *Dst, I64 Imm);
-void PVMEmitAdd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitSub(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitNeg(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitNot(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitAnd(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitOr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitXor(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitIMul(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitIDiv(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitMod(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitShl(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitShr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
-void PVMEmitAsr(PVMEmitter *Emitter, VarLocation *Dst, const VarLocation *Src);
+void PVMEmitAddImm(PVMEmitter *Emitter, const VarLocation *Dst, I64 Imm);
+void PVMEmitAdd(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitSub(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitNeg(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitNot(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitAnd(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitOr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitXor(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitIMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitIDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitMod(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitShl(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitShr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitAsr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 /* returns flag */
 VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op, const VarLocation *Left, const VarLocation *Right);
 
@@ -131,8 +131,13 @@ VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType Type, I32 *Ba
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, const VarLocation *Arg);
 
 VarLocation PVMSetReturnType(PVMEmitter *Emitter, VarType Type);
-/* accepts Pointer to VarLocation as args */
-void PVMEmitPushMultiple(PVMEmitter *Emitter, int Count, ...);
+
+
+void PVMQueuePushMultiple(PVMEmitter *Emitter, SaveRegInfo *RegList, const VarLocation *Location);
+void PVMQueueAndCommitOnFull(PVMEmitter *Emitter, SaveRegInfo *RegList, const VarLocation *Location);
+void PVMQueueCommit(PVMEmitter *Emitter, SaveRegInfo *RegList);
+void PVMQueueRefresh(PVMEmitter *Emitter, SaveRegInfo *RegList);
+bool PVMQueueIsFull(const SaveRegInfo *RegList);
 
 
 /* stack instructions */

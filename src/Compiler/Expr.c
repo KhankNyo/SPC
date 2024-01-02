@@ -114,33 +114,42 @@ VarLocation CompileVariableExpr(PascalCompiler *Compiler)
     return ParseAssignmentLhs(Compiler, PREC_VARIABLE);
 }
 
-void CompileExprInto(PascalCompiler *Compiler, const Token *OpToken, VarLocation *Location)
+void CompileExprInto(PascalCompiler *Compiler, const Token *ErrorSpot, VarLocation *Location)
 {
     VarLocation Expr = CompileExpr(Compiler);
-    if (Compiler->Error)
-        return;
-
-    CoerceTypes(Compiler, OpToken, Location->Type.Integral, Expr.Type.Integral);
-    if (Expr.LocationType != VAR_MEM)
-        ConvertTypeImplicitly(Compiler, Location->Type.Integral, &Expr);
-
-    if (TYPE_POINTER == Location->Type.Integral && TYPE_POINTER == Expr.Type.Integral)
+    if (TYPE_INVALID == CoerceTypes(Location->Type.Integral, Expr.Type.Integral)
+    || (Expr.LocationType != VAR_MEM && !ConvertTypeImplicitly(Compiler, Location->Type.Integral, &Expr)))
     {
-        if (!VarTypeEqual(&Location->Type, &Expr.Type))
-        {
-            if (NULL == OpToken)
-                OpToken = &Compiler->Curr;
-
-            ErrorAt(Compiler, OpToken, "Cannot assign %s pointer to %s pointer.", 
-                    VarTypeToStr(Expr.Type),
-                    VarTypeToStr(Location->Type)
-            );
-
-            return;
-        }
+        goto InvalidTypeCombination;
     }
-    PVMEmitMov(EMITTER(), Location, &Expr);
+
+    if (IntegralTypeIsOrdinal(Location->Type.Integral) 
+    && IntegralTypeIsOrdinal(Expr.Type.Integral))
+    {
+        PVMEmitMove(EMITTER(), Location, &Expr);
+    }
+    else if (VarTypeEqual(&Location->Type, &Expr.Type))
+    {
+        PVMEmitCopy(EMITTER(), Location, &Expr);
+    }
+    else goto InvalidTypeCombination;
+
     FreeExpr(Compiler, Expr);
+    return;
+
+InvalidTypeCombination:
+    if (NULL == ErrorSpot)
+    {
+        Error(Compiler, "Invalid type combination: %s and %s.",
+            VarTypeToStr(Location->Type), VarTypeToStr(Expr.Type)
+        );
+    }
+    else
+    {
+        ErrorAt(Compiler, ErrorSpot, "Invalid type combination: %s and %s.",
+            VarTypeToStr(Location->Type), VarTypeToStr(Expr.Type)
+        );
+    }
 }
 
 
@@ -344,6 +353,11 @@ static VarLocation VariableAccess(PascalCompiler *Compiler, VarLocation *Left)
     if (TYPE_RECORD != Left->Type.Integral)
     {
         ErrorAt(Compiler, &Dot, "%s does not have a member.", VarTypeToStr(Left->Type));
+        return *Left;
+    }
+    else if (VAR_INVALID == Left->LocationType)
+    {
+        ErrorAt(Compiler, &Dot, "Left expression of '.' does not have a location.");
         return *Left;
     }
 
@@ -838,7 +852,7 @@ static VarLocation LiteralExprBinary(PascalCompiler *Compiler, const Token *OpTo
     PASCAL_ASSERT(VAR_LIT == Left->LocationType, "left is not a literal in %s", __func__);
     PASCAL_ASSERT(VAR_LIT == Right->LocationType, "right is not a literal in %s", __func__);
 
-    IntegralType Both = CoerceTypes(Compiler, OpToken, Left->Type.Integral, Right->Type.Integral);
+    IntegralType Both = CoerceTypes(Left->Type.Integral, Right->Type.Integral);
     bool ConversionOk = ConvertTypeImplicitly(Compiler, Both, Left);
     ConversionOk = ConversionOk && ConvertTypeImplicitly(Compiler, Both, Right);
     if (!ConversionOk)
@@ -1060,9 +1074,8 @@ static VarLocation RuntimeExprBinary(PascalCompiler *Compiler,
     }
 
     /* typecheck */
-    IntegralType Type = CoerceTypes(Compiler, OpToken, Left->Type.Integral, Right->Type.Integral);
-    bool ConversionOk = 
-        ConvertTypeImplicitly(Compiler, Type, &Tmp) 
+    IntegralType Type = CoerceTypes(Left->Type.Integral, Right->Type.Integral);
+    bool ConversionOk = ConvertTypeImplicitly(Compiler, Type, &Tmp) 
         && ConvertTypeImplicitly(Compiler, Type, &Src);
     if (!ConversionOk) 
     {
@@ -1226,7 +1239,7 @@ static VarLocation ExprAnd(PascalCompiler *Compiler, VarLocation *Left)
         U32 FromLeft = PVMEmitBranchIfFalse(EMITTER(), Left);
 
         Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
-        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type.Integral, Right.Type.Integral);
+        IntegralType ResultType = CoerceTypes(Left->Type.Integral, Right.Type.Integral);
         if (TYPE_INVALID == ResultType)
             goto InvalidOperands;
         PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
@@ -1273,7 +1286,7 @@ static VarLocation ExprOr(PascalCompiler *Compiler, VarLocation *Left)
         U32 FromTrue = PVMEmitBranchIfTrue(EMITTER(), Left);
 
         Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
-        IntegralType ResultType = CoerceTypes(Compiler, &OpToken, Left->Type.Integral, Right.Type.Integral);
+        IntegralType ResultType = CoerceTypes(Left->Type.Integral, Right.Type.Integral);
         if (TYPE_INVALID == ResultType)
             goto InvalidOperands;
         PASCAL_ASSERT(TYPE_BOOLEAN == ResultType, "");
@@ -1393,29 +1406,15 @@ static VarLocation ParsePrecedence(PascalCompiler *Compiler, Precedence Prec)
 
 
 /* returns the type that both sides should be */
-IntegralType CoerceTypes(PascalCompiler *Compiler, const Token *Op, IntegralType Left, IntegralType Right)
+IntegralType CoerceTypes(IntegralType Left, IntegralType Right)
 {
     PASCAL_ASSERT(Left >= TYPE_INVALID && Right >= TYPE_INVALID, "");
-    if (Left > TYPE_COUNT || Right > TYPE_COUNT)
-        PASCAL_UNREACHABLE("Invalid types");
+    PASCAL_ASSERT(Left < TYPE_COUNT && Right < TYPE_COUNT, "Impossible");
 
     IntegralType CommonType = sCoercionRules[Left][Right];
     if (TYPE_INVALID != CommonType)
     {
         return CommonType;
-    }
-
-    if (NULL == Op)
-    {
-        Error(Compiler, "Invalid combination of %s and %s.", 
-                IntegralTypeToStr(Left), IntegralTypeToStr(Right)
-        );
-    }
-    else
-    {
-        ErrorAt(Compiler, Op, "Invalid combination of %s and %s.",
-                IntegralTypeToStr(Left), IntegralTypeToStr(Right)
-        );
     }
     return TYPE_INVALID;
 }
