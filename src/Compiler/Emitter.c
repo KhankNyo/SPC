@@ -1969,7 +1969,6 @@ VarLocation PVMSetReturnType(PVMEmitter *Emitter, VarType Type)
     {
         ReturnValue.As.Register.ID = Emitter->ReturnValue.As.Register.ID + PVM_REG_COUNT;
     }
-    PVMMarkRegisterAsAllocated(Emitter, ReturnValue.As.Register.ID);
 
     /* TODO: this assumes that R0 contains the addr of the returning record */
     if (TYPE_RECORD == Type.Integral)

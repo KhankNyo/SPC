@@ -84,13 +84,15 @@ void FreeExpr(PascalCompiler *Compiler, VarLocation Expr)
 {
     PASCAL_NONNULL(Compiler);
 
-    if (VAR_REG == Expr.LocationType && !Expr.As.Register.Persistent)
+    if (VAR_REG == Expr.LocationType)
     {
-        PVMFreeRegister(EMITTER(), Expr.As.Register);
+        if (!PVMRegisterIsFree(EMITTER(), Expr.As.Register.ID))
+            PVMFreeRegister(EMITTER(), Expr.As.Register);
     }
     else if (VAR_MEM == Expr.LocationType && !Expr.As.Memory.RegPtr.Persistent)
     {
-        PVMFreeRegister(EMITTER(), Expr.As.Memory.RegPtr);
+        if (!PVMRegisterIsFree(EMITTER(), Expr.As.Memory.RegPtr.ID))
+            PVMFreeRegister(EMITTER(), Expr.As.Memory.RegPtr);
     }
 }
 
