@@ -147,6 +147,29 @@ void PVMMarkRegisterAsFreed(PVMEmitter *Emitter, UInt Reg)
 }
 
 
+static U32 PVMCreateRegListLocation(PVMEmitter *Emitter, 
+        SaveRegInfo Info, U32 Location[PVM_REG_COUNT + PVM_FREG_COUNT])
+{
+    U32 Size = 0;
+    for (UInt i = 0; i < STATIC_ARRAY_SIZE(Info.RegLocation); i++)
+    {
+        if ((Info.Regs >> i) & 0x1)
+        {
+            Location[i] = Emitter->StackSpace;
+            /* free registers that are not in EMPTY_REGLIST */
+            VarRegister Register = {
+                .ID = i,
+                .Persistent = EMPTY_REGLIST & ((U32)1 << i),
+            };
+            PVMFreeRegister(Emitter, Register);
+            Emitter->StackSpace += sizeof(PVMGPR);
+            Size += sizeof(PVMGPR);
+        }
+    }
+    return Size;
+}
+
+
 static SaveRegInfo PVMEmitPushRegList(PVMEmitter *Emitter, U32 RegList)
 {
     SaveRegInfo Info = {
@@ -171,21 +194,7 @@ static SaveRegInfo PVMEmitPushRegList(PVMEmitter *Emitter, U32 RegList)
         WriteOp16(Emitter, PVM_REGLIST(FPSHH, Info.Regs >> 26));
     }
 
-    for (UInt i = 0; i < STATIC_ARRAY_SIZE(Info.RegLocation); i++)
-    {
-        if ((Info.Regs >> i) & 0x1)
-        {
-            Info.RegLocation[i] = Emitter->StackSpace;
-            /* free registers that are not in EMPTY_REGLIST */
-            VarRegister Register = {
-                .ID = i,
-                .Persistent = EMPTY_REGLIST & ((U32)1 << i),
-            };
-            PVMFreeRegister(Emitter, Register);
-            Emitter->StackSpace += sizeof(PVMGPR);
-        }
-    }
-
+    PVMCreateRegListLocation(Emitter, Info, Info.RegLocation);
     return Info;
 }
 
@@ -1912,7 +1921,9 @@ VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType ArgType, I32 
         };
 
         if (IntegralTypeIsFloat(ArgType.Integral))
+        {
             ArgReg.As.Register.ID += PVM_REG_COUNT;
+        }
         return ArgReg;
     }
 
@@ -2055,6 +2066,26 @@ void PVMEmitStackAllocation(PVMEmitter *Emitter, I32 Size)
 }
 
 
+VarLocation PVMCreateStackLocation(PVMEmitter *Emitter, VarType Type, int FpOffset)
+{
+    U32 Size = Type.Size;
+    if (Size % sizeof(PVMGPR))
+        Size = (Size + sizeof(PVMGPR)) & ~(sizeof(PVMGPR) - 1);
+
+    VarLocation Location = {
+        .LocationType = VAR_MEM,
+        .Type = Type,
+        .As.Memory = {
+            .Location = FpOffset,
+            .RegPtr = Emitter->Reg.FP.As.Register,
+        },
+    };
+    if (STACK_TOP == FpOffset)
+        Location.As.Memory.Location = Emitter->StackSpace;
+    return Location;
+}
+
+
 
 
 
@@ -2175,6 +2206,9 @@ bool PVMRegIsSaved(SaveRegInfo Saved, UInt RegID)
 
 VarLocation PVMRetreiveSavedCallerReg(PVMEmitter *Emitter, SaveRegInfo Saved, UInt RegID, VarType Type)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_ASSERT(RegID < STATIC_ARRAY_SIZE(Saved.RegLocation), "Invalid index");
+
     VarLocation RegLocation = {
         .LocationType = VAR_MEM,
         .Type = Type,
@@ -2240,13 +2274,27 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID, SaveRegInfo 
 
 
 /* enter and exit/return */
-U32 PVMEmitEnter(PVMEmitter *Emitter)
+SaveRegInfo PVMEmitEnter(PVMEmitter *Emitter, const SubroutineParameterList *ParameterList)
 {
     PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(ParameterList);
+    
+    SaveRegInfo RegList = { 0 };
 
-    WriteOp16(Emitter, PVM_SYS(ENTER));
-    U32 Location = WriteOp32(Emitter, 0, 0);
-    return Location;
+    UInt Count = ParameterList->Count;
+    if (Count > PVM_ARGREG_COUNT)
+        Count = PVM_ARGREG_COUNT;
+
+    for (UInt i = 0; i < Count; i++)
+    {
+        PVMQueuePushMultiple(Emitter, &RegList, ParameterList->Params[i].Location);
+    }
+    RegList.Size = PVMCreateRegListLocation(Emitter, RegList, RegList.RegLocation);
+
+    U16 ShortenedRegList = (RegList.Regs & 0xFF) | ((RegList.Regs >> 8) & 0xFF00);
+    WriteOp32(Emitter, PVM_SYS(ENTER), ShortenedRegList);
+    Write32(Emitter, 0);
+    return RegList;
 }
 
 void PVMPatchEnter(PVMEmitter *Emitter, U32 Location, U32 StackSize)
@@ -2257,8 +2305,8 @@ void PVMPatchEnter(PVMEmitter *Emitter, U32 Location, U32 StackSize)
     if (StackSize % sizeof(PVMGPR))
         StackSize = (StackSize + sizeof(PVMGPR)) & ~(sizeof(PVMGPR) - 1);
 
-    Chunk->Code[Location] = StackSize;
-    Chunk->Code[Location + 1] = StackSize >> 16;
+    Chunk->Code[Location + 2] = StackSize;
+    Chunk->Code[Location + 3] = StackSize >> 16;
 }
 
 void PVMEmitExit(PVMEmitter *Emitter)

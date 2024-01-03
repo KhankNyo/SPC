@@ -209,32 +209,32 @@ PVMReturnValue PVMInterpret(PascalVM *PVM, PVMChunk *Chunk)
     PVM->Condition = PVM->F[PVM_GET_RD(Opc)]RegType Operator PVM->F[PVM_GET_RS(Opc)]RegType
 
 /* starting from R(Base) to R(Base + 8) */
-#define PUSH_MULTIPLE(RegType, Base, Opc) do{\
-    UInt RegList = PVM_GET_REGLIST(Opc);\
+#define PUSH_MULTIPLE(RegType, Base, Top, RegList) do{\
+    UInt RegList_ = RegList;\
     UInt Base_ = Base;\
     UInt i = Base_;\
-    while (RegList && i < Base_ + PVM_REG_COUNT/2) {\
-        if (RegList & 1) {\
+    while (RegList_ && i < Top) {\
+        if (RegList_ & 1) {\
             *(++SP().Ptr.DWord) = PVM->RegType[i].DWord;\
             /* TODO: check stack */\
         }\
         i++;\
-        RegList >>= 1;\
+        RegList_ >>= 1;\
     }\
 } while (0)
 
 /* starting from R(Base + 8) to R(Base) */
-#define POP_MULTIPLE(RegType, Base, Opc) do{\
-    UInt RegList = PVM_GET_REGLIST(Opc);\
+#define POP_MULTIPLE(RegType, Base, Top, RegList) do{\
+    UInt RegList_ = RegList;\
     UInt Base_ = Base;\
     UInt i = Base_;\
-    while (RegList && i < Base_ + PVM_REG_COUNT/2) {\
-        if (RegList & 0x80) {\
+    while (RegList_ && i < Top) {\
+        if (RegList_ & 0x80) {\
             PVM->RegType[(Base + (PVM_REG_COUNT/2)-1) - i].DWord = *(SP().Ptr.DWord--);\
             /* TODO: check stack */\
         }\
         i++;\
-        RegList = (RegList << 1) & 0xFF;\
+        RegList_ = (RegList_ << 1) & 0xFF;\
     }\
 } while (0)
 
@@ -341,7 +341,19 @@ do {\
             } break;
             case OP_SYS_ENTER:
             {
+                /* save frame */
                 FP().Ptr.Byte = SP().Ptr.Byte + sizeof(PVMGPR);
+
+                U16 RegList = *IP++;
+                if (RegList & 0xFF)
+                {
+                    PUSH_MULTIPLE(R, 0, 8, RegList & 0xFF);
+                }
+                if (RegList >> 8)
+                {
+                    PUSH_MULTIPLE(F, 0, 8, RegList >> 8);
+                }
+
                 U32 StackSize = 0;
                 GET_SEX_IMM(StackSize, IMMTYPE_U32, IP);
                 SP().Ptr.Byte += StackSize;
@@ -599,14 +611,14 @@ do {\
         } break;
 
 
-        case OP_PSHL: PUSH_MULTIPLE(R, 0, Opcode); break;
-        case OP_POPL: POP_MULTIPLE(R, 0, Opcode); break;
-        case OP_PSHH: PUSH_MULTIPLE(R, 8, Opcode); break;
-        case OP_POPH: POP_MULTIPLE(R, 8, Opcode); break;
-        case OP_FPSHL: PUSH_MULTIPLE(F, 0, Opcode); break;
-        case OP_FPOPL: POP_MULTIPLE(F, 0, Opcode); break;
-        case OP_FPSHH: PUSH_MULTIPLE(F, 8, Opcode); break;
-        case OP_FPOPH: POP_MULTIPLE(F, 8, Opcode); break;
+        case OP_PSHL: PUSH_MULTIPLE(R, 0, 8, PVM_GET_REGLIST(Opcode)); break;
+        case OP_POPL: POP_MULTIPLE(R, 0, 8, PVM_GET_REGLIST(Opcode)); break;
+        case OP_PSHH: PUSH_MULTIPLE(R, 8, 16, PVM_GET_REGLIST(Opcode)); break;
+        case OP_POPH: POP_MULTIPLE(R, 8, 16, PVM_GET_REGLIST(Opcode)); break;
+        case OP_FPSHL: PUSH_MULTIPLE(F, 0, 8, PVM_GET_REGLIST(Opcode)); break;
+        case OP_FPOPL: POP_MULTIPLE(F, 0, 8, PVM_GET_REGLIST(Opcode)); break;
+        case OP_FPSHH: PUSH_MULTIPLE(F, 8, 16, PVM_GET_REGLIST(Opcode)); break;
+        case OP_FPOPH: POP_MULTIPLE(F, 8, 16, PVM_GET_REGLIST(Opcode)); break;
 
 
         case OP_FADD: FLOAT_BINARY_OP(+, Opcode, .Single); break;
@@ -868,6 +880,7 @@ Exit:
 void PVMDumpState(FILE *f, const PascalVM *PVM, UInt RegPerLine)
 {
     fprintf(f, "\n===================== INT REGISTERS ======================");
+    fprintf(f, "\nCondition Flag: %s", PVM->Condition ? "true" : "false");
     fprintf(f, "\nR%d: Stack pointer; R%d: Frame Pointer; R%d: Global Pointer\n",
             PVM_REG_SP, PVM_REG_FP, PVM_REG_GP
     );

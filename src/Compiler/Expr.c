@@ -123,9 +123,14 @@ void CompileExprInto(PascalCompiler *Compiler, const Token *ErrorSpot, VarLocati
         goto InvalidTypeCombination;
     }
 
-    if (IntegralTypeIsOrdinal(Location->Type.Integral) 
-    && IntegralTypeIsOrdinal(Expr.Type.Integral))
+    if (IntegralTypeIsOrdinal(Location->Type.Integral))
     {
+        PVMEmitMove(EMITTER(), Location, &Expr);
+    }
+    else if (TYPE_POINTER == Location->Type.Integral)
+    {
+        if (!VarTypeEqual(&Location->Type, &Expr.Type))
+            goto InvalidTypeCombination;
         PVMEmitMove(EMITTER(), Location, &Expr);
     }
     else if (VarTypeEqual(&Location->Type, &Expr.Type))
@@ -266,20 +271,7 @@ static VarLocation FactorCall(PascalCompiler *Compiler, VarLocation *Location)
     /* setup return reg */
     if (TYPE_RECORD == Subroutine->ReturnType->Integral)
     {
-        if (TYPE_RECORD != Compiler->Lhs.Type.Integral)
-        {
-            /* allocate tmp space */
-            PASCAL_UNREACHABLE("TODO: not using record return type");
-        }
-
-        /* TODO: unhack this */
-        ReturnValue = PVMSetReturnType(EMITTER(), *Subroutine->ReturnType);
-        VarRegister Arg = ReturnValue.As.Memory.RegPtr;
-        PASCAL_ASSERT(VAR_MEM == Compiler->Lhs.LocationType, "");
-
-        PVMEmitLoadAddr(EMITTER(), Arg, Compiler->Lhs.As.Memory);
-        PVMMarkRegisterAsAllocated(EMITTER(), Arg.ID);
-        CompileSubroutineCall(Compiler, Location, &Callee, &ReturnValue);
+        ReturnValue = CompileSubroutineCall(Compiler, Location, &Callee, Compiler->Lhs);
     }
     else
     {

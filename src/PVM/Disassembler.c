@@ -46,7 +46,7 @@ void PVMDisasm(FILE *f, const PVMChunk *Chunk, const char *Name)
         const LineDebugInfo *Info = ChunkGetConstDebugInfo(Chunk, i);
         if (NULL != Info && Last != Info)
         {
-            fputc('\n', f);
+            //fputc('\n', f);
             Last = Info;
             if (Info->IsSubroutine)
             {
@@ -196,24 +196,16 @@ static void DisasmMnemonic(FILE *f, const char *Mnemonic, U16 Opcode)
 }
 
 
-static void DisasmReglist(FILE *f, const char *Mnemonic, U16 Opcode, bool UpperRegisters)
+static void PrintRegList(char *Buffer, USize BufSize, 
+        U16 RegisterList, UInt Start, UInt Stop, const char **Registers)
 {
-    const char **Registers = sIntReg;
-    if (UpperRegisters)
-    {
-        Registers = &sIntReg[PVM_REG_COUNT/2];
-    }
-
-    char RegisterListStr[256] = {0};
-    char *Tmp = RegisterListStr;
-    UInt SizeLeft = sizeof RegisterListStr;
+    char *Tmp = Buffer;
+    UInt SizeLeft = BufSize;
     int Written = 0;
 
-    UInt RegisterList = PVM_GET_REGLIST(Opcode);
-
 #define REGISTER_SELECTED(Idx) ((RegisterList >> (Idx)) & 0x1)
-    UInt i = 0;
-    while (i < PVM_REG_COUNT/2)
+    UInt i = Start;
+    while (i < Stop)
     {
         if ((REGISTER_SELECTED(i) && SizeLeft > 0))
         {
@@ -243,6 +235,19 @@ static void DisasmReglist(FILE *f, const char *Mnemonic, U16 Opcode, bool UpperR
         i++;
     }
 #undef REGISTER_SELECTED
+
+
+
+}
+
+
+static void DisasmRegList(FILE *f, const char *Mnemonic, U16 Opcode, const char **Registers)
+{
+    char RegisterListStr[256] = { 0 };
+    PrintRegList(RegisterListStr, sizeof RegisterListStr, 
+            PVM_GET_REGLIST(Opcode), 0, PVM_REG_COUNT / 2,
+            Registers
+    );
 
     int Pad = Print2Bytes(f, Opcode);
     PrintPaddedMnemonic(f, Pad, Mnemonic);
@@ -388,12 +393,24 @@ static U32 DisasmSysOp(FILE *f, const PVMChunk *Chunk, U32 Addr, U16 Opcode)
     } break;
     case OP_SYS_ENTER:
     {
-        ImmediateInfo Info = GetImmFromImmType(Chunk, Addr + 1, IMMTYPE_U32);
+        U16 RegList = Chunk->Code[Addr + 1];
+        ImmediateInfo Info = GetImmFromImmType(Chunk, Addr + 2, IMMTYPE_U32);
+
         int Pad = Print2Bytes(f, Opcode);
-        Pad += Print2Bytes(f, Info.Imm);
+        Pad += Print2Bytes(f, RegList);
+
         PrintPaddedMnemonic(f, Pad, "enter");
-        fprintf(f, "%u", (U32)Info.Imm);
-        PrintImmBytes(f, Info);
+        char IntList[64] = { 0 }, FltList[64] = { 0 };
+        PrintRegList(IntList, sizeof IntList, RegList, 0, 8, sIntReg);
+        PrintRegList(FltList, sizeof FltList, RegList >> 8, 0, 8, sFltReg);
+
+        fprintf(f, "{ %s; %s }, rsp + %u", 
+                IntList, FltList, (U32)Info.Imm
+        );
+        fprintf(f, "\n%*s  ", sAddrPad, "");
+        Print2Bytes(f, Info.Imm);
+        Print2Bytes(f, Info.Imm >> 16);
+        fputc('\n', f);
         return Info.Addr;
     } break;
     }
@@ -469,14 +486,14 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_SETEZ: DisasmRdRs(f, "setez", sIntReg, Opcode); break;
 
 
-    case OP_PSHL: DisasmReglist(f, "pshl", Opcode, false); break;
-    case OP_PSHH: DisasmReglist(f, "pshh", Opcode, true); break;
-    case OP_POPL: DisasmReglist(f, "popl", Opcode, false); break;
-    case OP_POPH: DisasmReglist(f, "pshh", Opcode, true); break;
-    case OP_FPSHL: DisasmReglist(f, "fpshl", Opcode, false); break;
-    case OP_FPSHH: DisasmReglist(f, "fpshh", Opcode, true); break;
-    case OP_FPOPL: DisasmReglist(f, "fpopl", Opcode, false); break;
-    case OP_FPOPH: DisasmReglist(f, "fpshh", Opcode, true); break;
+    case OP_PSHL: DisasmRegList(f, "pshl", Opcode, sIntReg); break;
+    case OP_PSHH: DisasmRegList(f, "pshh", Opcode, &sIntReg[PVM_REG_COUNT/2]); break;
+    case OP_POPL: DisasmRegList(f, "popl", Opcode, sIntReg); break;
+    case OP_POPH: DisasmRegList(f, "pshh", Opcode, &sIntReg[PVM_REG_COUNT/2]); break;
+    case OP_FPSHL: DisasmRegList(f, "fpshl", Opcode, sFltReg); break;
+    case OP_FPSHH: DisasmRegList(f, "fpshh", Opcode, &sFltReg[PVM_FREG_COUNT/2]); break;
+    case OP_FPOPL: DisasmRegList(f, "fpopl", Opcode, sFltReg); break;
+    case OP_FPOPH: DisasmRegList(f, "fpshh", Opcode, &sFltReg[PVM_FREG_COUNT/2]); break;
 
 
     case OP_LD32: return DisasmMem(f, "ld32", sIntReg, Opcode, IMMTYPE_I16, Chunk, Addr);

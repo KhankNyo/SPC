@@ -141,8 +141,10 @@ bool PVMQueueIsFull(const SaveRegInfo *RegList);
 
 
 /* stack instructions */
-VarMemory PVMQueueStackArg(PVMEmitter *Emitter, U32 Size);
 void PVMEmitStackAllocation(PVMEmitter *Emitter, I32 Size);
+/* NOTE: does not advance the stack pointer nor emit any instructions to do so */
+#define STACK_TOP -1 
+VarLocation PVMCreateStackLocation(PVMEmitter *Emitter, VarType Type, int FpOffset);
 
 /* global instructions */
 U32 PVMGetGlobalOffset(PVMEmitter *Emitter);
@@ -166,7 +168,7 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID, SaveRegInfo 
 
 
 /* enter and exit/return */
-U32 PVMEmitEnter(PVMEmitter *Emitter);
+SaveRegInfo PVMEmitEnter(PVMEmitter *Emitter, const SubroutineParameterList *Params);
 void PVMPatchEnter(PVMEmitter *Emitter, U32 Location, U32 StackSize);
 void PVMEmitExit(PVMEmitter *Emitter);
 

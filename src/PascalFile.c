@@ -24,7 +24,7 @@ int PascalRunFile(const U8 *InFileName, const U8 *OutFileName)
     if (NULL == Source)
         return PASCAL_EXIT_FAILURE;
 
-    int Status = PASCAL_EXIT_FAILURE;
+    int Status = PASCAL_EXIT_SUCCESS;
     PascalVartab Predefined = VartabPredefinedIdentifiers(MemGetAllocator(), 1024);
     PascalCompileFlags Flags = { 
         .CompMode = PASCAL_COMPMODE_PROGRAM, 

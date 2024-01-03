@@ -21,7 +21,9 @@ PascalVar *CompileRecordDefinition(PascalCompiler *Compiler, const Token *Name);
 
 
 /* NULL can be passed into OutReturnValue */
-void CompileSubroutineCall(PascalCompiler *Compiler,
+/* returns temporary record if the callee does return one, 
+ * or a VarLocation with VAR_INVALID */
+VarLocation CompileSubroutineCall(PascalCompiler *Compiler,
         VarLocation *Callee, const Token *Name, VarLocation *OutReturnValue
 );
 

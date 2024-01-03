@@ -65,7 +65,7 @@ struct PascalCompiler
     Token EmptyToken;
 
     TmpIdentifiers Idens;
-    VarLocation Lhs;
+    VarLocation *Lhs;
 
     /* TODO: dynamic */
     /* for exit statement to see which subroutine it's currently in 

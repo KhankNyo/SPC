@@ -58,7 +58,7 @@ static bool NoMoreToken(PascalCompiler *Compiler)
     {
         if (PASCAL_COMPMODE_REPL == Compiler->Flags.CompMode)
         {
-            return Compiler->Error || !CompilerGetLinesFromCallback(Compiler);
+            return Compiler->Panic || !CompilerGetLinesFromCallback(Compiler);
         }
         return true;
     }
@@ -509,7 +509,7 @@ static void CompileCallStmt(PascalCompiler *Compiler, const Token Name, VarLocat
     /* iden consumed */
     /* call the subroutine */
     CompilerInitDebugInfo(Compiler, &Name);
-    CompileSubroutineCall(Compiler, Location, &Name, NULL);
+    FreeExpr(Compiler, CompileSubroutineCall(Compiler, Location, &Name, NULL));
     CompilerEmitDebugInfo(Compiler, &Name);
 }
 
@@ -563,48 +563,53 @@ static void CompilerEmitAssignment(PascalCompiler *Compiler, const Token *Assign
     }
 }
 
+
 static void CompileAssignStmt(PascalCompiler *Compiler, const Token Identifier)
 {
     PASCAL_NONNULL(Compiler);
-    /* iden consumed */
+    PASCAL_ASSERT(NULL == Compiler->Lhs, "unreachable");
+
     CompilerInitDebugInfo(Compiler, &Identifier);
 
-
-    /* no nested assignment is possible, this is ok */
-    Compiler->Lhs = CompileVariableExpr(Compiler);
-    VarLocation *Dst = &Compiler->Lhs;
-
-
-    const Token Assignment = Compiler->Next;
-    ConsumeToken(Compiler); /* assignment type */
-
-
+    VarLocation Dst = CompileVariableExpr(Compiler);
+    ConsumeToken(Compiler);
+    const Token Assignment = Compiler->Curr;
+    Compiler->Lhs = &Dst;
     VarLocation Right = CompileExpr(Compiler);
-    if (TYPE_INVALID == CoerceTypes(Dst->Type.Integral, Right.Type.Integral)
-    || !ConvertTypeImplicitly(Compiler, Dst->Type.Integral, &Right))
+
+
+    if (TYPE_RECORD == Dst.Type.Integral)
     {
-        ErrorAt(Compiler, &Assignment, "Cannot assign expression of type %s to %s.", 
-                VarTypeToStr(Right.Type), VarTypeToStr(Dst->Type)
-        );
-    }
-    else if (TYPE_RECORD == Dst->Type.Integral)
-    {
-        if (!VarTypeEqual(&Dst->Type, &Right.Type))
+        if (TOKEN_COLON_EQUAL != Assignment.Type)
         {
-            ErrorAt(Compiler, &Assignment, "Cannot assign record '"STRVIEW_FMT"' to record '"STRVIEW_FMT"'",
-                    STRVIEW_FMT_ARG(&Dst->Type.As.Record.Name), STRVIEW_FMT_ARG(&Right.Type.As.Record.Name)
+            ErrorAt(Compiler, &Assignment, "Expected ':=' instead.");
+        }
+        if (!VarTypeEqual(&Dst.Type, &Right.Type))
+        {
+            ErrorAt(Compiler, &Assignment, "Cannot assign %s to %s.",
+                    VarTypeToStr(Right.Type), VarTypeToStr(Dst.Type)
             );
         }
+        /* CompileExpr handled record return value already */
     }
-
-    /* emit the assignment */
-    if (!Compiler->Panic)
+    else
     {
-        CompilerEmitAssignment(Compiler, &Assignment, Dst, &Right);
+        if (!ConvertTypeImplicitly(Compiler, Dst.Type.Integral, &Right))
+        {
+            ErrorAt(Compiler, &Assignment, "Cannot assign expression of type %s to %s.", 
+                    VarTypeToStr(Right.Type), VarTypeToStr(Dst.Type)
+            );
+        }
+        if (!Compiler->Panic)
+        {
+            CompilerEmitAssignment(Compiler, &Assignment, &Dst, &Right);
+        }
     }
-    Compiler->Lhs.LocationType = VAR_INVALID;
     FreeExpr(Compiler, Right);
     CompilerEmitDebugInfo(Compiler, &Identifier);
+
+    /* invalidate lhs */
+    Compiler->Lhs = NULL;
 }
 
 
@@ -950,36 +955,29 @@ static SubroutineParameterList CompileParameterListWithParentheses(PascalCompile
     return ParameterList;
 }
 
-static U32 CompileSubroutineEntry(PascalCompiler *Compiler, SubroutineParameterList *Params)
+static U32 CompileSubroutineEntry(PascalCompiler *Compiler, SubroutineParameterList *Params, UInt NumHiddenArgs)
 {
-    U32 Entry = PVMEmitEnter(EMITTER());
-    UInt RegParams = Params->Count;
-    if (RegParams > PVM_ARGREG_COUNT)
-        RegParams = PVM_ARGREG_COUNT;
-
-
-    SaveRegInfo RegList = { 0 };
-    for (UInt i = 0; i < RegParams; i++)
-    {
-        PVMQueuePushMultiple(EMITTER(), &RegList, Params->Params[i].Location);
-        PASCAL_ASSERT(!PVMQueueIsFull(&RegList), "Unreachable in %s", __func__);
-    }
-    PVMQueueCommit(EMITTER(), &RegList);
-    for (UInt i = 0; i < RegParams; i++)
+    U32 Entry = PVMGetCurrentLocation(EMITTER());
+    SaveRegInfo RegList = PVMEmitEnter(EMITTER(), Params);
+    UInt SavedParamCount = BitCount(RegList.Regs);
+    for (UInt i = 0; i < SavedParamCount; i++)
     {
         VarLocation *Param = Params->Params[i].Location;
+        PASCAL_NONNULL(Param);
 
-        if (IntegralTypeIsOrdinal(Param->Type.Integral))
+        if (IntegralTypeIsOrdinal(Param->Type.Integral) || TYPE_POINTER == Param->Type.Integral)
         {
             Param->LocationType = VAR_MEM;
-            *Param = PVMRetreiveSavedCallerReg(EMITTER(), RegList, i, Param->Type);
+            *Param = PVMRetreiveSavedCallerReg(EMITTER(), 
+                    RegList, i + NumHiddenArgs, Param->Type
+            );
         }
         else
         {
             PASCAL_UNREACHABLE("TODO: non ordinal types");
         }
     }
-    PVMQueueRefresh(EMITTER(), &RegList);
+    Compiler->StackSize += RegList.Size;
     return Entry;
 }
 
@@ -1090,10 +1088,12 @@ static void CompileSubroutineBlock(PascalCompiler *Compiler, const char *Subrout
 
 
         /* body */
-        U32 EnterLocation = CompileSubroutineEntry(Compiler, &Subroutine->ParameterList);
+        U32 PrevStackSize = Compiler->StackSize;
+        U32 EnterLocation = CompileSubroutineEntry(Compiler, &Subroutine->ParameterList, RecordReturn);
+        U32 LocalStart = Compiler->StackSize;
         CompileBlock(Compiler);
-        PVMPatchEnter(EMITTER(), EnterLocation, Compiler->StackSize);
-        Compiler->StackSize = 0;
+        PVMPatchEnter(EMITTER(), EnterLocation, Compiler->StackSize - LocalStart);
+        Compiler->StackSize = PrevStackSize;
 
 
         /* emit the exit instruction and associate it with the 'end' token */
@@ -1478,7 +1478,7 @@ static bool CompileProgram(PascalCompiler *Compiler)
 
 
     CompileBlock(Compiler);
-    return ConsumeOrError(Compiler, TOKEN_DOT, "Expected '.' instead.");
+    return !Compiler->Error && ConsumeOrError(Compiler, TOKEN_DOT, "Expected '.' instead.");
 }
 
 
@@ -1510,7 +1510,7 @@ PascalCompiler PascalCompilerInit(
         .Idens = { .Cap = STATIC_ARRAY_SIZE(Compiler.Idens.Array) },
         .Subroutine = { 0 },
 
-        .Lhs = { 0 },
+        .Lhs = NULL,
         .Breaks = { 0 },
         .BreakCount = 0,
         .InLoop = false,
