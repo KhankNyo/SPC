@@ -21,10 +21,10 @@ static bool ParseTypename(PascalCompiler *Compiler, TypeAttribute *Out)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Out);
-    bool Pointer = ConsumeIfNextIs(Compiler, TOKEN_CARET);
+    bool Pointer = ConsumeIfNextTokenIs(Compiler, TOKEN_CARET);
     Out->Packed = false;
 
-    if (ConsumeIfNextIs(Compiler, TOKEN_RECORD))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_RECORD))
     {
         /* annonymous record */
         TmpIdentifiers SaveList = CompilerSaveTmp(Compiler);
@@ -36,15 +36,15 @@ static bool ParseTypename(PascalCompiler *Compiler, TypeAttribute *Out)
         Out->Type = Record->Type;
         return true;
     }
-    if (ConsumeIfNextIs(Compiler, TOKEN_ARRAY))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_ARRAY))
     {
         PASCAL_UNREACHABLE("TODO: array");
     }
-    if (ConsumeIfNextIs(Compiler, TOKEN_FUNCTION))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_FUNCTION))
     {
         PASCAL_UNREACHABLE("TODO: fnptr");
     }
-    if (ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         PascalVar *Typename = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined type name.");
         if (NULL == Typename)
@@ -94,7 +94,7 @@ static bool ParseVarList(PascalCompiler *Compiler, TypeAttribute *Out)
         ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected variable name.");
         CompilerPushTmp(Compiler, Compiler->Curr);
         Count++;
-    } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
+    } while (ConsumeIfNextTokenIs(Compiler, TOKEN_COMMA));
 
     if (!ConsumeOrError(Compiler, TOKEN_COLON, 
     "Expected ':' and type name after variable%s.", Count > 1 ? "s" : ""))
@@ -161,11 +161,11 @@ SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVar
 
     /* '(' is consumed */
     do {
-        if (ConsumeIfNextIs(Compiler, TOKEN_VAR))
+        if (ConsumeIfNextTokenIs(Compiler, TOKEN_VAR))
         {
             PASCAL_UNREACHABLE("TODO: reference parameter.");
         }
-        else if (ConsumeIfNextIs(Compiler, TOKEN_CONST))
+        else if (ConsumeIfNextTokenIs(Compiler, TOKEN_CONST))
         {
             PASCAL_UNREACHABLE("TODO: const parameter.");
         }
@@ -176,7 +176,7 @@ SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVar
         do {
             ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected parameter name.");
             CompilerPushTmp(Compiler, Compiler->Curr);
-        } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
+        } while (ConsumeIfNextTokenIs(Compiler, TOKEN_COMMA));
         ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' or ',' after parameter name.");
 
 
@@ -217,7 +217,7 @@ SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVar
         {
             /* Error from above */
         }
-    } while (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON));
+    } while (ConsumeIfNextTokenIs(Compiler, TOKEN_SEMICOLON));
     return ParameterList;
 }
 
@@ -279,15 +279,15 @@ static void CompilePartialArgumentList(PascalCompiler *Compiler,
 
     UInt ExpectedArgCount = Parameters->Count;
     UInt ArgCount = 0;
-    if (!ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
+    if (!ConsumeIfNextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
     {
         do {
             if (ArgCount < ExpectedArgCount)
             {
-                const VarLocation *CurrentArg = Parameters->Params[ArgCount].Location;
-                PASCAL_NONNULL(CurrentArg);
+                PASCAL_NONNULL(Parameters->Params[ArgCount].Location);
+                const VarType *ArgType = &Parameters->Params[ArgCount].Location->Type;
 
-                VarLocation Arg = PVMSetArg(EMITTER(), ArgCount + HiddenParamCount, CurrentArg->Type, Base);
+                VarLocation Arg = PVMSetArg(EMITTER(), ArgCount + HiddenParamCount, *ArgType, Base);
                 CompileExprInto(Compiler, NULL, &Arg);
                 PVMMarkArgAsOccupied(EMITTER(), &Arg);
             }
@@ -296,8 +296,7 @@ static void CompilePartialArgumentList(PascalCompiler *Compiler,
                 FreeExpr(Compiler, CompileExpr(Compiler));
             }
             ArgCount++;
-        } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
-        /* end of arg */
+        } while (ConsumeIfNextTokenIs(Compiler, TOKEN_COMMA));
         ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after argument list.");
     }
     if (ArgCount != ExpectedArgCount)
@@ -317,7 +316,7 @@ static void CompileArgumentList(PascalCompiler *Compiler,
     PASCAL_NONNULL(Subroutine);
     PASCAL_NONNULL(Base);
 
-    if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN)
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_PAREN)
     || TOKEN_LEFT_PAREN == Compiler->Curr.Type)
     {
         CompilePartialArgumentList(Compiler, 

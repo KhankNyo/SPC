@@ -1845,56 +1845,6 @@ VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op,
 
 
 
-
-/* subroutine arguments */
-VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType ParamType, I32 *Base)
-{
-    PASCAL_NONNULL(Emitter);
-    PASCAL_NONNULL(Base);
-    /* params in register */
-    if (ArgNumber < PVM_ARGREG_COUNT)
-    {
-        VarLocation Location = {
-            .Type = ParamType,
-            .LocationType = VAR_REG,
-            .As.Register = {
-                .ID = ArgNumber,
-                .Persistent = true,
-            },
-        };
-        VarRegister *Register = &Location.As.Register;
-
-        if (IntegralTypeIsFloat(ParamType.Integral))
-        {
-            Register->ID += PVM_REG_COUNT;
-        }
-        else if (TYPE_RECORD == ParamType.Integral)
-        {
-            VarRegister Tmp = *Register;
-            Location.LocationType = VAR_MEM;
-            Location.As.Memory.RegPtr = Tmp;
-            Location.As.Memory.Location = 0;
-
-            Register = &Location.As.Memory.RegPtr;
-        }
-        PVMMarkRegisterAsAllocated(Emitter, Register->ID);
-        return Location;
-    }
-
-    /* params on stack */
-    I32 ParamOffset = *Base - ParamType.Size;
-    VarLocation Location = {
-        .Type = ParamType,
-        .LocationType = VAR_MEM,
-        .As.Memory = {
-            .RegPtr = Emitter->Reg.FP.As.Register,
-            .Location = ParamOffset,
-        },
-    };
-    *Base = ParamOffset;
-    return Location;
-}
-
 I32 PVMStartArg(PVMEmitter *Emitter, U32 ArgSize)
 {
     PASCAL_NONNULL(Emitter);

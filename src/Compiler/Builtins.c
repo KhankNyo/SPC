@@ -37,7 +37,7 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
     UInt ArgCount = 0;
 
     SaveRegInfo RegList = { 0 };
-    if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_PAREN))
     {
         if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
         {
@@ -48,7 +48,7 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
                 PVMQueueAndCommitOnFull(EMITTER(), &RegList, &Arg);
                 PVMQueueAndCommitOnFull(EMITTER(), &RegList, &ArgType);
                 ArgCount++;
-            } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
+            } while (ConsumeIfNextTokenIs(Compiler, TOKEN_COMMA));
         }
         ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after argument list.");
     }

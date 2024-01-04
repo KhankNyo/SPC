@@ -164,12 +164,12 @@ static void CompileExitStmt(PascalCompiler *Compiler)
     Token Keyword = Compiler->Curr;
     CompilerInitDebugInfo(Compiler, &Keyword);
 
-    if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_PAREN))
     {
         const char *ErrorMessage = "Expected ')'.";
         if (IsAtGlobalScope(Compiler))
         {
-            if (ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
+            if (ConsumeIfNextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
                 goto Done;
 
             VarLocation ReturnValue = PVMSetReturnType(EMITTER(), VarTypeInit(TYPE_I32, sizeof(I32)));
@@ -186,7 +186,7 @@ static void CompileExitStmt(PascalCompiler *Compiler)
             if (NULL != CurrentSubroutine->ReturnType)
             {
                 /* ')' is the next token? */
-                if (ConsumeIfNextIs(Compiler, TOKEN_RIGHT_PAREN))
+                if (ConsumeIfNextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
                 {
                     ErrorAt(Compiler, &Keyword, "Function must return a value.");
                     goto Done;
@@ -221,7 +221,7 @@ static void CompileBeginStmt(PascalCompiler *Compiler)
             Error(Compiler, "Expected 'end'.");
         }
         CompileStmt(Compiler);
-    } while (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON));
+    } while (ConsumeIfNextTokenIs(Compiler, TOKEN_SEMICOLON));
     ConsumeOrError(Compiler, TOKEN_END, "Expected ';' between statements.");
 }
 
@@ -257,7 +257,7 @@ static void CompileRepeatUntilStmt(PascalCompiler *Compiler)
     {
         do {
             CompileStmt(Compiler);
-        } while (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON));
+        } while (ConsumeIfNextTokenIs(Compiler, TOKEN_SEMICOLON));
     }
 
     /* nothing to compile, exit and reports error */
@@ -326,7 +326,7 @@ static void CompileForStmt(PascalCompiler *Compiler)
     TokenType Op = TOKEN_GREATER_EQUAL;
     Token OpToken = Compiler->Next;
     int Inc = 1;
-    if (!ConsumeIfNextIs(Compiler, TOKEN_TO))
+    if (!ConsumeIfNextTokenIs(Compiler, TOKEN_TO))
     {
         ConsumeOrError(Compiler, TOKEN_DOWNTO, "Expected 'to' or 'downto' after expression.");
         Op = TOKEN_LESS_EQUAL;
@@ -472,7 +472,7 @@ static void CompileIfStmt(PascalCompiler *Compiler)
     CompileStmt(Compiler);
     
     EMITTER()->ShouldEmit = Last;
-    if (ConsumeIfNextIs(Compiler, TOKEN_ELSE))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_ELSE))
     {
         U32 FromEndIf = 0;
         if (COND_TRUE == IfCond)
@@ -629,7 +629,7 @@ static void CompileIdenStmt(PascalCompiler *Compiler)
         /* Pascal's weird return statement */
         if (IdentifierInfo->Str.Len == Callee.Lexeme.Len
         && TokenEqualNoCase(IdentifierInfo->Str.Str, Callee.Lexeme.Str, Callee.Lexeme.Len) 
-        && ConsumeIfNextIs(Compiler, TOKEN_COLON_EQUAL))
+        && ConsumeIfNextTokenIs(Compiler, TOKEN_COLON_EQUAL))
         {
             PASCAL_UNREACHABLE("TODO: return by assigning to function name");
         }
@@ -726,7 +726,7 @@ static void CompileCaseStmt(PascalCompiler *Compiler)
         } while (!IsAtEnd(Compiler) && !NextTokenIs(Compiler, TOKEN_END) && !NextTokenIs(Compiler, TOKEN_ELSE));
     }
 
-    if (ConsumeIfNextIs(Compiler, TOKEN_ELSE))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_ELSE))
     {
         if (ExprIsConstant && Emitted)
             EMITTER()->ShouldEmit = false;
@@ -891,60 +891,100 @@ static void CompileBeginBlock(PascalCompiler *Compiler)
 }
 
 
-static PascalVar *CompileSubroutineName(
-        PascalCompiler *Compiler, const Token *Name, bool HasReturnType, const char *SubroutineType)
+typedef struct SubroutineInformation 
 {
-    PascalVar *SubroutineInfo = FindIdentifier(Compiler, Name);
-    if (NULL == SubroutineInfo)
+    PascalVar Name;
+    Token NameToken;
+    bool FirstDeclaration;
+
+    /* these pointers are owned by VarLocation */
+    SubroutineData *Info;
+    U32 *Location;
+    VarType *Type;
+} SubroutineInformation;
+
+static SubroutineInformation ConsumeSubroutineName(PascalCompiler *Compiler, 
+        bool IsFunction, const char *SubroutineType)
+{
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(SubroutineType);
+
+    ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected %s name.", SubroutineType);
+    const Token *Name = &Compiler->Curr;
+    PascalVar *Identifier = FindIdentifier(Compiler, Name);
+
+    /* brand new name? */
+    if (NULL == Identifier) 
     {
         VarLocation *Location = CompilerAllocateVarLocation(Compiler);
-        Location->As.SubroutineLocation = SUBROUTINE_INVALID_LOCATION;
+        PASCAL_NONNULL(Location);
         Location->Type = VarTypeInit(TYPE_FUNCTION, sizeof(void*));
+        Location->As.SubroutineLocation = SUBROUTINE_INVALID_LOCATION;
         Location->LocationType = VAR_SUBROUTINE;
-        return DefineIdentifier(Compiler, Name, Location->Type, Location);
+
+        Identifier = DefineIdentifier(Compiler, Name, Location->Type, Location);
+        PASCAL_NONNULL(Identifier);
+
+        return (SubroutineInformation) {
+            .Info = &Location->Type.As.Subroutine,
+            .Type = &Location->Type,
+            .Location = &Location->As.SubroutineLocation,
+            .Name = *Identifier,
+            .NameToken = *Name,
+            .FirstDeclaration = true,
+        };
     }
-    /* redefinition in repl is fine */
+
+    PASCAL_NONNULL(Identifier->Location);
+    SubroutineInformation Subroutine = { 
+        .Info = &Identifier->Location->Type.As.Subroutine,
+        .Type = &Identifier->Location->Type,
+        .Location = &Identifier->Location->As.SubroutineLocation,
+        .Name = *Identifier,
+        .NameToken = *Name,
+        .FirstDeclaration = false,
+    };
+
+    /* name is already defined */
+    /* redefinition in repl? */
     if (PASCAL_COMPMODE_REPL == Compiler->Flags.CompMode)
-        return SubroutineInfo;
+        return Subroutine; /* redefinition is fine in repl */
 
-    if (TYPE_FUNCTION != SubroutineInfo->Type.Integral)
+    /* not a function? */
+    if (TYPE_FUNCTION != Identifier->Type.Integral)
     {
-        ErrorAt(Compiler, Name, "'"STRVIEW_FMT"' of type %s begin redefined as a %s.",
-                STRVIEW_FMT_ARG(&Name->Lexeme), VarTypeToStr(SubroutineInfo->Type),
-                HasReturnType? "function" : "procedure"
+
+        ErrorAt(Compiler, &Subroutine.NameToken, "Redefinition of '"STRVIEW_FMT"' from %s to %s",
+                STRVIEW_FMT_ARG(&Name->Lexeme), 
+                VarTypeToStr(Identifier->Type), IsFunction? "function" : "procedure"
         );
-        return SubroutineInfo;
+        return Subroutine;
     }
 
 
-    /* subroutine is already declared */
-    VarLocation *Location = SubroutineInfo->Location;
-    SubroutineData *Subroutine = &Location->Type.As.Subroutine;
-    PASCAL_NONNULL(Location);
-
-
-    /* redefinition error */
-    if (Location->As.SubroutineLocation != SUBROUTINE_INVALID_LOCATION)
+    /* is subroutined DEFINED? */
+    if (SUBROUTINE_INVALID_LOCATION != *Subroutine.Location)
     {
-        ErrorAt(Compiler, Name, "Redefinition of %s '"STRVIEW_FMT"' that was defined on line %d.",
-                SubroutineType, STRVIEW_FMT_ARG(&Name->Lexeme), SubroutineInfo->Line
+        PASCAL_UNREACHABLE("TODO: function overload");
+    }
+    /* mismatch between function and subroutine */
+    if (IsFunction != (NULL == Subroutine.Info->ReturnType))
+    {
+        ErrorAt(Compiler, &Subroutine.NameToken, 
+                "Definition of %s '"STRVIEW_FMT"' does not match declaration on line %d.",
+                SubroutineType, STRVIEW_FMT_ARG(&Subroutine.NameToken.Lexeme), 
+                Identifier->Line
         );
     }
-    /* function/procedure mismatch */
-    if (HasReturnType != (NULL == Subroutine->ReturnType))
-    {
-        ErrorAt(Compiler, Name, "Definition of %s '"STRVIEW_FMT"' does not match declaration on line %d.",
-                SubroutineType, STRVIEW_FMT_ARG(&Name->Lexeme), SubroutineInfo->Line
-        );
-    }
-    return SubroutineInfo;
+    return Subroutine;
 }
+
 
 
 static SubroutineParameterList CompileParameterListWithParentheses(PascalCompiler *Compiler, PascalVartab *Scope)
 {
     SubroutineParameterList ParameterList = { 0 };
-    if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_PAREN))
     {
         if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
         {
@@ -955,30 +995,107 @@ static SubroutineParameterList CompileParameterListWithParentheses(PascalCompile
     return ParameterList;
 }
 
+
 static U32 CompileSubroutineEntry(PascalCompiler *Compiler, SubroutineParameterList *Params, UInt NumHiddenArgs)
 {
     U32 Entry = PVMGetCurrentLocation(EMITTER());
+    PASCAL_STATIC_ASSERT(false, 
+            "TODO: EmitEnter Attempts to push local params,"
+            "but we have not initialize stack params yet."
+            "Stack params should be initialized in this function"
+    );
     SaveRegInfo RegList = PVMEmitEnter(EMITTER(), Params);
     UInt SavedParamCount = BitCount(RegList.Regs);
-    for (UInt i = 0; i < SavedParamCount; i++)
+    for (UInt i = 0; i < Params->Count; i++)
     {
         VarLocation *Param = Params->Params[i].Location;
         PASCAL_NONNULL(Param);
-
-        if (IntegralTypeIsOrdinal(Param->Type.Integral) || TYPE_POINTER == Param->Type.Integral)
+        if (i < SavedParamCount)
         {
-            Param->LocationType = VAR_MEM;
-            *Param = PVMRetreiveSavedCallerReg(EMITTER(), 
-                    RegList, i + NumHiddenArgs, Param->Type
-            );
+            if (IntegralTypeIsOrdinal(Param->Type.Integral) || TYPE_POINTER == Param->Type.Integral)
+            {
+                Param->LocationType = VAR_MEM;
+                *Param = PVMRetreiveSavedCallerReg(EMITTER(), 
+                        RegList, i + NumHiddenArgs, Param->Type
+                );
+            }
+            else
+            {
+                PASCAL_UNREACHABLE("TODO: non ordinal types");
+            }
         }
-        else
+        else 
         {
-            PASCAL_UNREACHABLE("TODO: non ordinal types");
+            PASCAL_UNREACHABLE("TODO: stack args");
         }
     }
     Compiler->StackSize += RegList.Size;
     return Entry;
+}
+
+
+
+
+
+static SubroutineInformation CompileSubroutineDeclaration(PascalCompiler *Compiler, 
+        bool IsFunction, const char *SubroutineType)
+{
+    /* consumes name */
+    SubroutineInformation Subroutine = ConsumeSubroutineName(Compiler, 
+            IsFunction, SubroutineType
+    );
+
+    /* consumes parameter list */
+    PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+    SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
+    /* TODO: compare params lists */
+
+    if (!Subroutine.FirstDeclaration)
+    {
+        PASCAL_UNREACHABLE("TODO: compare parameter list");
+    }
+
+    /* consumes return type */
+    const char *BeforeSemicolon;
+    const VarType *ReturnType = NULL;
+    UInt HiddenParamCount = 0;
+    if (IsFunction)
+    {
+        BeforeSemicolon = "type name";
+        ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' after parameter list.");
+        ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected return type name.");
+        PascalVar *ReturnTypeName = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined return type.");
+        if (NULL != ReturnTypeName)
+        {
+            ReturnType = CompilerCopyType(Compiler, ReturnTypeName->Type);
+            HiddenParamCount += TYPE_RECORD == ReturnType->Integral;
+        }
+    }
+    else
+    {
+        BeforeSemicolon = "parameter list";
+        /* for good error message */
+        if (ConsumeIfNextTokenIs(Compiler, TOKEN_COLON))
+        {
+            if (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
+            {
+                Error(Compiler, "Procedure cannot have a return type.");
+            }
+        }
+    }
+    ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s.", BeforeSemicolon);
+
+    /* sets parameter list for caller,
+     * callee's local copy of parameter list 
+     * will only be set up during compilation of subroutine's body */
+    U32 CalleeStackArgSize = 0;
+    for (UInt i = PVM_ARGREG_COUNT; i < ParameterList.Count; i++)
+    {
+        VarLocation *Parameter = ParameterList.Params[i].Location;
+        CalleeStackArgSize += Parameter->Type.Size;
+    }
+    *Subroutine.Type = VarTypeSubroutine(ParameterList, Scope, ReturnType, CalleeStackArgSize);
+    return Subroutine;
 }
 
 
@@ -987,127 +1104,50 @@ static void CompileSubroutineBlock(PascalCompiler *Compiler, const char *Subrout
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(SubroutineType);
 
-
-    /* 'function', 'procedure' consumed */
+    /* function/procedure consumed */
     Token Keyword = Compiler->Curr;
-    bool ShouldHaveReturnType = TOKEN_FUNCTION == Keyword.Type;
-    CompilerInitDebugInfo(Compiler, &Keyword);
-
-
-    /* function/proc name */
-    ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected %s name.", SubroutineType);
-    Token Name = Compiler->Curr;
-    PascalVar *SubroutineInfo = CompileSubroutineName(
-            Compiler, &Name, ShouldHaveReturnType, SubroutineType
-    );
-    VarLocation *Location = SubroutineInfo->Location;
-    SubroutineData *Subroutine = &SubroutineInfo->Type.As.Subroutine;
-    PASCAL_NONNULL(SubroutineInfo);
-    PASCAL_NONNULL(Location);
-    
-
-    /* param list */
     SaveRegInfo PrevScope = PVMEmitterBeginScope(EMITTER());
-    /* TODO: param list check and overload */
-    PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
-    SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
 
 
-    /* return type and semicolon */
-    VarType *ReturnType = NULL;
-    I32 StackBase = 0;
-    UInt RecordReturn = 0; 
-    if (ShouldHaveReturnType)
-    {
-        if (ConsumeIfNextIs(Compiler, TOKEN_SEMICOLON))
-        {
-            ErrorAt(Compiler, &Compiler->Curr, "Must specify a return type for function.");
-        }
-        ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' before function return type.");
-        ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected function return type.");
-        PascalVar *ReturnTypeInfo = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined return type.");
-        if (NULL != ReturnTypeInfo)
-        {
-            RecordReturn = TYPE_RECORD == ReturnTypeInfo->Type.Integral; 
-
-            /* location in the variable table is volatile, 
-             * so we need to copy the return type */
-            ReturnType = CompilerCopyType(Compiler, ReturnTypeInfo->Type);
-            PASCAL_NONNULL(ReturnType);
-
-            /* first arg is the addr of the returning struct, 
-             * TODO: other calling convention */
-            PVMSetParam(EMITTER(), 0, *ReturnType, &StackBase);
-        }
-        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after function return type.");
-    }
-    else
-    {
-        /* for good error message */
-        if (ConsumeIfNextIs(Compiler, TOKEN_COLON))
-        {
-            if (ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER))
-            {
-                Error(Compiler, "Procedure cannot have a return type.");
-            }
-        }
-        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after parameter list.");
-    }
-
-
-    /* finalize the location of parameters */
-    /* end function decl */
-    U32 StackArgSize = 0;
-    for (UInt i = 0; i < ParameterList.Count; i++)
-    {
-        VarLocation *Parameter = ParameterList.Params[i].Location;
-        PASCAL_NONNULL(Parameter);
-        *Parameter = PVMSetParam(EMITTER(), i + RecordReturn, Parameter->Type, &StackBase);
-        if (i + RecordReturn >= PVM_ARGREG_COUNT)
-        {
-            StackArgSize += Parameter->Type.Size;
-        }
-    }
+    /* debug information for function signature */
+    CompilerInitDebugInfo(Compiler, &Keyword);
+    SubroutineInformation Subroutine = CompileSubroutineDeclaration(Compiler, 
+            TOKEN_FUNCTION == Keyword.Type, SubroutineType
+    );
     CompilerEmitDebugInfo(Compiler, &Keyword);
-    Location->Type = VarTypeSubroutine(ParameterList, Scope, ReturnType, StackArgSize);
-    SubroutineInfo->Type = Location->Type;
 
 
-    /* forward declaration */
-    if (ConsumeIfNextIs(Compiler, TOKEN_FORWARD))
+    /* forward decl */
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_FORWARD))
     {
-        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after '"STRVIEW_FMT"'", 
-                STRVIEW_FMT_ARG(&Compiler->Curr.Lexeme)
-        );
+        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after 'forward'.");
     }
     else /* body */
     {
-        /* begin subroutine scope */
-        CompilerPushSubroutine(Compiler, Subroutine);
-        Location->As.SubroutineLocation = PVMGetCurrentLocation(EMITTER());
+        CompilerPushSubroutine(Compiler, Subroutine.Info);
 
-
-        /* body */
+        /* block */
         U32 PrevStackSize = Compiler->StackSize;
-        U32 EnterLocation = CompileSubroutineEntry(Compiler, &Subroutine->ParameterList, RecordReturn);
-        U32 LocalStart = Compiler->StackSize;
-        CompileBlock(Compiler);
-        PVMPatchEnter(EMITTER(), EnterLocation, Compiler->StackSize - LocalStart);
+        *Subroutine.Location = CompileSubroutineEntry(Compiler, 
+                &Subroutine.Info->ParameterList, Subroutine.Info->HiddenParamCount
+        );
+        U32 StackStart = Compiler->StackSize;
+            CompileBlock(Compiler);
+        PVMPatchEnter(EMITTER(), *Subroutine.Location, Compiler->StackSize - StackStart);
         Compiler->StackSize = PrevStackSize;
 
 
-        /* emit the exit instruction and associate it with the 'end' token */
+        /* exit */
         Token End = Compiler->Curr;
         CompilerInitDebugInfo(Compiler, &End);
         PVMEmitExit(EMITTER());
+        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s block.", SubroutineType);
         CompilerEmitDebugInfo(Compiler, &End);
-        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s body.", SubroutineType);
+
         CompilerPopSubroutine(Compiler);
     }
     PVMEmitterEndScope(EMITTER(), PrevScope);
 }
-
-
 
 
 static void CompileVarBlock(PascalCompiler *Compiler)
@@ -1117,7 +1157,6 @@ static void CompileVarBlock(PascalCompiler *Compiler)
      *      id1, id2: typename;
      *      id3: typename;
      */
-    //Token Keyword = Compiler->Curr;
     if (!NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         Error(Compiler, "Expected variable name.");
@@ -1148,7 +1187,7 @@ static void CompileVarBlock(PascalCompiler *Compiler)
         TotalSize = Next - BaseAddr;
 
         /* initialization */
-        if (ConsumeIfNextIs(Compiler, TOKEN_EQUAL))
+        if (ConsumeIfNextTokenIs(Compiler, TOKEN_EQUAL))
         {
             PascalVar *Variable = FindIdentifier(Compiler, &VariableName);
             PASCAL_NONNULL(Variable);
@@ -1200,7 +1239,7 @@ static void CompileVarBlock(PascalCompiler *Compiler)
             ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after variable declaration.");
         }
 
-        if (ConsumeIfNextIs(Compiler, TOKEN_VAR) && !NextTokenIs(Compiler, TOKEN_IDENTIFIER))
+        if (ConsumeIfNextTokenIs(Compiler, TOKEN_VAR) && !NextTokenIs(Compiler, TOKEN_IDENTIFIER))
         {
             Error(Compiler, "Expected variable name.");
             return;
@@ -1252,20 +1291,20 @@ static void CompileTypeBlock(PascalCompiler *Compiler)
         return;
     }
 
-    while (ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER))
+    while (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         Token Identifier = Compiler->Curr;
         if (!ConsumeOrError(Compiler, TOKEN_EQUAL, "Expected '=' instead."))
             return;
 
-        if (ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER))
+        if (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
         {
             /* typename */
             const Token TypeName = Compiler->Curr;
             PascalVar *Type = GetIdenInfo(Compiler, &TypeName, "Undefined type name.");
             DefineIdentifier(Compiler, &Identifier, Type->Type, NULL);
         }
-        else if (ConsumeIfNextIs(Compiler, TOKEN_CARET))
+        else if (ConsumeIfNextTokenIs(Compiler, TOKEN_CARET))
         {
             /* pointer type */
             if (!ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected type name."))
@@ -1277,11 +1316,11 @@ static void CompileTypeBlock(PascalCompiler *Compiler)
             VarType Pointer = VarTypePtr(CompilerCopyType(Compiler, Type->Type));
             DefineIdentifier(Compiler, &Identifier, Pointer, NULL);
         }
-        else if (ConsumeIfNextIs(Compiler, TOKEN_RECORD))
+        else if (ConsumeIfNextTokenIs(Compiler, TOKEN_RECORD))
         {
             CompileRecordDefinition(Compiler, &Identifier);
         }
-        else if (ConsumeIfNextIs(Compiler, TOKEN_FUNCTION))
+        else if (ConsumeIfNextTokenIs(Compiler, TOKEN_FUNCTION))
         {
             PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
             SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
@@ -1298,7 +1337,7 @@ static void CompileTypeBlock(PascalCompiler *Compiler)
             VarType FunctionPointer = VarTypePtr(CompilerCopyType(Compiler, Function));
             DefineIdentifier(Compiler, &Identifier, FunctionPointer, NULL);
         }
-        else if (ConsumeIfNextIs(Compiler, TOKEN_PROCEDURE))
+        else if (ConsumeIfNextTokenIs(Compiler, TOKEN_PROCEDURE))
         {
             PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
             SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
@@ -1330,10 +1369,10 @@ static void CompileConstBlock(PascalCompiler *Compiler)
         return;
     }
 
-    while (ConsumeIfNextIs(Compiler, TOKEN_IDENTIFIER))
+    while (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         Token Identifier = Compiler->Curr;
-        if (ConsumeIfNextIs(Compiler, TOKEN_COLON))
+        if (ConsumeIfNextTokenIs(Compiler, TOKEN_COLON))
         {
             PASCAL_UNREACHABLE("TODO: type of const ");
         }
@@ -1417,7 +1456,7 @@ static bool CompileHeadlessBlock(PascalCompiler *Compiler)
             CalmDownAtBlock(Compiler);
         }
     }
-    return ConsumeIfNextIs(Compiler, TOKEN_BEGIN);
+    return ConsumeIfNextTokenIs(Compiler, TOKEN_BEGIN);
 }
 
 
@@ -1445,7 +1484,7 @@ static bool CompileProgram(PascalCompiler *Compiler)
 
     /* program iden; */
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected identifier.");
-    if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_PAREN))
     {
         /* TODO: what are these idens for:
          * program hello(identifier1, iden2, hi);
@@ -1453,14 +1492,14 @@ static bool CompileProgram(PascalCompiler *Compiler)
          */
         do {
             ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected identifier.");
-        } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
+        } while (ConsumeIfNextTokenIs(Compiler, TOKEN_COMMA));
         ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' instead");
     }
     ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' instead.");
 
 
     /* uses iden, iden2; */
-    if (ConsumeIfNextIs(Compiler, TOKEN_USES))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_USES))
     {
         do {
             ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected identifier");
@@ -1473,7 +1512,7 @@ static bool CompileProgram(PascalCompiler *Compiler)
             {
                 DefineCrtSubroutines(Compiler);
             }
-        } while (ConsumeIfNextIs(Compiler, TOKEN_COMMA));
+        } while (ConsumeIfNextTokenIs(Compiler, TOKEN_COMMA));
     }
 
 
@@ -1597,7 +1636,7 @@ bool PascalCompileProgram(PascalCompiler *Compiler, const U8 *Source)
     Compiler->Lexer = TokenizerInit(Source, 1);
     ConsumeToken(Compiler);
     bool NoError = false;
-    if (ConsumeIfNextIs(Compiler, TOKEN_PROGRAM))
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_PROGRAM))
     {
         NoError = CompileProgram(Compiler);
         ResolveSubroutineReferences(Compiler);
@@ -1605,7 +1644,7 @@ bool PascalCompileProgram(PascalCompiler *Compiler, const U8 *Source)
         PVMEmitExit(EMITTER());
         return NoError;
     }
-    else if (ConsumeIfNextIs(Compiler, TOKEN_UNIT))
+    else if (ConsumeIfNextTokenIs(Compiler, TOKEN_UNIT))
     {
         PASCAL_UNREACHABLE("TODO: Unit");
     }

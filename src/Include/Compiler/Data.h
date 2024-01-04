@@ -76,7 +76,7 @@ bool NextTokenIs(const PascalCompiler *Compiler, TokenType Type);
 bool IsAtEnd(const PascalCompiler *Compiler);
 bool IsAtStmtEnd(const PascalCompiler *Compiler);
 void ConsumeToken(PascalCompiler *Compiler);
-bool ConsumeIfNextIs(PascalCompiler *Compiler, TokenType Type);
+bool ConsumeIfNextTokenIs(PascalCompiler *Compiler, TokenType Type);
 bool ConsumeOrError(PascalCompiler *Compiler, TokenType Expected, const char *Fmt, ...);
 
 /* find an identifier, returns NULL if it doesn't exist, 

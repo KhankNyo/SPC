@@ -74,7 +74,7 @@ void ErrorAt(PascalCompiler *Compiler, const Token *Tok, const char *Fmt, ...)
 
 bool ConsumeOrError(PascalCompiler *Compiler, TokenType Expected, const char *ErrFmt, ...)
 {
-    if (!ConsumeIfNextIs(Compiler, Expected))
+    if (!ConsumeIfNextTokenIs(Compiler, Expected))
     {
         va_list Args;
         va_start(Args, ErrFmt);

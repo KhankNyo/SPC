@@ -21,10 +21,11 @@ struct SubroutineParameterList
 struct SubroutineData
 {
     /* owns by the compiler */
-    const struct VarType *ReturnType;
+    const VarType *ReturnType;
     SubroutineParameterList ParameterList;
     PascalVartab Scope;
     U32 StackArgSize;
+    U32 HiddenParamCount;
 };
 
 struct VarType 
@@ -212,6 +213,7 @@ static inline VarType VarTypeSubroutine(
             .Scope = Scope, 
             .StackArgSize = StackArgSize,
             .ReturnType = ReturnType,
+            .HiddenParamCount = ReturnType && TYPE_RECORD == ReturnType->Integral,
         },
     };
 }

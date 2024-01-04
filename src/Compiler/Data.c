@@ -77,7 +77,7 @@ bool NextTokenIs(const PascalCompiler *Compiler, TokenType Type)
     return Type == Compiler->Next.Type;
 }
 
-bool ConsumeIfNextIs(PascalCompiler *Compiler, TokenType Type)
+bool ConsumeIfNextTokenIs(PascalCompiler *Compiler, TokenType Type)
 {
     if (NextTokenIs(Compiler, Type))
     {

@@ -126,7 +126,6 @@ VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op, const VarLocation 
 
 /* subroutine arguments */
 I32 PVMStartArg(PVMEmitter *Emitter, U32 ArgSize);
-VarLocation PVMSetParam(PVMEmitter *Emitter, UInt ArgNumber, VarType Type, I32 *Base);
 VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType Type, I32 *Base);
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, const VarLocation *Arg);
 

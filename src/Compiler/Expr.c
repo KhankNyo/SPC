@@ -565,7 +565,7 @@ static VarLocation FactorVariable(PascalCompiler *Compiler)
     {
         /* type casting */
         /* typename(expr) */
-        if (ConsumeIfNextIs(Compiler, TOKEN_LEFT_PAREN))
+        if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_PAREN))
         {
             VarLocation Expr = FactorGrouping(Compiler);
             return ConvertTypeExplicitly(Compiler, &Identifier, Variable->Type.Integral, &Expr);
@@ -603,7 +603,7 @@ static VarLocation VariableAddrOf(PascalCompiler *Compiler)
         return (VarLocation) { 0 };
 
 
-    while (ConsumeIfNextIs(Compiler, TOKEN_DOT))
+    while (ConsumeIfNextTokenIs(Compiler, TOKEN_DOT))
     {
         PASCAL_UNREACHABLE("TODO: addr of record field");
     }
