@@ -18,6 +18,7 @@
     VartabSet(pScope, (const U8*)Name, sizeof(Name) - 1, 0, \
             VarTypeInit(LiteralType, IntegralTypeSize(LiteralType)), Literal)
 
+
 #define PASCAL_BUILTIN(Name, Arg1, Arg2)\
 static OptionalReturnValue Compile##Name (PascalCompiler *, const Token *);\
 static VarLocation s##Name = {.Type = { .Integral = TYPE_FUNCTION }, .LocationType = VAR_BUILTIN, \
@@ -33,6 +34,7 @@ static U32 sNewlineConstHash = 0;
 
 static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
 {
+    PASCAL_NONNULL(Compiler);
     SaveRegInfo SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
     UInt ArgCount = 0;
 
@@ -94,37 +96,83 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
 
 PASCAL_BUILTIN(Writeln, Compiler, FnName)
 {
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(FnName);
     OptionalReturnValue None = {.HasReturnValue = false};
-    (void)FnName;
     CompileSysWrite(Compiler, true);
     return None;
 }
 
 PASCAL_BUILTIN(Write, Compiler, FnName)
 {
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(FnName);
     OptionalReturnValue None = {.HasReturnValue = false};
-    (void)FnName;
     CompileSysWrite(Compiler, false);
     return None;
 }
 
 PASCAL_BUILTIN(SizeOf, Compiler, FnName)
 {
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(FnName);
     OptionalReturnValue Size = {.HasReturnValue = true};
 
-    ConsumeOrError(Compiler, TOKEN_LEFT_PAREN, "Expected '(' after '"STRVIEW_FMT"'.", 
-            STRVIEW_FMT_ARG(&FnName->Lexeme)
-    );
     VarLocation Expr = CompileExpr(Compiler);
-    ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
-
-    Size.ReturnValue = (VarLocation){
-        .Type = VarTypeInit(TYPE_SIZE, IntegralTypeSize(TYPE_SIZE)),
-        .LocationType = VAR_LIT,
-        .As.Literal.Int = Expr.Type.Size,
-    };
+    Size.ReturnValue = VAR_LOCATION_LIT(.Int = Expr.Type.Size, TYPE_SIZE);
     FreeExpr(Compiler, Expr);
     return Size;
+}
+
+PASCAL_BUILTIN(Ord, Compiler, FnName)
+{
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(FnName);
+    OptionalReturnValue Opt = {
+        .HasReturnValue = true, 
+        .ReturnValue = CompileExpr(Compiler),
+    };
+    VarLocation *RetVal = &Opt.ReturnValue;
+    if (!IntegralTypeIsOrdinal(RetVal->Type.Integral))
+    {
+        ErrorAt(Compiler, FnName, "Cannot convert %s to integer.", VarTypeToStr(RetVal->Type));
+        return Opt;
+    }
+
+    switch (RetVal->LocationType)
+    {
+    case VAR_LIT:
+    {
+        if (IntegralTypeIsSigned(RetVal->Type.Integral))
+            RetVal->Type = VarTypeInit(TYPE_I64, 8);
+        else RetVal->Type = VarTypeInit(TYPE_U64, 8);
+    } break;
+    case VAR_MEM: 
+    {
+        VarLocation Tmp = *RetVal;
+        (void)PVMEmitIntoRegLocation(EMITTER(), RetVal, true, &Tmp);
+        FreeExpr(Compiler, Tmp);
+    } FALLTHROUGH;
+    case VAR_REG:
+    {
+        PASCAL_STATIC_ASSERT(TYPE_I32 + 1 == TYPE_I64, "");
+
+        IntegralType Type = IntegralTypeIsSigned(RetVal->Type.Integral) 
+            ? TYPE_I32 : TYPE_U32;
+        U32 Size = 4;
+        if (sizeof(I32) < RetVal->Type.Size)
+        {
+            RetVal->Type.Integral += 1;
+            Size = 8;
+        }
+        RetVal->Type = VarTypeInit(Type, Size);
+    } break;
+    default:
+    {
+        PASCAL_UNREACHABLE("Invalid location type");
+    } break;
+    }
+    return Opt;
 }
 
 
@@ -146,7 +194,7 @@ OptionalReturnValue CompileCallToBuiltin(PascalCompiler *Compiler, VarBuiltinRou
 void DefineCrtSubroutines(PascalCompiler *Compiler)
 {
     (void)Compiler;
-    PASCAL_UNREACHABLE("TODO");
+    PASCAL_UNREACHABLE("TODO: crt subroutines");
 }
 
 void DefineSystemSubroutines(PascalCompiler *Compiler)
@@ -174,11 +222,11 @@ void DefineSystemSubroutines(PascalCompiler *Compiler)
     NilConstant.Type = VarTypePtr(NULL);
     DEFINE_BUILTIN_LIT(Scope, sNewlineConstName, TYPE_STRING, &NewlineConstant);
     VartabSet(Scope, (const U8*)"nil", 3, 0, NilConstant.Type, &NilConstant);
-    //DEFINE_BUILTIN_LIT(Scope, "nil", TYPE_POINTER, &NilConstant);
 
     DEFINE_BUILTIN_FN(Scope, "WRITELN", sWriteln);
     DEFINE_BUILTIN_FN(Scope, "WRITE", sWrite);
     DEFINE_BUILTIN_FN(Scope, "SIZEOF", sSizeOf);
+    DEFINE_BUILTIN_FN(Scope, "ORD", sOrd);
     //DEFINE_BUILTIN_FN(Scope, "READLN", sReadln);
     //DEFINE_BUILTIN_FN(Scope, "READ", sRead);
 

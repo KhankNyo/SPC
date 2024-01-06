@@ -23,5 +23,8 @@ var a: integer;
 begin 
     a := 1 + MyOtherFunction()();
     MyProcedure(a);
+    if 2 <> a 
+    then writeln('failed')
+    else writeln('passed');
 end.
 

@@ -11,6 +11,7 @@
  * SP, GP, FP are allocated by default
  * */
 #define EMPTY_REGLIST 0xE000
+PASCAL_STATIC_ASSERT(IS_POW2(sizeof(PVMGPR)), "Unreachable");
 
 #if UINTPTR_MAX == UINT32_MAX
 #  define CASE_PTR32(Colon) case TYPE_POINTER Colon case TYPE_FUNCTION Colon
@@ -191,7 +192,7 @@ static SaveRegInfo PVMEmitPushRegList(PVMEmitter *Emitter, U32 RegList)
     }
     if ((Info.Regs >> 24) & 0xFF)
     {
-        WriteOp16(Emitter, PVM_REGLIST(FPSHH, Info.Regs >> 26));
+        WriteOp16(Emitter, PVM_REGLIST(FPSHH, Info.Regs >> 24));
     }
 
     PVMCreateRegListLocation(Emitter, Info, Info.RegLocation);
@@ -201,16 +202,16 @@ static SaveRegInfo PVMEmitPushRegList(PVMEmitter *Emitter, U32 RegList)
 static void PVMEmitPushReg(PVMEmitter *Emitter, UInt Reg)
 {
     PASCAL_NONNULL(Emitter);
-    if (Reg < PVM_REG_COUNT / 2)
+    if ((Reg & 0xFF))
     {
         WriteOp16(Emitter, PVM_REGLIST(PSHL, 1 << Reg));
     }
-    else if (Reg < PVM_REG_COUNT)
+    else if ((Reg >> 8) & 0xFF)
     {
         WriteOp16(Emitter, PVM_REGLIST(PSHH, 1 << Reg));
     }
     /* floating point reg */
-    else if (Reg < PVM_REG_COUNT * 3/2)
+    else if ((Reg >> 16) & 0xFF)
     {
         WriteOp16(Emitter, PVM_REGLIST(FPSHL, 1 << (Reg - PVM_REG_COUNT)));
     }
@@ -224,22 +225,22 @@ static void PVMEmitPushReg(PVMEmitter *Emitter, UInt Reg)
 static void PVMEmitPop(PVMEmitter *Emitter, UInt Reg)
 {
     PASCAL_NONNULL(Emitter);
-    if (Reg < PVM_REG_COUNT / 2)
+    if ((Reg & 0xFF))
     {
         WriteOp16(Emitter, PVM_REGLIST(POPL, 1 << Reg));
     }
-    else if (Reg < PVM_REG_COUNT)
+    else if ((Reg >> 8) & 0xFF)
     {
         WriteOp16(Emitter, PVM_REGLIST(POPH, 1 << Reg));
     }
     /* floating point reg */
-    else if (Reg < PVM_REG_COUNT * 3/2)
+    else if ((Reg >> 16) & 0xFF)
     {
-        WriteOp16(Emitter, PVM_REGLIST(FPSHL, 1 << (Reg - PVM_REG_COUNT)));
+        WriteOp16(Emitter, PVM_REGLIST(FPOPL, 1 << (Reg - PVM_REG_COUNT)));
     }
     else 
     {
-        WriteOp16(Emitter, PVM_REGLIST(FPSHH, 1 << (Reg - PVM_REG_COUNT)));
+        WriteOp16(Emitter, PVM_REGLIST(FPOPH, 1 << (Reg - PVM_REG_COUNT)));
     }
     Emitter->StackSpace -= sizeof(PVMGPR);
 }
@@ -568,6 +569,11 @@ void PVMEmitLoadAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src)
 
 bool PVMEmitIntoRegLocation(PVMEmitter *Emitter, VarLocation *OutTarget, bool ReadOnly, const VarLocation *Src)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(OutTarget);
+    PASCAL_NONNULL(Src);
+    PASCAL_ASSERT(OutTarget != Src, "no");
+
     OutTarget->Type = Src->Type;
     OutTarget->LocationType = VAR_REG;
     return PVMEmitIntoReg(Emitter, &OutTarget->As.Register, ReadOnly, Src);
@@ -973,7 +979,7 @@ void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation 
 
     PASCAL_ASSERT(Dst->Type.Integral == Src->Type.Integral, "Unreachable");
     PASCAL_ASSERT(Dst->Type.Size == Src->Type.Size, "Unreachable");
-    PASCAL_ASSERT(Dst->Type.Integral == TYPE_RECORD || Src->Type.Integral == TYPE_STRING, "Unhandled case: %s", 
+    PASCAL_ASSERT(!VarTypeIsTriviallyCopiable(Dst->Type), "Unhandled case: %s", 
             VarTypeToStr(Dst->Type)
     );
     PASCAL_ASSERT(Dst->Type.Size <= UINT32_MAX, "record too big");
@@ -982,8 +988,11 @@ void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation 
     bool OwningDstPtr = PVMEmitIntoReg(Emitter, &DstPtr, true, Dst); /* the addr itself is readonly */
     bool OwningSrcPtr = PVMEmitIntoReg(Emitter, &SrcPtr, true, Src);
 
-    WriteOp16(Emitter, PVM_OP(MEMCPY, DstPtr.ID, SrcPtr.ID));
-    Write32(Emitter, Dst->Type.Size);
+    if (DstPtr.ID != SrcPtr.ID)
+    {
+        WriteOp16(Emitter, PVM_OP(MEMCPY, DstPtr.ID, SrcPtr.ID));
+        Write32(Emitter, Dst->Type.Size);
+    }
 
     if (OwningDstPtr)
     {
@@ -2002,14 +2011,7 @@ bool PVMQueueIsFull(const SaveRegInfo *RegList)
 void PVMEmitStackAllocation(PVMEmitter *Emitter, I32 Size) 
 {
     PASCAL_NONNULL(Emitter);
-
-    U64 Aligned = (I64)Size;
-    U64 Extra = sizeof(PVMGPR);
-    if (Size < 0)
-        Extra = 0;
-
-    if (Aligned % sizeof(PVMGPR))
-        Aligned = (Aligned + Extra) & ~(sizeof(PVMGPR) - 1);
+    I64 Aligned = iRoundUpToMultipleOfPow2(Size, sizeof(PVMGPR));
     PVMEmitAddImm(Emitter, &Emitter->Reg.SP, Aligned);
     Emitter->StackSpace += Aligned;
 }
@@ -2017,10 +2019,6 @@ void PVMEmitStackAllocation(PVMEmitter *Emitter, I32 Size)
 
 VarLocation PVMCreateStackLocation(PVMEmitter *Emitter, VarType Type, int FpOffset)
 {
-    U32 Size = Type.Size;
-    if (Size % sizeof(PVMGPR))
-        Size = (Size + sizeof(PVMGPR)) & ~(sizeof(PVMGPR) - 1);
-
     VarLocation Location = {
         .LocationType = VAR_MEM,
         .Type = Type,
@@ -2145,6 +2143,10 @@ VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size)
 SaveRegInfo PVMEmitSaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID)
 {
     PASCAL_NONNULL(Emitter);
+    if (NO_RETURN_REG == ReturnRegID)
+    {
+        return PVMEmitPushRegList(Emitter, Emitter->Reglist & ~EMPTY_REGLIST);
+    }
     return PVMEmitPushRegList(Emitter, Emitter->Reglist & ~(((U32)1 << ReturnRegID) | EMPTY_REGLIST));
 }
 
@@ -2216,34 +2218,22 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID, SaveRegInfo 
     }
     Emitter->Reglist = Restorelist | EMPTY_REGLIST;
     Emitter->StackSpace -= Save.Size;
-    PVMMarkRegisterAsAllocated(Emitter, ReturnRegID);
+    if (NO_RETURN_REG != ReturnRegID)
+    {
+        PVMMarkRegisterAsAllocated(Emitter, ReturnRegID);
+    }
 }
 
 
 
 
 /* enter and exit/return */
-SaveRegInfo PVMEmitEnter(PVMEmitter *Emitter, const SubroutineParameterList *ParameterList)
+U32 PVMEmitEnter(PVMEmitter *Emitter)
 {
     PASCAL_NONNULL(Emitter);
-    PASCAL_NONNULL(ParameterList);
-    
-    SaveRegInfo RegList = { 0 };
-
-    UInt Count = ParameterList->Count;
-    if (Count > PVM_ARGREG_COUNT)
-        Count = PVM_ARGREG_COUNT;
-
-    for (UInt i = 0; i < Count; i++)
-    {
-        PVMQueuePushMultiple(Emitter, &RegList, ParameterList->Params[i].Location);
-    }
-    RegList.Size = PVMCreateRegListLocation(Emitter, RegList, RegList.RegLocation);
-
-    U16 ShortenedRegList = (RegList.Regs & 0xFF) | ((RegList.Regs >> 8) & 0xFF00);
-    WriteOp32(Emitter, PVM_SYS(ENTER), ShortenedRegList);
+    U32 InstructionLocation = WriteOp16(Emitter, PVM_SYS(ENTER));
     Write32(Emitter, 0);
-    return RegList;
+    return InstructionLocation;
 }
 
 void PVMPatchEnter(PVMEmitter *Emitter, U32 Location, U32 StackSize)
@@ -2251,11 +2241,10 @@ void PVMPatchEnter(PVMEmitter *Emitter, U32 Location, U32 StackSize)
     PASCAL_NONNULL(Emitter);
 
     PVMChunk *Chunk = PVMCurrentChunk(Emitter);
-    if (StackSize % sizeof(PVMGPR))
-        StackSize = (StackSize + sizeof(PVMGPR)) & ~(sizeof(PVMGPR) - 1);
+    StackSize = uRoundUpToMultipleOfPow2(StackSize, PVM_STACK_ALIGNMENT);
 
-    Chunk->Code[Location + 2] = StackSize;
-    Chunk->Code[Location + 3] = StackSize >> 16;
+    Chunk->Code[Location + 1] = StackSize;
+    Chunk->Code[Location + 2] = StackSize >> 16;
 }
 
 void PVMEmitExit(PVMEmitter *Emitter)

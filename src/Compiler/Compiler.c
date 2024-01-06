@@ -996,41 +996,64 @@ static SubroutineParameterList CompileParameterListWithParentheses(PascalCompile
 }
 
 
-static U32 CompileSubroutineEntry(PascalCompiler *Compiler, SubroutineParameterList *Params, UInt NumHiddenArgs)
+static U32 CompileLocalParameter(PascalCompiler *Compiler, 
+        SubroutineData *Subroutine)
 {
-    U32 Entry = PVMGetCurrentLocation(EMITTER());
-    PASCAL_STATIC_ASSERT(false, 
-            "TODO: EmitEnter Attempts to push local params,"
-            "but we have not initialize stack params yet."
-            "Stack params should be initialized in this function"
-    );
-    SaveRegInfo RegList = PVMEmitEnter(EMITTER(), Params);
-    UInt SavedParamCount = BitCount(RegList.Regs);
-    for (UInt i = 0; i < Params->Count; i++)
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Subroutine);
+    PASCAL_ASSERT(CALLCONV_MSX64 == Compiler->Flags.CallConv, "TODO: other calling convention");
+
+    U32 Location = PVMEmitEnter(EMITTER());
+    U32 StackSize = 0;
+    U32 HiddenParamCount = Subroutine->HiddenParamCount;
+    SubroutineParameterList *ParameterList = &Subroutine->ParameterList;
+
+    /* hidden param */
+    if (NULL != Subroutine->ReturnType && !VarTypeIsTriviallyCopiable(*Subroutine->ReturnType))
     {
-        VarLocation *Param = Params->Params[i].Location;
-        PASCAL_NONNULL(Param);
-        if (i < SavedParamCount)
+        PVMMarkRegisterAsAllocated(EMITTER(), 0);
+    }
+
+    if (ParameterList->Count)
+    {
+        PascalVar *Params = ParameterList->Params;
+        PASCAL_NONNULL(Params);
+        U32 ArgOffset = 0;
+
+        for (UInt i = 0; i < ParameterList->Count; i++)
         {
-            if (IntegralTypeIsOrdinal(Param->Type.Integral) || TYPE_POINTER == Param->Type.Integral)
+            PASCAL_NONNULL(ParameterList->Params[i].Location);
+            if (i + HiddenParamCount < PVM_ARGREG_COUNT)
             {
-                Param->LocationType = VAR_MEM;
-                *Param = PVMRetreiveSavedCallerReg(EMITTER(), 
-                        RegList, i + NumHiddenArgs, Param->Type
+                I32 Dummy = 0;
+                *Params[i].Location = PVMCreateStackLocation(EMITTER(), 
+                        Params[i].Type, StackSize
                 );
+                StackSize += uRoundUpToMultipleOfPow2(Params[i].Type.Size, PVM_STACK_ALIGNMENT);
+                VarLocation Arg = PVMSetArg(EMITTER(), i + HiddenParamCount, Params[i].Type, &Dummy);
+                PVMMarkArgAsOccupied(EMITTER(), &Arg);
+
+                if (VarTypeIsTriviallyCopiable(Params[i].Type))
+                {
+                    PVMEmitMove(EMITTER(), Params[i].Location, &Arg);
+                }
+                else
+                {
+                    PVMEmitCopy(EMITTER(), Params[i].Location, &Arg);
+                }
+                FreeExpr(Compiler, Arg);
             }
             else
             {
-                PASCAL_UNREACHABLE("TODO: non ordinal types");
+                ArgOffset -= Params[i].Type.Size;
+                *Params[i].Location = PVMCreateStackLocation(EMITTER(), 
+                        Params[i].Type, ArgOffset
+                );
             }
         }
-        else 
-        {
-            PASCAL_UNREACHABLE("TODO: stack args");
-        }
     }
-    Compiler->StackSize += RegList.Size;
-    return Entry;
+    Compiler->StackSize += StackSize;
+    return Location;
 }
 
 
@@ -1048,8 +1071,6 @@ static SubroutineInformation CompileSubroutineDeclaration(PascalCompiler *Compil
     /* consumes parameter list */
     PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
     SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
-    /* TODO: compare params lists */
-
     if (!Subroutine.FirstDeclaration)
     {
         PASCAL_UNREACHABLE("TODO: compare parameter list");
@@ -1058,7 +1079,6 @@ static SubroutineInformation CompileSubroutineDeclaration(PascalCompiler *Compil
     /* consumes return type */
     const char *BeforeSemicolon;
     const VarType *ReturnType = NULL;
-    UInt HiddenParamCount = 0;
     if (IsFunction)
     {
         BeforeSemicolon = "type name";
@@ -1068,7 +1088,6 @@ static SubroutineInformation CompileSubroutineDeclaration(PascalCompiler *Compil
         if (NULL != ReturnTypeName)
         {
             ReturnType = CompilerCopyType(Compiler, ReturnTypeName->Type);
-            HiddenParamCount += TYPE_RECORD == ReturnType->Integral;
         }
     }
     else
@@ -1092,6 +1111,7 @@ static SubroutineInformation CompileSubroutineDeclaration(PascalCompiler *Compil
     for (UInt i = PVM_ARGREG_COUNT; i < ParameterList.Count; i++)
     {
         VarLocation *Parameter = ParameterList.Params[i].Location;
+        PASCAL_NONNULL(Parameter);
         CalleeStackArgSize += Parameter->Type.Size;
     }
     *Subroutine.Type = VarTypeSubroutine(ParameterList, Scope, ReturnType, CalleeStackArgSize);
@@ -1126,14 +1146,12 @@ static void CompileSubroutineBlock(PascalCompiler *Compiler, const char *Subrout
     {
         CompilerPushSubroutine(Compiler, Subroutine.Info);
 
+
         /* block */
         U32 PrevStackSize = Compiler->StackSize;
-        *Subroutine.Location = CompileSubroutineEntry(Compiler, 
-                &Subroutine.Info->ParameterList, Subroutine.Info->HiddenParamCount
-        );
-        U32 StackStart = Compiler->StackSize;
-            CompileBlock(Compiler);
-        PVMPatchEnter(EMITTER(), *Subroutine.Location, Compiler->StackSize - StackStart);
+        *Subroutine.Location = CompileLocalParameter(Compiler, Subroutine.Info);
+        CompileBlock(Compiler);
+        PVMPatchEnter(EMITTER(), *Subroutine.Location, Compiler->StackSize);
         Compiler->StackSize = PrevStackSize;
 
 
@@ -1163,17 +1181,17 @@ static void CompileVarBlock(PascalCompiler *Compiler)
         return;
     }
 
-    bool AtGlobalScope = false;
     U32 BaseRegister = PVM_REG_FP;
     U32 BaseAddr = Compiler->StackSize;
-    if (IsAtGlobalScope(Compiler))
+    UInt Alignment = PVM_STACK_ALIGNMENT;
+    bool AtGlobalScope = IsAtGlobalScope(Compiler);
+    if (AtGlobalScope)
     {
-        AtGlobalScope = true;
         BaseRegister = PVM_REG_GP;
         BaseAddr = PVMGetGlobalOffset(EMITTER());
+        Alignment = PVM_GLOBAL_ALIGNMENT;
     }
     U32 TotalSize = 0;
-    UInt Alignment = sizeof(U32);
 
     while (!IsAtEnd(Compiler) && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {

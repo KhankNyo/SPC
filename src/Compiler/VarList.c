@@ -361,8 +361,11 @@ ArgInfo CompileHiddenArguments(PascalCompiler *Compiler,
         {
             Arg.Base = PVMStartArg(EMITTER(), Arg.StackArgSize);
             VarLocation RecordArg = PVMSetArg(EMITTER(), 0, *Subroutine->ReturnType, &Arg.Base);
-            PVMEmitMove(EMITTER(), &RecordArg, ReturnValue);
-            PVMMarkArgAsOccupied(EMITTER(), &RecordArg);
+            if (VarTypeEqual(&RecordArg.Type, &ReturnValue->Type))
+            {
+                PVMEmitMove(EMITTER(), &RecordArg, ReturnValue);
+                PVMMarkArgAsOccupied(EMITTER(), &RecordArg);
+            }
             Arg.TemporaryRecord = *ReturnValue;
         }
         else
@@ -373,6 +376,7 @@ ArgInfo CompileHiddenArguments(PascalCompiler *Compiler,
             Arg.StackArgSize += Subroutine->ReturnType->Size;
             Arg.Base = PVMStartArg(EMITTER(), Arg.StackArgSize);
             VarLocation RecordArg = PVMSetArg(EMITTER(), 0, *Subroutine->ReturnType, &Arg.Base);
+
             PVMEmitMove(EMITTER(), &RecordArg, &Arg.TemporaryRecord);
             PVMMarkArgAsOccupied(EMITTER(), &RecordArg);
         }
@@ -392,6 +396,10 @@ VarLocation CompileSubroutineCall(PascalCompiler *Compiler,
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Callee);
     PASCAL_NONNULL(Location);
+    if (NULL != ReturnValue)
+    {
+        PASCAL_ASSERT(ReturnValue->LocationType == VAR_REG, "TODO: record uses mem type for return");
+    }
 
     U32 CallSite = 0;
     UInt ReturnReg = NULL == ReturnValue ? NO_RETURN_REG : ReturnValue->As.Register.ID;
@@ -449,7 +457,7 @@ VarLocation CompileSubroutineCall(PascalCompiler *Compiler,
     /* deallocate stack args */
     if (Arg.StackArgSize) 
     {
-        PVMEmitStackAllocation(EMITTER(), -Arg.StackArgSize);
+        PVMEmitStackAllocation(EMITTER(), -(I32)Arg.StackArgSize);
     }
     PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg, SaveRegs);
     return Arg.TemporaryRecord;

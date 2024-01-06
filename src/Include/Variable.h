@@ -135,6 +135,11 @@ static inline const char *VarTypeToStr(VarType Type)
     return IntegralTypeToStr(Type.Integral);
 }
 
+static inline bool VarTypeIsTriviallyCopiable(VarType Type)
+{
+    return TYPE_STRING != Type.Integral && TYPE_RECORD != Type.Integral;
+}
+
 static inline bool VarTypeEqual(const VarType *A, const VarType *B)
 {
     if (!A || !B) 
@@ -213,7 +218,7 @@ static inline VarType VarTypeSubroutine(
             .Scope = Scope, 
             .StackArgSize = StackArgSize,
             .ReturnType = ReturnType,
-            .HiddenParamCount = ReturnType && TYPE_RECORD == ReturnType->Integral,
+            .HiddenParamCount = NULL != ReturnType && !VarTypeIsTriviallyCopiable(*ReturnType),
         },
     };
 }

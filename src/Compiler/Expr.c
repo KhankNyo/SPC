@@ -274,7 +274,12 @@ static VarLocation FactorCall(PascalCompiler *Compiler, VarLocation *Location)
     /* setup return reg */
     if (TYPE_RECORD == Subroutine->ReturnType->Integral)
     {
-        ReturnValue = CompileSubroutineCall(Compiler, Location, &Callee, Compiler->Lhs);
+        VarLocation *Lhs = Compiler->Lhs;
+        if (NULL != Lhs && !VarTypeEqual(&Lhs->Type, Subroutine->ReturnType))
+        {
+            Lhs = NULL;
+        }
+        ReturnValue = CompileSubroutineCall(Compiler, Location, &Callee, Lhs);
     }
     else
     {

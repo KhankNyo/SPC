@@ -343,17 +343,6 @@ do {\
             {
                 /* save frame */
                 FP().Ptr.Byte = SP().Ptr.Byte + sizeof(PVMGPR);
-
-                U16 RegList = *IP++;
-                if (RegList & 0xFF)
-                {
-                    PUSH_MULTIPLE(R, 0, 8, RegList & 0xFF);
-                }
-                if (RegList >> 8)
-                {
-                    PUSH_MULTIPLE(F, 0, 8, RegList >> 8);
-                }
-
                 U32 StackSize = 0;
                 GET_SEX_IMM(StackSize, IMMTYPE_U32, IP);
                 SP().Ptr.Byte += StackSize;

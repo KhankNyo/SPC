@@ -10,7 +10,8 @@
 
 
 
-#define PVM_MAX_CALL_IN_EXPR 32
+#define PVM_STACK_ALIGNMENT sizeof(PVMGPR)
+#define PVM_GLOBAL_ALIGNMENT sizeof(U32)
 
 
 struct SaveRegInfo 
@@ -167,7 +168,7 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID, SaveRegInfo 
 
 
 /* enter and exit/return */
-SaveRegInfo PVMEmitEnter(PVMEmitter *Emitter, const SubroutineParameterList *Params);
+U32 PVMEmitEnter(PVMEmitter *Emitter);
 void PVMPatchEnter(PVMEmitter *Emitter, U32 Location, U32 StackSize);
 void PVMEmitExit(PVMEmitter *Emitter);
 

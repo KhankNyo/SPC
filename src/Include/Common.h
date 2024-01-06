@@ -173,6 +173,7 @@ static inline I64 BitSex64(U64 Value, UInt SignIndex)
 #define IN_U48(x) ((U64)(x) <= (U64)0xFFFFFFFFFFFF)
 
 #define CHR_TO_UPPER(chr) ((U8)(chr) & ~(1u << 5))
+#define IS_POW2(UnsignedConstexpr) (0 == ((UnsignedConstexpr) & ((UnsignedConstexpr) - 1)))
 
 typedef struct GenericPtr
 {
@@ -219,6 +220,32 @@ static inline U64 RoundUpToPow2(U64 n)
         ? Ret : 2 * Ret;
 }
 
+static inline U64 uRoundUpToMultipleOfPow2(U64 n, U64 Multiple)
+{
+    U64 Mask = Multiple - 1;
+    if (n & Mask)
+        return (n + Multiple) & ~Mask;
+    else return n;
+}
+
+static inline I64 iRoundUpToMultipleOfPow2(I64 n, U64 Multiple)
+{
+    if (n < 0)
+    {
+        U64 Unsigned = n;
+        U64 Mask = Multiple - 1;
+        if (Unsigned & Mask)
+            return n & ~Mask;
+        return (I64)n;
+    }
+    else return (I64)uRoundUpToMultipleOfPow2(n, Multiple);
+}
+
+static inline U64 uMin(U64 a, U64 b) { return a < b ? a : b; }
+static inline I64 iMin(I64 a, I64 b) { return a < b ? a : b; }
+static inline U64 uMax(U64 a, U64 b) { return a > b ? a : b; }
+static inline I64 iMax(I64 a, I64 b) { return a > b ? a : b; }
+
 static inline U64 ArithmeticShiftRight(U64 n, U64 ShiftAmount)
 {
     if (n & (U64)1 << 63)
@@ -236,6 +263,7 @@ static inline UInt BitCount(U64 n)
     }
     return i;
 }
+
 
 
 PASCAL_STATIC_ASSERT(sizeof(F64) == sizeof(U64), "Unsupported double size");

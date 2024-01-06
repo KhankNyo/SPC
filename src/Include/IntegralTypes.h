@@ -126,7 +126,7 @@ static inline bool IntegralTypeIsCompatibleWithF64(IntegralType Type)
 
 static inline bool IntegralTypeIsOrdinal(IntegralType Type)
 {
-    return IntegralTypeIsCompatibleWithF64(Type) || TYPE_BOOLEAN == Type || TYPE_CHAR == Type;
+    return IntegralTypeIsInteger(Type) || TYPE_BOOLEAN == Type || TYPE_CHAR == Type;
 }
 
 

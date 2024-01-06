@@ -393,22 +393,16 @@ static U32 DisasmSysOp(FILE *f, const PVMChunk *Chunk, U32 Addr, U16 Opcode)
     } break;
     case OP_SYS_ENTER:
     {
-        U16 RegList = Chunk->Code[Addr + 1];
-        ImmediateInfo Info = GetImmFromImmType(Chunk, Addr + 2, IMMTYPE_U32);
+        ImmediateInfo Info = GetImmFromImmType(Chunk, Addr + 1, IMMTYPE_U32);
 
         int Pad = Print2Bytes(f, Opcode);
-        Pad += Print2Bytes(f, RegList);
+        Pad += Print2Bytes(f, Info.Imm);
 
         PrintPaddedMnemonic(f, Pad, "enter");
-        char IntList[64] = { 0 }, FltList[64] = { 0 };
-        PrintRegList(IntList, sizeof IntList, RegList, 0, 8, sIntReg);
-        PrintRegList(FltList, sizeof FltList, RegList >> 8, 0, 8, sFltReg);
-
-        fprintf(f, "{ %s; %s }, rsp + %u", 
-                IntList, FltList, (U32)Info.Imm
+        fprintf(f, "rsp + %u", 
+                (U32)Info.Imm
         );
         fprintf(f, "\n%*s  ", sAddrPad, "");
-        Print2Bytes(f, Info.Imm);
         Print2Bytes(f, Info.Imm >> 16);
         fputc('\n', f);
         return Info.Addr;
