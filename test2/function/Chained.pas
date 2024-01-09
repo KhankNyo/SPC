@@ -29,21 +29,30 @@ begin
     writeln('failed: ', FailCode);
 end;
 
+procedure Passed(PassedCode: integer);
+begin
+    writeln('Passed: ', PassedCode);
+end;
+
 procedure main;
 var uno: r1;
     dos: r2;
 begin
     uno := mk1(1, 2);
+    { passed and failed are functions to make disassembly clean }
     if (uno.a <> 1) or (uno.b <> 2) 
-    then Fail(1);
+    then Fail(1)
+    else Passed(1);
 
     dos := mk2(uno);
     if (dos.fa <> uno.a) or (dos.fb <> uno.b) 
-    then Fail(2);
+    then Fail(2)
+    else Passed(2);
 
     dos := mk2(mk1(3, 4));
     if (dos.fa <> 3) or (dos.fb <> 4) 
-    then Fail(3);
+    then Fail(3)
+    else Passed(3);
 end;
 
 begin main end.
