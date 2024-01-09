@@ -1914,6 +1914,7 @@ VarLocation PVMSetReturnType(PVMEmitter *Emitter, VarType Type)
     if (!VarTypeIsTriviallyCopiable(Type))
     {
         ReturnRegister = VAR_LOCATION_MEM(
+                /* C is horrible */
                 .RegPtr = ((VarRegister){ PVM_RETREG, false }), 
                 0, Type
         );
