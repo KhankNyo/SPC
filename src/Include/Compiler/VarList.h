@@ -8,6 +8,7 @@
 
 /* nothing can be NULL */
 /*
+ * expects '(' to have been consumed 
  * compiles a subroutine's parameter list, 
  * returns the parameter list */
 SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVartab *Scope);
@@ -20,12 +21,14 @@ U32 CompileVarList(PascalCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U
 PascalVar *CompileRecordDefinition(PascalCompiler *Compiler, const Token *Name);
 
 
-/* NULL can be passed into OutReturnValue */
-/* returns temporary record if the callee does return one, 
- * or a VarLocation with VAR_INVALID */
-VarLocation CompileSubroutineCall(PascalCompiler *Compiler,
-        VarLocation *Callee, const Token *Name, VarLocation *OutReturnValue
+/* expects PVMStartArg to have been called,
+ * '(' or nothing to be the next token */
+void CompileArgumentList(PascalCompiler *Compiler, 
+        const Token *Callee, const SubroutineData *Subroutine,
+        I32 *Base, UInt HiddenParamCount
 );
+
+void CompilerEmitCall(PascalCompiler *Compiler, const VarLocation *Location, SaveRegInfo SaveRegs);
 
 
 #endif /* PASCAL_COMPILER_VARLIST_H */

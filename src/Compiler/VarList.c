@@ -307,7 +307,7 @@ static void CompilePartialArgumentList(PascalCompiler *Compiler,
     }
 }
 
-static void CompileArgumentList(PascalCompiler *Compiler, 
+void CompileArgumentList(PascalCompiler *Compiler, 
         const Token *Callee, const SubroutineData *Subroutine, 
         I32 *Base, UInt HiddenParamCount)
 {
@@ -333,135 +333,36 @@ static void CompileArgumentList(PascalCompiler *Compiler,
 }
 
 
-typedef struct ArgInfo 
-{
-    I32 Base;
-    I32 StackArgSize;
-    UInt HiddenArgCount;
-    VarLocation TemporaryRecord;
-} ArgInfo;
-
-
-ArgInfo CompileHiddenArguments(PascalCompiler *Compiler, 
-        const SubroutineData *Subroutine, VarLocation *ReturnValue)
+void CompilerEmitCall(PascalCompiler *Compiler, const VarLocation *Location, SaveRegInfo SaveRegs)
 {
     PASCAL_NONNULL(Compiler);
-    PASCAL_NONNULL(Subroutine);
-    ArgInfo Arg = { 
-        .TemporaryRecord = { 0 },
-        .StackArgSize = Subroutine->StackArgSize,
-    };
-
-    /* returning record */
-    if (NULL != Subroutine->ReturnType && TYPE_RECORD == Subroutine->ReturnType->Integral)
-    {
-        Arg.HiddenArgCount = 1;
-        /* cares about return type */
-        if (NULL != ReturnValue)
-        {
-            Arg.Base = PVMStartArg(EMITTER(), Arg.StackArgSize);
-            VarLocation RecordArg = PVMSetArg(EMITTER(), 0, *Subroutine->ReturnType, &Arg.Base);
-            if (VarTypeEqual(&RecordArg.Type, &ReturnValue->Type))
-            {
-                PVMEmitMove(EMITTER(), &RecordArg, ReturnValue);
-                PVMMarkArgAsOccupied(EMITTER(), &RecordArg);
-            }
-            Arg.TemporaryRecord = *ReturnValue;
-        }
-        else
-        {
-            Arg.TemporaryRecord = PVMCreateStackLocation(EMITTER(), 
-                    *Subroutine->ReturnType, Compiler->StackSize
-            );
-            Arg.StackArgSize += Subroutine->ReturnType->Size;
-            Arg.Base = PVMStartArg(EMITTER(), Arg.StackArgSize);
-            VarLocation RecordArg = PVMSetArg(EMITTER(), 0, *Subroutine->ReturnType, &Arg.Base);
-
-            PVMEmitMove(EMITTER(), &RecordArg, &Arg.TemporaryRecord);
-            PVMMarkArgAsOccupied(EMITTER(), &RecordArg);
-        }
-    }
-    /* has args */
-    else if (Subroutine->ParameterList.Count)
-    {
-        Arg.Base = PVMStartArg(EMITTER(), Arg.StackArgSize);
-    }
-    return Arg;
-}
-
-
-VarLocation CompileSubroutineCall(PascalCompiler *Compiler, 
-        VarLocation *Location, const Token *Callee, VarLocation *ReturnValue)
-{
-    PASCAL_NONNULL(Compiler);
-    PASCAL_NONNULL(Callee);
     PASCAL_NONNULL(Location);
-    if (NULL != ReturnValue)
+
+    if (TYPE_POINTER == Location->Type.Integral)
     {
-        PASCAL_ASSERT(ReturnValue->LocationType == VAR_REG, "TODO: record uses mem type for return");
-    }
-
-    U32 CallSite = 0;
-    UInt ReturnReg = NULL == ReturnValue ? NO_RETURN_REG : ReturnValue->As.Register.ID;
-    const VarType *SubroutineType = &Location->Type;
-    const SubroutineData *Subroutine = &SubroutineType->As.Subroutine;
-    SaveRegInfo SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
-    ArgInfo Arg = { 0 };
-
-    if (TYPE_POINTER == SubroutineType->Integral)
-    {
-        /* calling a function pointer */
-        SubroutineType = SubroutineType->As.Pointee;
-        PASCAL_NONNULL(SubroutineType);
-        Subroutine = &SubroutineType->As.Subroutine;
-
-        Arg = CompileHiddenArguments(Compiler, Subroutine, ReturnValue);
-        /* is the function pointer in one of the registers being saved? */
-        if (VAR_REG == Location->LocationType 
+        /* function ptr was saved among saved caller regs */
+        if (VAR_REG == Location->LocationType
         && PVMRegIsSaved(SaveRegs, Location->As.Register.ID))
         {
-            VarLocation FunctionPointer = PVMRetreiveSavedCallerReg(EMITTER(), 
-                    SaveRegs, 
-                    Location->As.Register.ID, 
-                    *SubroutineType
+            /* retreive its location on stack for the call */
+            VarLocation SavedFunctionPointer = PVMRetreiveSavedCallerReg(EMITTER(), 
+                    SaveRegs, Location->As.Register.ID, Location->Type
             );
-            CompileArgumentList(Compiler, Callee, Subroutine, &Arg.Base, Arg.HiddenArgCount);
-            PVMEmitCallPtr(EMITTER(), &FunctionPointer);
+            PVMEmitCallPtr(EMITTER(), &SavedFunctionPointer);
         }
         else
         {
-            CompileArgumentList(Compiler, Callee, Subroutine, &Arg.Base, Arg.HiddenArgCount);
             PVMEmitCallPtr(EMITTER(), Location);
         }
-        /* we're owning the function pointer, so we free it */
-        FreeExpr(Compiler, *Location);
     }
     else
     {
-        Arg = CompileHiddenArguments(Compiler, Subroutine, ReturnValue);
-        CompileArgumentList(Compiler, Callee, Subroutine, &Arg.Base, Arg.HiddenArgCount);
-        CallSite = PVMEmitCall(EMITTER(), 0);
-        PushSubroutineReference(Compiler, 
-                &Location->As.SubroutineLocation, 
-                CallSite
-        );
+        /* call regular function */
+        U32 CallSite = PVMEmitCall(EMITTER(), 0);
+        PushSubroutineReference(Compiler, &Location->As.SubroutineLocation, CallSite);
     }
-
-    /* wants return value */
-    if (NULL != ReturnValue && TYPE_RECORD != ReturnValue->Type.Integral)
-    {
-        VarLocation Tmp = PVMSetReturnType(EMITTER(), ReturnValue->Type);
-        PVMEmitMove(EMITTER(), ReturnValue, &Tmp);
-    }
-
-    /* deallocate stack args */
-    if (Arg.StackArgSize) 
-    {
-        PVMEmitStackAllocation(EMITTER(), -(I32)Arg.StackArgSize);
-    }
-    PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg, SaveRegs);
-    return Arg.TemporaryRecord;
 }
+
 
 
 

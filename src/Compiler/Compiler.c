@@ -499,6 +499,58 @@ static void CompileIfStmt(PascalCompiler *Compiler)
 
 
 
+static void CompileCallWithoutReturnValue(PascalCompiler *Compiler, 
+        const VarLocation *Location, const Token *Callee)
+{
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Location);
+    PASCAL_NONNULL(Callee);
+
+
+    const VarType *Type = &Location->Type;
+    if (TYPE_POINTER == Type->Integral)
+    {
+        Type = Type->As.Pointee;
+        if (NULL == Type || TYPE_FUNCTION != Type->Integral)
+        {
+            ErrorAt(Compiler, Callee, "Cannot call %s.", VarTypeToStr(Location->Type));
+            return;
+        }
+    }
+    const SubroutineData *Subroutine = &Type->As.Subroutine;
+    const VarType *ReturnType = Subroutine->ReturnType;
+
+
+    /* save caller registers asnd start args */
+    VarLocation ReturnValue;
+    SaveRegInfo SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
+    I32 Base = PVMStartArg(EMITTER(), Subroutine->StackArgSize);
+    if (NULL != ReturnType && !VarTypeIsTriviallyCopiable(*ReturnType))
+    {
+        /* create a temporary on stack as first argument */
+        VarLocation FirstArg = PVMSetArg(EMITTER(), 0, *ReturnType, &Base);
+        Compiler->TemporarySize = uMax(Compiler->TemporarySize, ReturnType->Size);
+        ReturnValue = PVMCreateStackLocation(EMITTER(), *ReturnType, Compiler->StackSize);
+
+        PASCAL_ASSERT(ReturnValue.LocationType == VAR_MEM, "%s", __func__);
+        PVMEmitMove(EMITTER(), &FirstArg, &ReturnValue);
+        PVMMarkArgAsOccupied(EMITTER(), &FirstArg);
+    }
+
+
+    CompileArgumentList(Compiler, Callee, Subroutine, &Base, Subroutine->HiddenParamCount);
+    CompilerEmitCall(Compiler, Location, SaveRegs);
+
+
+    if (Subroutine->StackArgSize)
+    {
+        /* deallocate stack space */
+        PVMEmitStackAllocation(EMITTER(), -Subroutine->StackArgSize);
+    }
+    /* restore caller regs */
+    PVMEmitUnsaveCallerRegs(EMITTER(), NO_RETURN_REG, SaveRegs);
+}
+
 
 static void CompileCallStmt(PascalCompiler *Compiler, const Token Name, VarLocation *Location)
 {
@@ -509,7 +561,8 @@ static void CompileCallStmt(PascalCompiler *Compiler, const Token Name, VarLocat
     /* iden consumed */
     /* call the subroutine */
     CompilerInitDebugInfo(Compiler, &Name);
-    FreeExpr(Compiler, CompileSubroutineCall(Compiler, Location, &Name, NULL));
+    CompileCallWithoutReturnValue(Compiler, Location, &Name);
+    FreeExpr(Compiler, *Location);
     CompilerEmitDebugInfo(Compiler, &Name);
 }
 
@@ -853,7 +906,7 @@ static void CompileStmt(PascalCompiler *Compiler)
     {
         if (TOKEN_SEMICOLON == Compiler->Curr.Type)
         {
-            ErrorAt(Compiler, &Compiler->Curr, "Is not allowed before 'else'.");
+            ErrorAt(Compiler, &Compiler->Curr, "Semicolon is not allowed before 'else'.");
         }
         else
         {
@@ -1151,7 +1204,7 @@ static void CompileSubroutineBlock(PascalCompiler *Compiler, const char *Subrout
         U32 PrevStackSize = Compiler->StackSize;
         *Subroutine.Location = CompileLocalParameter(Compiler, Subroutine.Info);
         CompileBlock(Compiler);
-        PVMPatchEnter(EMITTER(), *Subroutine.Location, Compiler->StackSize);
+        PVMPatchEnter(EMITTER(), *Subroutine.Location, Compiler->StackSize + Compiler->TemporarySize);
         Compiler->StackSize = PrevStackSize;
 
 

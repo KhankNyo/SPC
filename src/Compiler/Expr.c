@@ -224,72 +224,121 @@ static VarLocation FactorLiteral(PascalCompiler *Compiler)
 }
 
 
+static VarLocation CompileCallWithReturnValue(PascalCompiler *Compiler, 
+        const VarLocation *Location, const Token *Callee)
+{
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Location);
+    PASCAL_NONNULL(Callee);
+
+    const VarType *Type = &Location->Type;
+    if (TYPE_POINTER == Type->Integral)
+    {
+        Type = Type->As.Pointee;
+        if (NULL == Type || TYPE_FUNCTION != Type->Integral)
+        {
+            ErrorAt(Compiler, Callee, "Cannot call %s.", VarTypeToStr(Location->Type));
+            return (VarLocation) { 0 };
+        }
+    }
+    const SubroutineData *Subroutine = &Type->As.Subroutine;
+    const VarType *ReturnType = Subroutine->ReturnType;
+    if (NULL == ReturnType)
+    {
+        /* no return value, but in expression */
+        ErrorAt(Compiler, Callee, "Procedure '"STRVIEW_FMT"' does not have a return value.",
+                STRVIEW_FMT_ARG(&Callee->Lexeme)
+        );
+        return (VarLocation) { 0 };
+    }
+
+
+    VarLocation ReturnValue;
+    UInt ReturnReg = NO_RETURN_REG;
+    I32 Base = PVMStartArg(EMITTER(), Subroutine->StackArgSize);
+    SaveRegInfo SaveRegs;
+    if (!VarTypeIsTriviallyCopiable(*ReturnType))
+    {
+        SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
+
+        /* then first argument will contain return value */
+        VarLocation FirstArg = PVMSetArg(EMITTER(), 0, *ReturnType, &Base);
+        if (NULL != Compiler->Lhs && VarTypeEqual(ReturnType, &Compiler->Lhs->Type)) 
+        {
+            /* pass a pointer of lhs as first argument */
+            ReturnValue = *Compiler->Lhs;
+        }
+        else
+        {
+            /* create a temporary on stack as first argument */
+            Compiler->TemporarySize = uMax(Compiler->TemporarySize, ReturnType->Size);
+            ReturnValue = PVMCreateStackLocation(EMITTER(), *ReturnType, Compiler->StackSize);
+        }
+        PASCAL_ASSERT(ReturnValue.LocationType == VAR_MEM, "%s", __func__);
+        PVMEmitMove(EMITTER(), &FirstArg, &ReturnValue);
+        PVMMarkArgAsOccupied(EMITTER(), &FirstArg);
+    }
+    else
+    {
+        /* return value in register */
+        ReturnValue = PVMAllocateRegisterLocation(EMITTER(), *ReturnType);
+        ReturnReg = ReturnValue.As.Register.ID;
+
+        SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), ReturnReg);
+    }
+
+
+    CompileArgumentList(Compiler, Callee, Subroutine, &Base, Subroutine->HiddenParamCount);
+    CompilerEmitCall(Compiler, Location, SaveRegs);
+
+
+    if (VarTypeIsTriviallyCopiable(*ReturnType))
+    {
+        VarLocation DefaultReturnReg = PVMSetReturnType(EMITTER(), *ReturnType);
+        PVMEmitMove(EMITTER(), &ReturnValue, &DefaultReturnReg);
+    }
+
+
+    /* did we allocate stack space for arguments? */
+    /* 
+     * TODO: this is calling convention dependent, 
+     * in cdecl we can allocate stack space once for all function call and forget about it, 
+     * but in stdcall, the callee cleans up the stack 
+     */
+    if (Subroutine->StackArgSize)
+    {
+        /* deallocate stack space */
+        PVMEmitStackAllocation(EMITTER(), -Subroutine->StackArgSize);
+    }
+
+    /* restore caller regs */
+    PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg, SaveRegs);
+    return ReturnValue;
+}
+
+
 static VarLocation FactorCall(PascalCompiler *Compiler, VarLocation *Location)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Location);
 
-    VarLocation ReturnValue = { 0 };
     Token Callee = Compiler->Curr;
-
     /* builtin function */
     if (VAR_BUILTIN == Location->LocationType)
     {
         OptionalReturnValue Opt = CompileCallToBuiltin(Compiler, Location->As.BuiltinSubroutine);
         if (!Opt.HasReturnValue)
         {
-            ErrorAt(Compiler, &Callee, "Builtin procedure does not have a return value.");
-            return ReturnValue;
+            ErrorAt(Compiler, &Callee, "Builtin procedure '"STRVIEW_FMT"' does not have a return value.",
+                    STRVIEW_FMT_ARG(&Callee.Lexeme)
+            );
+            return (VarLocation) { 0 };
         }
         return Opt.ReturnValue;
     }
 
-    /* function pointer  */
-    SubroutineData *Subroutine = NULL;
-    if (TYPE_POINTER == Location->Type.Integral)
-    {
-        if (NULL == Location->Type.As.Pointee
-        || TYPE_FUNCTION != Location->Type.As.Pointee->Integral)
-        {
-            ErrorAt(Compiler, &Callee, "Cannot call %s", VarTypeToStr(Location->Type));
-            return ReturnValue;
-        }
-        Subroutine = &Location->Type.As.Pointee->As.Subroutine;
-    }
-    else 
-    {
-        Subroutine = &Location->Type.As.Subroutine;
-    }
-
-    /* no return value, but in expression */
-    if (NULL == Subroutine->ReturnType)
-    {
-        ErrorAt(Compiler, &Callee, "Procedure '"STRVIEW_FMT"' does not have a return value.",
-                STRVIEW_FMT_ARG(&Callee.Lexeme)
-        );
-        return ReturnValue;
-    }
-
-
-    /* setup return reg */
-    if (TYPE_RECORD == Subroutine->ReturnType->Integral)
-    {
-        VarLocation *Lhs = Compiler->Lhs;
-        if (NULL != Lhs && !VarTypeEqual(&Lhs->Type, Subroutine->ReturnType))
-        {
-            Lhs = NULL;
-        }
-        ReturnValue = CompileSubroutineCall(Compiler, Location, &Callee, Lhs);
-    }
-    else
-    {
-        ReturnValue = PVMAllocateRegisterLocation(EMITTER(), *Subroutine->ReturnType);
-        CompileSubroutineCall(Compiler, Location, &Callee, &ReturnValue);
-        if (TYPE_POINTER == ReturnValue.Type.Integral)
-        {
-            ReturnValue.Type.As.Pointee = Subroutine->ReturnType->As.Pointee;
-        }
-    }
+    VarLocation ReturnValue = CompileCallWithReturnValue(Compiler, Location, &Callee);
+    FreeExpr(Compiler, *Location);
     return ReturnValue;
 }
 

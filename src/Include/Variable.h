@@ -110,6 +110,29 @@ struct VarLocation
     .As.Literal Assignment\
 }
 
+#define VAR_LOCATION_REG(RegID, IsPersistent, vtType) (VarLocation) {\
+    .Type = vtType,\
+    .LocationType = VAR_REG,\
+    .As.Register.ID = RegID,\
+    .As.Register.Persistent = IsPersistent,\
+}
+
+/*
+ * AssignmentRegister: 
+ * .RegPtr = {
+ *  .ID = ...,
+ *  .Persitent = ...,
+ * }
+ * */
+#define VAR_LOCATION_MEM(AssignmentRegister, Offset, vtType) (VarLocation) {\
+    .Type = vtType,\
+    .LocationType = VAR_MEM,\
+    .As.Memory = {\
+        .Location = Offset,\
+        AssignmentRegister\
+    }\
+}
+
 
 
 static inline F64 VarLiteralToF64(VarLiteral Literal, IntegralType Type)

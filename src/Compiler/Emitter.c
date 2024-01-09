@@ -1858,7 +1858,7 @@ I32 PVMStartArg(PVMEmitter *Emitter, U32 ArgSize)
 {
     PASCAL_NONNULL(Emitter);
     PVMEmitStackAllocation(Emitter, ArgSize);
-    return Emitter->StackSpace;
+    return PVM_STACK_ALIGNMENT;
 }
 
 
@@ -1870,34 +1870,23 @@ VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType ArgType, I32 
     /* arguments in register */
     if (ArgNumber < PVM_ARGREG_COUNT)
     {
-        VarLocation ArgReg = {
-            .Type = ArgType, 
-            .LocationType = VAR_REG,
-            .As.Register = {
-                .ID = ArgNumber,
-                .Persistent = false,
-            },
-        };
-
+        VarLocation ArgReg = VAR_LOCATION_REG(
+                ArgNumber, false, ArgType
+        );
         if (IntegralTypeIsFloat(ArgType.Integral))
         {
-            ArgReg.As.Register.ID += PVM_REG_COUNT;
+            ArgReg.As.Register.ID += PVM_ARGREG_F0;
         }
         return ArgReg;
     }
 
     /* arguments on stack */
     *Base -= ArgType.Size;
-    I32 ArgOffset = *Base;
-    VarLocation Mem = {
-        .Type = ArgType,
-        .LocationType = VAR_MEM,
-        .As.Memory = {
-            .RegPtr = Emitter->Reg.FP.As.Register,
-            .Location = ArgOffset + sizeof(PVMGPR),
-        },
-    };
-    return Mem;
+    VarLocation Memory = VAR_LOCATION_MEM(
+            .RegPtr = Emitter->Reg.SP.As.Register, 
+            *Base, ArgType
+    );
+    return Memory;
 }
 
 
@@ -1919,24 +1908,22 @@ void PVMMarkArgAsOccupied(PVMEmitter *Emitter, const VarLocation *Arg)
 VarLocation PVMSetReturnType(PVMEmitter *Emitter, VarType Type)
 {
     PASCAL_NONNULL(Emitter);
-
-    VarLocation ReturnValue = Emitter->ReturnValue;
-    PASCAL_ASSERT(ReturnValue.LocationType == VAR_REG, "??");
-
-    ReturnValue.Type = Type;
-    if (IntegralTypeIsFloat(Type.Integral))
+    VarLocation ReturnRegister = VAR_LOCATION_REG(
+            PVM_RETREG, false, Type
+    );
+    if (!VarTypeIsTriviallyCopiable(Type))
     {
-        ReturnValue.As.Register.ID = Emitter->ReturnValue.As.Register.ID + PVM_REG_COUNT;
+        ReturnRegister = VAR_LOCATION_MEM(
+                .RegPtr = ((VarRegister){ PVM_RETREG, false }), 
+                0, Type
+        );
+    }
+    else if (IntegralTypeIsFloat(Type.Integral))
+    {
+        ReturnRegister.As.Register.ID = PVM_ARGREG_F0;
     }
 
-    /* TODO: this assumes that R0 contains the addr of the returning record */
-    if (TYPE_RECORD == Type.Integral)
-    {
-        ReturnValue.LocationType = VAR_MEM;
-        ReturnValue.As.Memory.RegPtr = ReturnValue.As.Register;
-        ReturnValue.As.Memory.Location = 0;
-    }
-    return ReturnValue;
+    return ReturnRegister;
 }
 
 
