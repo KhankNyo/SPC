@@ -26,13 +26,15 @@
 
 # TODO:
 ### Critical:
-- ignoring record return value
-- rewrite tests
+- 1-character long string literals are automatically treated as char, fix this
+- add goto, label, and with statement
+- add array, set, and union (record case) types
+- reconsider string as 'array[0..255] of char' (after adding array)
+- file, text type
 
 ### Features:
+- for in loop
 - const, var, and constref parameters
-- char, array type, and reconsider string
-- file, text type
 - x86, x64, ARM backend
 - different calling conventions
 
