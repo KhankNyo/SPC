@@ -44,25 +44,60 @@ static PascalVar *FindTypename(PascalCompiler *Compiler, const Token *Name)
 }
 
 
-bool ParseTypename(PascalCompiler *Compiler, VarType *Out)
+
+#define ParseTypename(pCompiler, pVartype) ParseAndDefineTypenameInternal(pCompiler, NULL, pVartype)
+static bool ParseAndDefineTypenameInternal(PascalCompiler *Compiler, const Token *Identifier, VarType *Out)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Out);
-    bool Pointer = ConsumeIfNextTokenIs(Compiler, TOKEN_CARET);
-
     if (ConsumeIfNextTokenIs(Compiler, TOKEN_RECORD))
     {
-        /* annonymous record */
+        /* records are different from other types because it can be self-referenced 
+         * inside its body via pointers, so we have to define its name and type first.
+         * Although only self-reference via pointers is allowed,
+         * the programmer can just declare the record recursively, 
+         * TODO: disallow that */
+        const StringView Name = NULL == Identifier?
+            Compiler->EmptyToken.Lexeme
+            : Identifier->Lexeme;
+
+        /* initialize the record and predefine it unlike other types */
+        PascalVartab RecordScope = VartabInit(&Compiler->InternalAlloc, 16);
+        *Out = VarTypeRecord(Name, RecordScope, 0);
+        PascalVar *RecordName = DefineIdentifier(Compiler, Identifier, *Out, NULL);
+
+        U32 TotalSize = 0;
+        CompilerPushScope(Compiler, &RecordScope);
         TmpIdentifiers SaveList = CompilerSaveTmp(Compiler);
-        *Out = CompileRecordDefinition(Compiler);
+        while (!IsAtEnd(Compiler) && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
+        {
+            /* packed alignment: 1 */
+            U32 NextLine = CompileVarList(Compiler, 0, TotalSize, 1);
+            if (TotalSize == NextLine) /* error, could not compile type */
+                break;
+
+            /* update size */
+            TotalSize = NextLine;
+            if (NextTokenIs(Compiler, TOKEN_END) 
+            || !ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expect ';' or 'end' after member declaration."))
+            {
+                break;
+            }
+        }
         CompilerUnsaveTmp(Compiler, &SaveList);
+        ConsumeOrError(Compiler, TOKEN_END, "Expected 'end' after record definition.");
+        CompilerPopScope(Compiler);
+
+        RecordName->Type.Size = TotalSize;
+        Out->Size = TotalSize;
         return true;
     }
-    if (ConsumeIfNextTokenIs(Compiler, TOKEN_ARRAY))
+    else if (ConsumeIfNextTokenIs(Compiler, TOKEN_ARRAY))
     {
         PASCAL_UNREACHABLE("TODO: array");
+        return true;
     }
-    if (ConsumeIfNextTokenIs(Compiler, TOKEN_FUNCTION))
+    else if (ConsumeIfNextTokenIs(Compiler, TOKEN_FUNCTION))
     {
         PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
         SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
@@ -77,21 +112,22 @@ bool ParseTypename(PascalCompiler *Compiler, VarType *Out)
         VarType *ReturnType = CompilerCopyType(Compiler, Type->Type);
         VarType Function = VarTypeSubroutine(ParameterList, Scope, ReturnType, 0);
         *Out = VarTypePtr(CompilerCopyType(Compiler, Function));
-        return true;
     }
-    if (ConsumeIfNextTokenIs(Compiler, TOKEN_PROCEDURE))
+    else if (ConsumeIfNextTokenIs(Compiler, TOKEN_PROCEDURE))
     {
         PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
         SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
         VarType Procedure = VarTypeSubroutine(ParameterList, Scope, NULL, 0);
         *Out = VarTypePtr(CompilerCopyType(Compiler, Procedure));
-        return true;
     }
-    if (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
+    else if (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
+        /* just copy the type */
         PascalVar *Typename = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined type name.");
         if (NULL == Typename)
             return false;
+
+        /* has a location, so not a type name */
         if (NULL != Typename->Location)
         {
             ErrorAt(Compiler, &Compiler->Curr, "'"STRVIEW_FMT"' is not a type name in this scope.", 
@@ -99,22 +135,36 @@ bool ParseTypename(PascalCompiler *Compiler, VarType *Out)
             );
             return false;
         }
-
-        if (Pointer)
-            *Out = VarTypePtr(CompilerCopyType(Compiler, Typename->Type));
-        else
-            *Out = Typename->Type;
-        return true;
+        *Out = Typename->Type;
+    }
+    else if (ConsumeIfNextTokenIs(Compiler, TOKEN_CARET))
+    {
+        VarType Pointee;
+        /* recursive call */
+        ParseTypename(Compiler, &Pointee);
+        *Out = VarTypePtr(CompilerCopyType(Compiler, Pointee));
     }
     else 
     {
         Error(Compiler, "Expected type name after '"STRVIEW_FMT"'.",
                 STRVIEW_FMT_ARG(&Compiler->Curr.Lexeme)
         );
+        return false;
     }
-    return false;
+
+    /* define the type name */
+    if (NULL != Identifier)
+    {
+        DefineIdentifier(Compiler, Identifier, *Out, NULL);
+    }
+    return true;
 }
 
+void ParseAndDefineTypename(PascalCompiler *Compiler, const Token *Identifier)
+{
+    VarType Dummy;
+    ParseAndDefineTypenameInternal(Compiler, Identifier, &Dummy);
+}
 
 
 static bool ParseVarList(PascalCompiler *Compiler, VarType *Out)
@@ -262,42 +312,6 @@ SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVar
         }
     } while (ConsumeIfNextTokenIs(Compiler, TOKEN_SEMICOLON));
     return ParameterList;
-}
-
-
-
-
-VarType CompileRecordDefinition(PascalCompiler *Compiler)
-{
-    PASCAL_NONNULL(Compiler);
-
-    U32 TotalSize = 0;
-    /* 'record' consumed */
-    PascalVartab RecordScope = VartabInit(&Compiler->InternalAlloc, 16);
-
-    /* empty name, caller will insert name */
-    VarType Record = VarTypeRecord(Compiler->EmptyToken.Lexeme, RecordScope, TotalSize);
-
-    CompilerPushScope(Compiler, &RecordScope);
-    while (!IsAtEnd(Compiler) && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
-    {
-        /* packed alignment: 1 */
-        U32 NextLine = CompileVarList(Compiler, 0, TotalSize, 1);
-        if (TotalSize == NextLine) /* error, could not compile type */
-            break;
-
-        /* update size */
-        TotalSize = NextLine;
-        if (NextTokenIs(Compiler, TOKEN_END) 
-        || !ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expect ';' or 'end' after member declaration."))
-        {
-            break;
-        }
-    }
-    ConsumeOrError(Compiler, TOKEN_END, "Expected 'end' after record definition.");
-    CompilerPopScope(Compiler);
-    Record.Size = TotalSize;
-    return Record;
 }
 
 

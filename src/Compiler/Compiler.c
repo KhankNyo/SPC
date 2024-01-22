@@ -1335,20 +1335,8 @@ static void CompileTypeBlock(PascalCompiler *Compiler)
     while (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         Token Identifier = Compiler->Curr;
-        if (!ConsumeOrError(Compiler, TOKEN_EQUAL, "Expected '=' instead."))
-            return;
-
-        /* define the identifier as an opaque pointer */
-        PascalVar *Typename = DefineIdentifier(Compiler, &Identifier, VarTypePtr(NULL), NULL);
-        PASCAL_NONNULL(Typename);
-        VarType Type;
-        if (ParseTypename(Compiler, &Type))
-        {
-            if (Type.Integral == TYPE_RECORD) /* set the name inside the record type */
-                Type.As.Record.Name = Identifier.Lexeme;
-            Typename->Type = Type;
-        }
-
+        ConsumeOrError(Compiler, TOKEN_EQUAL, "Expected '=' after identifier.");
+        ParseAndDefineTypename(Compiler, &Identifier);
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after type definition.");
     }
 }
