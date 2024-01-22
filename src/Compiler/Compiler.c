@@ -1034,21 +1034,6 @@ static SubroutineInformation ConsumeSubroutineName(PascalCompiler *Compiler,
 
 
 
-static SubroutineParameterList CompileParameterListWithParentheses(PascalCompiler *Compiler, PascalVartab *Scope)
-{
-    SubroutineParameterList ParameterList = { 0 };
-    if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_PAREN))
-    {
-        if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
-        {
-            ParameterList = CompileParameterList(Compiler, Scope);
-        }
-        ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after parameter list.");
-    }
-    return ParameterList;
-}
-
-
 static U32 CompileLocalParameter(PascalCompiler *Compiler, 
         SubroutineData *Subroutine)
 {
@@ -1330,21 +1315,6 @@ static void CompileVarBlock(PascalCompiler *Compiler)
 
 
 
-static PascalVar *FindTypeName(PascalCompiler *Compiler, const Token *Name)
-{
-    PascalVar *Type = GetIdenInfo(Compiler, Name, "Undefined type name.");
-    if (NULL == Type)
-        return NULL;
-    if (NULL != Type->Location)
-    {
-        ErrorAt(Compiler, Name, "'"STRVIEW_FMT"' is not a type name.",
-                STRVIEW_FMT_ARG(&Name->Lexeme)
-        );
-        return NULL;
-    }
-    return Type;
-}
-
 
 static void CompileTypeBlock(PascalCompiler *Compiler)
 {
@@ -1368,57 +1338,15 @@ static void CompileTypeBlock(PascalCompiler *Compiler)
         if (!ConsumeOrError(Compiler, TOKEN_EQUAL, "Expected '=' instead."))
             return;
 
-        if (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
+        /* define the identifier as an opaque pointer */
+        PascalVar *Typename = DefineIdentifier(Compiler, &Identifier, VarTypePtr(NULL), NULL);
+        PASCAL_NONNULL(Typename);
+        VarType Type;
+        if (ParseTypename(Compiler, &Type))
         {
-            /* typename */
-            const Token TypeName = Compiler->Curr;
-            PascalVar *Type = GetIdenInfo(Compiler, &TypeName, "Undefined type name.");
-            DefineIdentifier(Compiler, &Identifier, Type->Type, NULL);
-        }
-        else if (ConsumeIfNextTokenIs(Compiler, TOKEN_CARET))
-        {
-            /* pointer type */
-            if (!ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected type name."))
-                continue;
-            PascalVar *Type = FindTypeName(Compiler, &Compiler->Curr);
-            if (NULL == Type)
-                continue;
-
-            VarType Pointer = VarTypePtr(CompilerCopyType(Compiler, Type->Type));
-            DefineIdentifier(Compiler, &Identifier, Pointer, NULL);
-        }
-        else if (ConsumeIfNextTokenIs(Compiler, TOKEN_RECORD))
-        {
-            CompileRecordDefinition(Compiler, &Identifier);
-        }
-        else if (ConsumeIfNextTokenIs(Compiler, TOKEN_FUNCTION))
-        {
-            PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
-            SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
-
-            ConsumeOrError(Compiler, TOKEN_COLON, "Expeccted ':' after function paramter list.");
-            if (!ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected function return type."))
-                continue;
-            PascalVar *Type = FindTypeName(Compiler, &Compiler->Curr);
-            if (NULL == Type)
-                continue;
-
-            VarType *ReturnType = CompilerCopyType(Compiler, Type->Type);
-            VarType Function = VarTypeSubroutine(ParameterList, Scope, ReturnType, 0);
-            VarType FunctionPointer = VarTypePtr(CompilerCopyType(Compiler, Function));
-            DefineIdentifier(Compiler, &Identifier, FunctionPointer, NULL);
-        }
-        else if (ConsumeIfNextTokenIs(Compiler, TOKEN_PROCEDURE))
-        {
-            PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
-            SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
-            VarType Procedure = VarTypeSubroutine(ParameterList, Scope, NULL, 0);
-            VarType ProcedurePointer = VarTypePtr(CompilerCopyType(Compiler, Procedure));
-            DefineIdentifier(Compiler, &Identifier, ProcedurePointer, NULL);
-        }
-        else
-        {
-            PASCAL_UNREACHABLE("TODO: more type.");
+            if (Type.Integral == TYPE_RECORD) /* set the name inside the record type */
+                Type.As.Record.Name = Identifier.Lexeme;
+            Typename->Type = Type;
         }
 
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after type definition.");

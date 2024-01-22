@@ -10,30 +10,52 @@
 
 
 
-typedef struct TypeAttribute 
+
+SubroutineParameterList CompileParameterListWithParentheses(PascalCompiler *Compiler, PascalVartab *Scope)
 {
-    bool Packed;
-    VarType Type;
-} TypeAttribute;
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Scope);
+
+    SubroutineParameterList ParameterList = { 0 };
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_PAREN))
+    {
+        if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
+        {
+            ParameterList = CompileParameterList(Compiler, Scope);
+        }
+        ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after parameter list.");
+    }
+    return ParameterList;
+}
+
+static PascalVar *FindTypename(PascalCompiler *Compiler, const Token *Name)
+{
+    PascalVar *Type = GetIdenInfo(Compiler, Name, "Undefined type name.");
+    if (NULL == Type)
+        return NULL;
+    if (NULL != Type->Location)
+    {
+        ErrorAt(Compiler, Name, "'"STRVIEW_FMT"' is not a type name.",
+                STRVIEW_FMT_ARG(&Name->Lexeme)
+        );
+        return NULL;
+    }
+    return Type;
+}
 
 
-static bool ParseTypename(PascalCompiler *Compiler, TypeAttribute *Out)
+bool ParseTypename(PascalCompiler *Compiler, VarType *Out)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Out);
     bool Pointer = ConsumeIfNextTokenIs(Compiler, TOKEN_CARET);
-    Out->Packed = false;
 
     if (ConsumeIfNextTokenIs(Compiler, TOKEN_RECORD))
     {
         /* annonymous record */
         TmpIdentifiers SaveList = CompilerSaveTmp(Compiler);
-        PascalVar *Record = CompileRecordDefinition(Compiler, &Compiler->EmptyToken);
+        *Out = CompileRecordDefinition(Compiler);
         CompilerUnsaveTmp(Compiler, &SaveList);
-        if (NULL == Record)
-            return false;
-
-        Out->Type = Record->Type;
         return true;
     }
     if (ConsumeIfNextTokenIs(Compiler, TOKEN_ARRAY))
@@ -42,7 +64,28 @@ static bool ParseTypename(PascalCompiler *Compiler, TypeAttribute *Out)
     }
     if (ConsumeIfNextTokenIs(Compiler, TOKEN_FUNCTION))
     {
-        PASCAL_UNREACHABLE("TODO: fnptr");
+        PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+        SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
+
+        ConsumeOrError(Compiler, TOKEN_COLON, "Expeccted ':' after function paramter list.");
+        if (!ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected function return type."))
+            return false;
+        PascalVar *Type = FindTypename(Compiler, &Compiler->Curr);
+        if (NULL == Type)
+            return false;
+
+        VarType *ReturnType = CompilerCopyType(Compiler, Type->Type);
+        VarType Function = VarTypeSubroutine(ParameterList, Scope, ReturnType, 0);
+        *Out = VarTypePtr(CompilerCopyType(Compiler, Function));
+        return true;
+    }
+    if (ConsumeIfNextTokenIs(Compiler, TOKEN_PROCEDURE))
+    {
+        PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
+        SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
+        VarType Procedure = VarTypeSubroutine(ParameterList, Scope, NULL, 0);
+        *Out = VarTypePtr(CompilerCopyType(Compiler, Procedure));
+        return true;
     }
     if (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
@@ -58,9 +101,9 @@ static bool ParseTypename(PascalCompiler *Compiler, TypeAttribute *Out)
         }
 
         if (Pointer)
-            Out->Type = VarTypePtr(CompilerCopyType(Compiler, Typename->Type));
+            *Out = VarTypePtr(CompilerCopyType(Compiler, Typename->Type));
         else
-            Out->Type = Typename->Type;
+            *Out = Typename->Type;
         return true;
     }
     else 
@@ -74,7 +117,7 @@ static bool ParseTypename(PascalCompiler *Compiler, TypeAttribute *Out)
 
 
 
-static bool ParseVarList(PascalCompiler *Compiler, TypeAttribute *Out)
+static bool ParseVarList(PascalCompiler *Compiler, VarType *Out)
 {
     /* 
      *  a, b, c: typename;
@@ -117,17 +160,17 @@ U32 CompileVarList(PascalCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U
      *  a1, a2: Array of typename
      *          Array[~~~]
      */
-    TypeAttribute TypeAttr;
-    if (!ParseVarList(Compiler, &TypeAttr))
+    VarType Type;
+    if (!ParseVarList(Compiler, &Type))
         return StartAddr;
 
     UInt VarCount = CompilerGetTmpCount(Compiler);
-    U32 AlignedSize = TypeAttr.Type.Size;
+    U32 AlignedSize = Type.Size;
     U32 Mask = ~(Alignment - 1);
     U32 EndAddr = StartAddr;
-    if (TypeAttr.Type.Size & ~Mask)
+    if (Type.Size & ~Mask)
     {
-        AlignedSize = (TypeAttr.Type.Size + Alignment) & Mask;
+        AlignedSize = (Type.Size + Alignment) & Mask;
     }
 
     /* defining the variables */
@@ -136,11 +179,11 @@ U32 CompileVarList(PascalCompiler *Compiler, UInt BaseRegister, U32 StartAddr, U
         VarLocation *Location = CompilerAllocateVarLocation(Compiler);
         DefineIdentifier(Compiler, 
                 CompilerGetTmp(Compiler, i),
-                TypeAttr.Type,
+                Type,
                 Location
         );
 
-        Location->Type = TypeAttr.Type;
+        Location->Type = Type;
         Location->LocationType = VAR_MEM;
         Location->As.Memory = (VarMemory) {
             .Location = EndAddr,
@@ -224,43 +267,37 @@ SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVar
 
 
 
-PascalVar *CompileRecordDefinition(PascalCompiler *Compiler, const Token *Name)
+VarType CompileRecordDefinition(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
-    PASCAL_NONNULL(Name);
 
     U32 TotalSize = 0;
     /* 'record' consumed */
     PascalVartab RecordScope = VartabInit(&Compiler->InternalAlloc, 16);
-    VarType Record = VarTypeRecord(Name->Lexeme, RecordScope, TotalSize);
-    PascalVar *RecordType = DefineIdentifier(Compiler, Name, Record, NULL);
-    PASCAL_NONNULL(RecordType);
-    CompilerPushScope(Compiler, &RecordScope);
 
+    /* empty name, caller will insert name */
+    VarType Record = VarTypeRecord(Compiler->EmptyToken.Lexeme, RecordScope, TotalSize);
+
+    CompilerPushScope(Compiler, &RecordScope);
     while (!IsAtEnd(Compiler) && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         /* packed alignment: 1 */
         U32 NextLine = CompileVarList(Compiler, 0, TotalSize, 1);
-        if (TotalSize == NextLine)
-        {
-            return NULL;
-        }
-        TotalSize = NextLine;
-
-        if (NextTokenIs(Compiler, TOKEN_END))
+        if (TotalSize == NextLine) /* error, could not compile type */
             break;
 
-        if (!ConsumeOrError(Compiler, TOKEN_SEMICOLON, 
-        "Expect ';' or 'end' after member declaration."))
+        /* update size */
+        TotalSize = NextLine;
+        if (NextTokenIs(Compiler, TOKEN_END) 
+        || !ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expect ';' or 'end' after member declaration."))
         {
-            return NULL;
+            break;
         }
     }
     ConsumeOrError(Compiler, TOKEN_END, "Expected 'end' after record definition.");
-
     CompilerPopScope(Compiler);
-    RecordType->Type.Size = TotalSize;
-    return RecordType;
+    Record.Size = TotalSize;
+    return Record;
 }
 
 
