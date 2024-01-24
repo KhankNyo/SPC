@@ -107,7 +107,12 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
     case ']': return MakeToken(Lexer, TOKEN_RIGHT_BRACKET);
     case '(': return MakeToken(Lexer, TOKEN_LEFT_PAREN);
     case ')': return MakeToken(Lexer, TOKEN_RIGHT_PAREN);
-    case '.': return MakeToken(Lexer, TOKEN_DOT);
+    case '.': 
+    {
+        if (AdvanceIfEqual(Lexer, '.'))
+            return MakeToken(Lexer, TOKEN_DOT_DOT);
+        return MakeToken(Lexer, TOKEN_DOT);
+    } break;
     case ',': return MakeToken(Lexer, TOKEN_COMMA);
     case ';': return MakeToken(Lexer, TOKEN_SEMICOLON);
     case '=': 
@@ -234,7 +239,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_EQUAL", "TOKEN_LESS", "TOKEN_GREATER", "TOKEN_LESS_GREATER",
         "TOKEN_LESS_EQUAL", "TOKEN_GREATER_EQUAL",
         "TOKEN_LESS_LESS", "TOKEN_GREATER_GREATER",
-        "TOKEN_DOT", "TOKEN_COMMA", "TOKEN_COLON", "TOKEN_SEMICOLON",
+        "TOKEN_DOT", "TOKEN_DOT_DOT", "TOKEN_COMMA", "TOKEN_COLON", "TOKEN_SEMICOLON",
         "TOKEN_COLON_EQUAL",
         "TOKEN_LEFT_BRACKET", "TOKEN_RIGHT_BRACKET", 
         "TOKEN_LEFT_PAREN", "TOKEN_RIGHT_PAREN",
@@ -528,7 +533,7 @@ static Token ConsumeNumber(PascalTokenizer *Lexer)
     U64 Integer = ConsumeInteger(Lexer);
 
     /* decimal, or Real */
-    if ('.' == *Lexer->Curr)
+    if ('.' == *Lexer->Curr && PeekChr(Lexer) != '.')
     {
         AdvanceChrPtr(Lexer);
 

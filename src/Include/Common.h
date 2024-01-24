@@ -162,10 +162,11 @@ static inline I64 BitSex64(U64 Value, UInt SignIndex)
 #define INT48_MIN (I64)~(((U64)1 << 47) - 1)
 #define INT48_MAX (I64)(((U64)1 << 47) - 1)
 
-#define IN_I8(x) ((I64)INT8_MIN <= (I64)(x) && ((I64)(x) <= (I64)INT8_MAX))
-#define IN_I16(x) ((I64)INT16_MIN <= (I64)(x) && ((I64)(x) <= (I64)INT16_MAX))
-#define IN_I32(x) (((I64)INT32_MIN <= (I64)(x)) && ((I64)(x) <= (I64)INT32_MAX))
-#define IN_I48(x) (((I64)INT48_MIN <= (I64)(x)) && ((I64)(x) <= (I64)INT48_MAX))
+#define IN_RANGE(Low, n, High) ((Low) <= (n) && (n) <= (High))
+#define IN_I8(x) IN_RANGE(INT8_MIN, (I64)(x), INT8_MAX)
+#define IN_I16(x) IN_RANGE(INT16_MIN, (I64)(x), INT16_MAX)
+#define IN_I32(x) IN_RANGE(INT32_MIN, (I64)(x), INT32_MAX)
+#define IN_I48(x) IN_RANGE(INT48_MIN, (I64)(x), INT48_MAX)
 
 #define IN_U8(x) ((U64)(x) <= 0xFF)
 #define IN_U16(x) ((U64)(x) <= 0xFFFF)
@@ -245,6 +246,12 @@ static inline U64 uMin(U64 a, U64 b) { return a < b ? a : b; }
 static inline I64 iMin(I64 a, I64 b) { return a < b ? a : b; }
 static inline U64 uMax(U64 a, U64 b) { return a > b ? a : b; }
 static inline I64 iMax(I64 a, I64 b) { return a > b ? a : b; }
+
+static inline U64 AbsoluteValue(I64 i)
+{
+    U64 Sign = ((U64)i >> 63);
+    return (i ^ Sign) - Sign;
+}
 
 static inline U64 ArithmeticShiftRight(U64 n, U64 ShiftAmount)
 {

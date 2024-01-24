@@ -13,6 +13,7 @@ typedef struct TmpIdentifiers TmpIdentifiers;
 typedef union PointeeTable PointeeTable;
 typedef struct Token Token;
 
+typedef struct RangeIndex RangeIndex;
 typedef struct VarLocation VarLocation;
 typedef union VarLiteral VarLiteral;
 typedef struct VarRegister VarRegister;

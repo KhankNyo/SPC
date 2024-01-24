@@ -146,6 +146,7 @@ PASCAL_BUILTIN(Ord, Compiler, FnName)
         if (IntegralTypeIsSigned(RetVal->Type.Integral))
             RetVal->Type = VarTypeInit(TYPE_I64, 8);
         else RetVal->Type = VarTypeInit(TYPE_U64, 8);
+        RetVal->As.Literal.Int = OrdinalLiteralToI64(RetVal->As.Literal, RetVal->Type.Integral);
     } break;
     case VAR_MEM: 
     {

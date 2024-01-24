@@ -30,7 +30,6 @@ if "%1"=="cl" (
     set "OBJ_EXTENSION=o"
 )
 
-set "MSG="
 set "SRCS=%SRCDIR%\PascalString.c %SRCDIR%\main.c %SRCDIR%\Pascal.c %SRCDIR%\Memory.c"
 set "SRCS=%SRCS% %SRCDIR%\PascalFile.c %SRCDIR%\PascalRepl.c"
 
@@ -52,7 +51,9 @@ if "%1"=="clean" (
     if exist %OBJDIR%\ rmdir /q /s %OBJDIR%
     if exist %BINDIR%\ rmdir /q /s %BINDIR%
 
-    set "MSG=Removed build artifacts."
+    echo --------------------------------------
+    echo        Removed build artifacts.
+    echo --------------------------------------
 ) else if "%2"=="unity" (
     if not exist %BINDIR%\ mkdir %BINDIR%
 
@@ -61,7 +62,9 @@ if "%1"=="clean" (
         %CC% %CCF% %LDF% %EXE_SWITCH%%OUTPUT% %UNITY% %LIBS%
     popd %BINDIR%
 
-    set "MSG=Build finished"
+    echo --------------------------------------
+    echo            Build finished.
+    echo --------------------------------------
 ) else (
     if not exist %BINDIR%\ mkdir %BINDIR%
     if not exist %OBJDIR%\ mkdir %OBJDIR%
@@ -90,11 +93,10 @@ if "%1"=="clean" (
     :: cleanup
     set "OBJS="
 
-    set "MSG=Build finished."
+    echo --------------------------------------
+    echo            Build finished.
+    echo --------------------------------------
 )
 
-echo --------------------------------------
-echo %MSG%
-echo --------------------------------------
 
 

@@ -87,6 +87,7 @@ bool PVMEmitIntoReg(PVMEmitter *Emitter, VarRegister *OutTarget, bool ReadOnly, 
 void PVMEmitLoadAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src);
 U32 PVMEmitLoadSubroutineAddr(PVMEmitter *Emitter, VarRegister Dst, U32 SubroutineAddr);
 void PVMEmitLoadEffectiveAddr(PVMEmitter *Emitter, VarRegister Dst, VarMemory Src, I32 Offset);
+VarLocation PVMEmitLoadArrayElement(PVMEmitter *Emitter, const VarLocation *Array, const VarLocation *Index);
 
 
 /* type conversion */
@@ -105,6 +106,8 @@ void PVMEmitIntToFltTypeConversion(PVMEmitter *Emitter,
 
 /* arith instructions */
 void PVMEmitAddImm(PVMEmitter *Emitter, const VarLocation *Dst, I64 Imm);
+void PVMEmitIMulConst(PVMEmitter *Emitter, const VarLocation *Dst, I64 Constant);
+
 void PVMEmitAdd(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitSub(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitNeg(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
@@ -114,8 +117,6 @@ void PVMEmitOr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *S
 void PVMEmitXor(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitIMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitIDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitMod(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitShl(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitShr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);

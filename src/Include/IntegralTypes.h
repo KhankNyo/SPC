@@ -19,6 +19,7 @@ typedef enum IntegralType
     TYPE_STRING,
     TYPE_RECORD,
     TYPE_CHAR,
+    TYPE_STATIC_ARRAY,
 
     TYPE_COUNT,
 } IntegralType;
@@ -49,6 +50,7 @@ static inline const char *IntegralTypeToStr(IntegralType Type)
         [TYPE_RECORD] = "record",
         [TYPE_POINTER] = "pointer",
         [TYPE_CHAR] = "char",
+        [TYPE_STATIC_ARRAY] = "array",
     };
     PASCAL_STATIC_ASSERT(TYPE_COUNT == STATIC_ARRAY_SIZE(StrLut), "Missing type");
     if (Type < TYPE_COUNT)

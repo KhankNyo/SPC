@@ -30,6 +30,8 @@ SubroutineParameterList CompileParameterListWithParentheses(PascalCompiler *Comp
 
 static PascalVar *FindTypename(PascalCompiler *Compiler, const Token *Name)
 {
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Name);
     PascalVar *Type = GetIdenInfo(Compiler, Name, "Undefined type name.");
     if (NULL == Type)
         return NULL;
@@ -41,6 +43,68 @@ static PascalVar *FindTypename(PascalCompiler *Compiler, const Token *Name)
         return NULL;
     }
     return Type;
+}
+
+
+
+static I64 LiteralToI64(PascalCompiler *Compiler, const VarLocation *Location)
+{
+    IntegralType Type = Location->Type.Integral;
+    if (Location->LocationType != VAR_LIT)
+    {
+        Error(Compiler, "Expected constant expression.");
+        return 0;
+    }
+    if (!IntegralTypeIsOrdinal(Type))
+    {
+        Error(Compiler, "Expected constant expression have ordinal type.");
+        return 0;
+    }
+    return OrdinalLiteralToI64(Location->As.Literal, Location->Type.Integral);
+}
+
+static RangeIndex ConsumeRange(PascalCompiler *Compiler)
+{
+    PASCAL_NONNULL(Compiler);
+    RangeIndex Range = { 0 };
+    VarLocation ConstantExpr = CompileExpr(Compiler);
+
+    if (VAR_LIT == ConstantExpr.LocationType)
+    {
+        Range.Low = LiteralToI64(Compiler, &ConstantExpr);
+        ConsumeOrError(Compiler, TOKEN_DOT_DOT, "Expected '..' after expression.");
+        VarLocation RangeEnd = CompileExpr(Compiler);
+        Range.High = LiteralToI64(Compiler, &RangeEnd);
+    }
+    else if (VAR_TYPENAME == ConstantExpr.LocationType)
+    {
+        IntegralType Type = ConstantExpr.Type.Integral;
+        if (!IntegralTypeIsOrdinal(Type))
+        {
+            Error(Compiler, "Expected ordinal type.");
+        }
+        if (IntegralTypeIsInteger(Type) 
+        && (Type == TYPE_I32 || Type == TYPE_I64 
+         || Type == TYPE_U32 || Type == TYPE_U64))
+        {
+            Error(Compiler, "Data element too large.");
+        }
+        static const RangeIndex Ranges[TYPE_COUNT] = {
+            [TYPE_BOOLEAN] = { .Low = 0, .High = 1 },
+            [TYPE_I8] = { .Low = INT8_MIN, .High = INT8_MAX },
+            [TYPE_CHAR] = { .Low = CHAR_MIN, .High = CHAR_MAX },
+            [TYPE_U8] = { .Low = 0, .High = UINT8_MAX },
+
+            [TYPE_I16] = { .Low = INT16_MIN, .High = INT16_MAX },
+            [TYPE_U16] = { .Low = 0, .High = UINT16_MAX },
+        };
+        return Ranges[Type];
+    }
+    else
+    {
+        Error(Compiler, "Expected constant expression.");
+    }
+    return Range;
 }
 
 
@@ -94,8 +158,20 @@ static bool ParseAndDefineTypenameInternal(PascalCompiler *Compiler, const Token
     }
     else if (ConsumeIfNextTokenIs(Compiler, TOKEN_ARRAY))
     {
-        PASCAL_UNREACHABLE("TODO: array");
-        return true;
+        if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_BRACKET))
+        {
+            RangeIndex Range = ConsumeRange(Compiler);
+            ConsumeOrError(Compiler, TOKEN_RIGHT_BRACKET, "Expected ']' after expression.");
+            ConsumeOrError(Compiler, TOKEN_OF, "Expected 'of'.");
+            VarType Type;
+            ParseTypename(Compiler, &Type);
+            *Out = VarTypeStaticArray(Range, CompilerCopyType(Compiler, Type));
+            return true;
+        }
+        else
+        {
+            PASCAL_UNREACHABLE("TODO: dynamic and open array");
+        }
     }
     else if (ConsumeIfNextTokenIs(Compiler, TOKEN_FUNCTION))
     {

@@ -20,12 +20,17 @@ struct SubroutineParameterList
 #define SUBROUTINE_INVALID_LOCATION ((U32)-1)
 struct SubroutineData
 {
-    /* owns by the compiler */
+    /* owned by the compiler */
     const VarType *ReturnType;
     SubroutineParameterList ParameterList;
     PascalVartab Scope;
     U32 StackArgSize;
     U32 HiddenParamCount;
+};
+
+struct RangeIndex 
+{
+    I64 Low, High;
 };
 
 struct VarType 
@@ -38,6 +43,11 @@ struct VarType
             StringView Name;
             PascalVartab Field;
         } Record;
+        struct {
+            RangeIndex Range;
+            /* owned by the compiler */
+            const VarType *ElementType;
+        } StaticArray;
         SubroutineData Subroutine;
     } As;
 };
@@ -87,6 +97,7 @@ typedef enum VarLocationType
     VAR_BUILTIN,
     VAR_SUBROUTINE,
 } VarLocationType;
+#define VAR_TYPENAME VAR_INVALID
 
 
 struct VarLocation 
@@ -148,6 +159,29 @@ static inline F64 VarLiteralToF64(VarLiteral Literal, IntegralType Type)
     PASCAL_UNREACHABLE("cannot convert %s into f64", IntegralTypeToStr(Type));
     return 0;
 }
+
+static inline I64 OrdinalLiteralToI64(VarLiteral Literal, IntegralType Type)
+{
+    if (IntegralTypeIsInteger(Type))
+    {
+        return Literal.Int;
+    }
+    if (IntegralTypeIsFloat(Type))
+    {
+        return (I64)Literal.Flt;
+    }
+    if (TYPE_CHAR == Type)
+    {
+        return Literal.Chr;
+    }
+    if (TYPE_BOOLEAN == Type)
+    {
+        return 0 != Literal.Bool;
+    }
+    PASCAL_UNREACHABLE("Type must be ordinal.");
+    return 0;
+}
+
 
 static inline const char *VarTypeToStr(VarType Type)
 {
@@ -226,6 +260,20 @@ static inline VarType VarTypeRecord(StringView Name, PascalVartab FieldTable, U3
 
         .As.Record.Name = Name,
         .As.Record.Field = FieldTable,
+    };
+}
+
+static inline VarType VarTypeStaticArray(RangeIndex Range, const VarType *ElementType)
+{
+    PASCAL_NONNULL(ElementType);
+    USize Size = (Range.High - Range.Low) * ElementType->Size;
+    return (VarType) {
+        .Size = Size,
+        .Integral = TYPE_STATIC_ARRAY,
+        .As.StaticArray = {
+            .Range = Range,
+            .ElementType = ElementType,
+        },
     };
 }
 
