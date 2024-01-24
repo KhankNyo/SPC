@@ -25,6 +25,16 @@ PASCAL_STATIC_ASSERT(IS_POW2(sizeof(PVMGPR)), "Unreachable");
 #  define CASE_OBJREF64(Colon) case TYPE_STRING Colon case TYPE_RECORD Colon
 #endif
 
+#define OP32_OR_OP64(pEmitter, Mnemonic, bOperandIs64, pDstLocation, Src) do{\
+    if (bOperandIs64) {\
+        WriteOp16(Emitter, PVM_OP(Mnemonic ## 64, (pDstLocation)->As.Register.ID, Src));\
+    } else {\
+        WriteOp16(Emitter, PVM_OP(Mnemonic, (pDstLocation)->As.Register.ID, Src));\
+    }\
+} while (0)
+
+
+
 
 PVMEmitter PVMEmitterInit(PVMChunk *Chunk)
 {
@@ -1050,6 +1060,12 @@ VarLocation PVMEmitLoadArrayElement(PVMEmitter *Emitter, const VarLocation *Arra
     /* scale it */
     PVMEmitIMulConst(Emitter, &ScaledIndex, ElementType->Size);
 
+    /* Add the base register from array */
+    OP32_OR_OP64(Emitter, ADD, 
+        UINTPTR_MAX == UINT64_MAX, 
+        &ScaledIndex, Array->As.Memory.RegPtr.ID
+    );
+
     /* calculate effective addr of the element, treat it as a memory location */
     VarLocation Element = {
         .Type = *ElementType,
@@ -1501,15 +1517,6 @@ void PVMEmitSub(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *
         PVMFreeRegister(Emitter, Rs);
 }
 
-
-
-#define OP32_OR_OP64(pEmitter, Mnemonic, bOperandIs64, pDstLocation, Src) do{\
-    if (OperandIs64) {\
-        WriteOp16(Emitter, PVM_OP(Mnemonic ## 64, (pDstLocation)->As.Register.ID, Src));\
-    } else {\
-        WriteOp16(Emitter, PVM_OP(Mnemonic, (pDstLocation)->As.Register.ID, Src));\
-    }\
-} while (0)
 
 #define EMIT_REGISTER_OP16(pEmitter, Mnemonic, bOperandIs64, pDstLocation, pSrcLocation) do {\
     VarRegister Tmp;\
