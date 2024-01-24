@@ -301,7 +301,7 @@ static void CompileForStmt(PascalCompiler *Compiler)
     if (NULL == Counter)
         return;
     PASCAL_NONNULL(Counter->Location);
-    if (!IntegralTypeIsInteger(Counter->Type.Integral))
+    if (!IntegralTypeIsOrdinal(Counter->Type.Integral))
     {
         ErrorAt(Compiler, &Compiler->Curr, "Variable of type %s cannot be used as a counter.",
                 VarTypeToStr(Counter->Type)

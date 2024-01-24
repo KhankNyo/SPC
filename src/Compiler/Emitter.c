@@ -373,7 +373,7 @@ static void MoveMemToReg(PVMEmitter *Emitter,
         VarRegister Dst, VarMemory Src, VarType SrcType)
 {
 #define OP(LoadOp) do {\
-    if (IN_I16(Src.Location)) {\
+    if (IN_I16((I32)Src.Location)) {\
         WriteOp32(Emitter, PVM_OP(LoadOp, Dst.ID, Src.RegPtr.ID), Src.Location);\
     } else {\
         WriteOp16(Emitter, PVM_OP(LoadOp ## L, Dst.ID, Src.RegPtr.ID));\
@@ -515,7 +515,7 @@ static void MoveRegToMem(PVMEmitter *Emitter,
         VarMemory Dst, VarType DstType, VarRegister Src, VarType SrcType)
 {
 #define OP(StoreOp) do {\
-    if (IN_I16(Dst.Location)) {\
+    if (IN_I16((I32)Dst.Location)) {\
         WriteOp32(Emitter, PVM_OP(StoreOp, Src.ID, Dst.RegPtr.ID), Dst.Location);\
     } else {\
         WriteOp16(Emitter, PVM_OP(StoreOp ## L, Src.ID, Dst.RegPtr.ID));\
@@ -1850,7 +1850,7 @@ VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op,
         else if (TYPE_F32 == Left->Type.Integral)
             FSET();
     }
-    else if (IntegralTypeIsInteger(Left->Type.Integral))
+    else if (IntegralTypeIsOrdinal(Left->Type.Integral))
     {
         if (TYPE_I64 == Left->Type.Integral) 
             SET(I, 64);
