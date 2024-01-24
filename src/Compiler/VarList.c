@@ -166,7 +166,6 @@ static bool ParseAndDefineTypenameInternal(PascalCompiler *Compiler, const Token
             VarType Type;
             ParseTypename(Compiler, &Type);
             *Out = VarTypeStaticArray(Range, CompilerCopyType(Compiler, Type));
-            return true;
         }
         else
         {

@@ -446,6 +446,7 @@ static VarLocation ArrayAccess(PascalCompiler *Compiler, VarLocation *Left)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Left);
+
     Token LeftBracket = Compiler->Curr;
     VarLocation Index = CompileExpr(Compiler);
     ConsumeOrError(Compiler, TOKEN_RIGHT_BRACKET, "Expected ']' after expression.");
@@ -456,7 +457,25 @@ static VarLocation ArrayAccess(PascalCompiler *Compiler, VarLocation *Left)
     VarLocation Element = { 0 };
     if (VariableType == TYPE_STATIC_ARRAY)
     {
-        Element = PVMEmitLoadArrayElement(EMITTER(), Left, &Index);
+        if (Left->LocationType == VAR_TYPENAME)
+        {
+            /* FPC allowed array name to be indexable for sizeof:
+             * ```
+             * type TArray = array[0..5] of integer;
+             * begin
+             *   writeln(sizeof(TArray) / sizeof(TArray[0]));
+             * end.
+             * ```
+             * To facilitate that, we just return the type name of the array's element
+             */
+            PASCAL_NONNULL(Left->Type.As.StaticArray.ElementType);
+            Element.LocationType = VAR_TYPENAME;
+            Element.Type = *Left->Type.As.StaticArray.ElementType;
+        }
+        else
+        {
+            Element = PVMEmitLoadArrayElement(EMITTER(), Left, &Index);
+        }
     }
     else if (VariableType == TYPE_STRING)
     {

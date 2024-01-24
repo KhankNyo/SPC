@@ -123,7 +123,9 @@ PASCAL_BUILTIN(SizeOf, Compiler, FnName)
     PASCAL_NONNULL(FnName);
     OptionalReturnValue Size = {.HasReturnValue = true};
 
+    ConsumeOrError(Compiler, TOKEN_LEFT_PAREN, "Expected '('.");
     VarLocation Expr = CompileExpr(Compiler);
+    ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
     Size.ReturnValue = VAR_LOCATION_LIT(.Int = Expr.Type.Size, TYPE_SIZE);
     FreeExpr(Compiler, Expr);
     return Size;

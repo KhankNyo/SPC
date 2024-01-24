@@ -266,7 +266,8 @@ static inline VarType VarTypeRecord(StringView Name, PascalVartab FieldTable, U3
 static inline VarType VarTypeStaticArray(RangeIndex Range, const VarType *ElementType)
 {
     PASCAL_NONNULL(ElementType);
-    USize Size = (Range.High - Range.Low) * ElementType->Size;
+    /* array index in pascal is inclusive */
+    USize Size = (Range.High - Range.Low + 1) * ElementType->Size;
     return (VarType) {
         .Size = Size,
         .Integral = TYPE_STATIC_ARRAY,

@@ -98,7 +98,9 @@ Token TokenizerGetToken(PascalTokenizer *Lexer)
 
     switch (PrevChr)
     {
-    case '\'': return ConsumeString(Lexer);
+    case '#':
+    case '\'': 
+        return ConsumeString(Lexer);
     case '$': return ConsumeHex(Lexer);
     case '&': return ConsumeOct(Lexer);
     case '^': return MakeToken(Lexer, TOKEN_CARET);
@@ -617,48 +619,48 @@ static Token ConsumeString(PascalTokenizer *Lexer)
 {
     Lexer->Curr = Lexer->Start;
     PascalStr Literal = PStrInit(0);
-    do {
-        /* skip beginning "'" */
-        AdvanceChrPtr(Lexer);
-
-        /* consume string literal */
-        const U8 *Slice = Lexer->Curr;
-        UInt Len = 0;
-        while (!TokenizerIsAtEnd(Lexer) && '\'' != AdvanceChrPtr(Lexer))
+    while (!TokenizerIsAtEnd(Lexer))
+    {
+        U8 BeginChar = *Lexer->Curr;
+        if ('#' == BeginChar)
         {
-            Len++;
+            while (AdvanceIfEqual(Lexer, '#'))
+            {
+                /* consume number */
+                U8 EscCode = 0;
+                if (AdvanceIfEqual(Lexer, '$'))
+                {
+                    EscCode = ConsumeHexadecimalNumber(Lexer);
+                }
+                else if (AdvanceIfEqual(Lexer, '%'))
+                {
+                    EscCode = ConsumeBinaryNumber(Lexer);
+                }
+                else if (AdvanceIfEqual(Lexer, '&'))
+                {
+                    EscCode = ConsumeOctalNumber(Lexer);
+                }
+                else 
+                {
+                    EscCode = ConsumeInteger(Lexer);
+                }
+
+                PStrAppendChr(&Literal, EscCode);
+            }
         }
-        PStrAppendStr(&Literal, Slice, Len);
-
-
-        /* consumes escape codes */
-        while (!TokenizerIsAtEnd(Lexer) && '#' == *Lexer->Curr)
+        else if ('\'' == BeginChar)
         {
-            AdvanceChrPtr(Lexer); /* skip '#' */
-
-            /* consume number */
-            U8 EscCode = 0;
-            if (AdvanceIfEqual(Lexer, '$'))
+            AdvanceChrPtr(Lexer); /* skip initial "'" */
+            const U8 *StrSlice = Lexer->Curr;
+            UInt SliceLength = 0;
+            while (!TokenizerIsAtEnd(Lexer) && '\'' != AdvanceChrPtr(Lexer))
             {
-                EscCode = ConsumeHexadecimalNumber(Lexer);
+                SliceLength++;
             }
-            else if (AdvanceIfEqual(Lexer, '%'))
-            {
-                EscCode = ConsumeBinaryNumber(Lexer);
-            }
-            else if (AdvanceIfEqual(Lexer, '&'))
-            {
-                EscCode = ConsumeOctalNumber(Lexer);
-            }
-            else 
-            {
-                EscCode = ConsumeInteger(Lexer);
-            }
-
-            PStrAppendChr(&Literal, EscCode);
+            PStrAppendStr(&Literal, StrSlice, SliceLength);
         }
-    } while (!TokenizerIsAtEnd(Lexer) && ('\'' == *Lexer->Curr));
-
+        else break;
+    }
 
     if (TokenizerIsAtEnd(Lexer))
         return ErrorToken(Lexer, "Unterminated string literal.");
