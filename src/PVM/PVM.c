@@ -124,6 +124,7 @@ static const PascalStr *RuntimeTypeToStr(IntegralType Type, PVMGPR Data)
     case TYPE_FUNCTION:
     case TYPE_COUNT:
     case TYPE_RECORD:
+    case TYPE_STATIC_ARRAY:
     case TYPE_INVALID:
     {
         PASCAL_UNREACHABLE("Invalid type in %s", __func__);

@@ -46,6 +46,11 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
             /* TODO: file argument */
             do {
                 VarLocation Arg =  CompileExpr(Compiler);
+                if (TYPE_RECORD == Arg.Type.Integral || TYPE_FUNCTION == Arg.Type.Integral)
+                {
+                    const char *FnName = Newline? "Writeln" : "Write";
+                    Error(Compiler, "%s does accept value of type %s.", FnName, VarTypeToStr(Arg.Type));
+                }
                 VarLocation ArgType = VAR_LOCATION_LIT(.Int = Arg.Type.Integral, TYPE_U32);
                 PVMQueueAndCommitOnFull(EMITTER(), &RegList, &Arg);
                 PVMQueueAndCommitOnFull(EMITTER(), &RegList, &ArgType);

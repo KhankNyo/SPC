@@ -447,9 +447,10 @@ static VarLocation ArrayAccess(PascalCompiler *Compiler, VarLocation *Left)
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Left);
     Token LeftBracket = Compiler->Curr;
-    /* TODO: typecheck on index */
     VarLocation Index = CompileExpr(Compiler);
     ConsumeOrError(Compiler, TOKEN_RIGHT_BRACKET, "Expected ']' after expression.");
+    if (!IntegralTypeIsOrdinal(Index.Type.Integral))
+        ErrorAt(Compiler, &LeftBracket, "Array index expression must be an ordinal type.");
 
     IntegralType VariableType = Left->Type.Integral;
     VarLocation Element = { 0 };

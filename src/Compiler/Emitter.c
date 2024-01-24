@@ -16,13 +16,13 @@ PASCAL_STATIC_ASSERT(IS_POW2(sizeof(PVMGPR)), "Unreachable");
 #if UINTPTR_MAX == UINT32_MAX
 #  define CASE_PTR32(Colon) case TYPE_POINTER Colon case TYPE_FUNCTION Colon
 #  define CASE_PTR64(Colon)
-#  define CASE_OBJREF32(Colon) case TYPE_STRING Colon case TYPE_RECORD Colon
+#  define CASE_OBJREF32(Colon) case TYPE_STRING Colon case TYPE_RECORD Colon case TYPE_STATIC_ARRAY Colon
 #  define CASE_OBJREF64(Colon)
 #else
 #  define CASE_PTR32(Colon)
 #  define CASE_PTR64(Colon) case TYPE_POINTER Colon case TYPE_FUNCTION Colon
 #  define CASE_OBJREF32(Colon)
-#  define CASE_OBJREF64(Colon) case TYPE_STRING Colon case TYPE_RECORD Colon
+#  define CASE_OBJREF64(Colon) case TYPE_STRING Colon case TYPE_RECORD Colon case TYPE_STATIC_ARRAY Colon
 #endif
 
 #define OP32_OR_OP64(pEmitter, Mnemonic, bOperandIs64, pDstLocation, Src) do{\
@@ -2138,6 +2138,10 @@ void PVMInitializeGlobal(PVMEmitter *Emitter,
     {
         PASCAL_STATIC_ASSERT(offsetof(PascalStr, FbString.Len) == 0, "??");
         ChunkWriteGlobalDataAt(Chunk, Location, Data->Str.Data, PStrGetLen(&Data->Str) + 1);
+    } break;
+    case TYPE_STATIC_ARRAY:
+    {
+        PASCAL_UNREACHABLE("TODO: array initialization");
     } break;
 
     case TYPE_FUNCTION:
