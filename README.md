@@ -26,7 +26,7 @@
 
 # TODO:
 ### Critical:
-- Unable to take the address of array and record field, fix this
+- calling function pointers with writeln reverses the value and type???
 - 1-character long string literals are automatically treated as char, fix this
 - add goto, label, and with statement
 - add set, and union (record case) types
