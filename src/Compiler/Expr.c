@@ -44,7 +44,7 @@ static const IntegralType sCoercionRules[TYPE_COUNT][TYPE_COUNT] = {
 
 typedef enum Precedence 
 {
-    PREC_SINGLE = 0,
+    PREC_SINGLE = 0, /* single token */
     PREC_EXPR,
     PREC_SIMPLE,
     PREC_TERM,
@@ -52,8 +52,8 @@ typedef enum Precedence
     PREC_VARIABLE,
     PREC_HIGHEST,
 } Precedence;
-typedef VarLocation (*InfixParseRoutine)(PascalCompiler *, VarLocation *);
-typedef VarLocation (*PrefixParseRoutine)(PascalCompiler *);
+typedef VarLocation (*InfixParseRoutine)(PascalCompiler *, VarLocation *, bool);
+typedef VarLocation (*PrefixParseRoutine)(PascalCompiler *, bool);
 
 
 #define INVALID_BINARY_OP(pOp, LType, RType) \
@@ -77,9 +77,10 @@ typedef struct PrecedenceRule
     Precedence Prec;
 } PrecedenceRule;
 
+
 static const PrecedenceRule *GetPrecedenceRule(TokenType CurrentTokenType);
-static VarLocation ParsePrecedence(PascalCompiler *Compiler, Precedence Prec);
-static VarLocation ParseAssignmentLhs(PascalCompiler *Compiler, Precedence Prec);
+static VarLocation ParsePrecedence(PascalCompiler *Compiler, Precedence Prec, bool ShouldCallFunction);
+static VarLocation ParseAssignmentLhs(PascalCompiler *Compiler, Precedence Prec, bool ShouldCallFunction);
 
 
 void FreeExpr(PascalCompiler *Compiler, VarLocation Expr)
@@ -101,11 +102,13 @@ void FreeExpr(PascalCompiler *Compiler, VarLocation Expr)
 
 VarLocation CompileExpr(PascalCompiler *Compiler)
 {
-    return ParsePrecedence(Compiler, PREC_EXPR);
+    PASCAL_NONNULL(Compiler);
+    return ParsePrecedence(Compiler, PREC_EXPR, true);
 }
 
 VarLocation CompileExprIntoReg(PascalCompiler *Compiler)
 {
+    PASCAL_NONNULL(Compiler);
     VarLocation Expr = CompileExpr(Compiler);
     VarLocation Reg;
     PVMEmitIntoRegLocation(EMITTER(), &Reg, false, &Expr); 
@@ -115,11 +118,15 @@ VarLocation CompileExprIntoReg(PascalCompiler *Compiler)
 
 VarLocation CompileVariableExpr(PascalCompiler *Compiler)
 {
-    return ParseAssignmentLhs(Compiler, PREC_VARIABLE);
+    PASCAL_NONNULL(Compiler);
+    return ParseAssignmentLhs(Compiler, PREC_VARIABLE, true);
 }
 
 void CompileExprInto(PascalCompiler *Compiler, const Token *ErrorSpot, VarLocation *Location)
 {
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Location);
+
     VarLocation Expr = CompileExpr(Compiler);
     if (TYPE_INVALID == CoerceTypes(Location->Type.Integral, Expr.Type.Integral)
     || (Expr.LocationType != VAR_MEM && !ConvertTypeImplicitly(Compiler, Location->Type.Integral, &Expr)))
@@ -179,8 +186,11 @@ static VarType TypeOfUIntLit(U64 UInt)
     return VarTypeInit(TYPE_U64, 8);
 }
 
-static VarLocation FactorLiteral(PascalCompiler *Compiler)
+static VarLocation FactorLiteral(PascalCompiler *Compiler, bool ShouldCallFunction)
 {
+    /* literals are not functions */
+    UNUSED(ShouldCallFunction);
+
     VarLocation Location = {
         .LocationType = VAR_LIT,
     };
@@ -318,8 +328,9 @@ static VarLocation CompileCallWithReturnValue(PascalCompiler *Compiler,
 }
 
 
-static VarLocation FactorCall(PascalCompiler *Compiler, VarLocation *Location)
+static VarLocation FactorCall(PascalCompiler *Compiler, VarLocation *Location, bool ShouldCallFunction)
 {
+    UNUSED(ShouldCallFunction); /* we are forced to call the function here */
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Location);
 
@@ -345,8 +356,9 @@ static VarLocation FactorCall(PascalCompiler *Compiler, VarLocation *Location)
 
 
 
-static VarLocation VariableDeref(PascalCompiler *Compiler, VarLocation *Variable)
+static VarLocation VariableDeref(PascalCompiler *Compiler, VarLocation *Variable, bool ShouldCallFunction)
 {
+    UNUSED(ShouldCallFunction);
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Variable);
 
@@ -393,8 +405,9 @@ static VarLocation *FindRecordMember(PascalVartab *Record, const Token *MemberNa
     return Member->Location;
 }
 
-static VarLocation VariableAccess(PascalCompiler *Compiler, VarLocation *Left)
+static VarLocation VariableAccess(PascalCompiler *Compiler, VarLocation *Left, bool ShouldCallFunction)
 {
+    UNUSED(ShouldCallFunction); /* use '(' to actually call a method */
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Left);
 
@@ -442,8 +455,9 @@ static VarLocation VariableAccess(PascalCompiler *Compiler, VarLocation *Left)
     return Location;
 }
 
-static VarLocation ArrayAccess(PascalCompiler *Compiler, VarLocation *Left)
+static VarLocation ArrayAccess(PascalCompiler *Compiler, VarLocation *Left, bool ShouldCallFunction)
 {
+    UNUSED(ShouldCallFunction);
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Left);
 
@@ -492,8 +506,10 @@ static VarLocation ArrayAccess(PascalCompiler *Compiler, VarLocation *Left)
 }
 
 
-static VarLocation FactorGrouping(PascalCompiler *Compiler)
+static VarLocation FactorGrouping(PascalCompiler *Compiler, bool ShouldCallFunction)
 {
+    UNUSED(ShouldCallFunction);
+
     /* '(' consumed */
     VarLocation Group = CompileExpr(Compiler);
     ConsumeOrError(Compiler, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
@@ -656,7 +672,7 @@ static VarLocation ConvertTypeExplicitly(PascalCompiler *Compiler,
 
 
 
-static VarLocation FactorVariable(PascalCompiler *Compiler)
+static VarLocation FactorVariable(PascalCompiler *Compiler, bool ShouldCallFunction)
 {
     PASCAL_NONNULL(Compiler);
 
@@ -673,7 +689,7 @@ static VarLocation FactorVariable(PascalCompiler *Compiler)
         /* typename(expr) */
         if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_PAREN))
         {
-            VarLocation Expr = FactorGrouping(Compiler);
+            VarLocation Expr = FactorGrouping(Compiler, false);
             return ConvertTypeExplicitly(Compiler, &Identifier, Variable->Type.Integral, &Expr);
         }
         /* returns the type itself for sizeof */
@@ -685,9 +701,9 @@ static VarLocation FactorVariable(PascalCompiler *Compiler)
         return Type;
     }
     /* has a location, function? */
-    if (TYPE_FUNCTION == Variable->Location->Type.Integral)
+    if (TYPE_FUNCTION == Variable->Location->Type.Integral && ShouldCallFunction)
     {
-        return FactorCall(Compiler, Variable->Location);
+        return FactorCall(Compiler, Variable->Location, true);
     }
     return *Variable->Location;
 Error:
@@ -695,52 +711,38 @@ Error:
 }
 
 
-static VarLocation VariableAddrOf(PascalCompiler *Compiler)
+static VarLocation VariableAddrOf(PascalCompiler *Compiler, bool ShouldCallFunction)
 {
     PASCAL_NONNULL(Compiler);
-    /* Curr is '@' */
+    UNUSED(ShouldCallFunction);
 
+    /* current at the '@' token */
     Token AtSign = Compiler->Curr;
-    ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected variable name after '@'.");
-    Token Identifier = Compiler->Curr;
+    VarLocation Variable = ParsePrecedence(Compiler, PREC_VARIABLE, false);
 
-    PascalVar *Variable = GetIdenInfo(Compiler, &Identifier, "Undefined variable.");
-    if (NULL == Variable)
+    if (Variable.LocationType == VAR_TYPENAME
+    || Variable.LocationType == VAR_LIT
+    || Variable.LocationType == VAR_REG
+    || Variable.LocationType == VAR_FLAG
+    || Variable.LocationType == VAR_BUILTIN)
+    {
+        ErrorAt(Compiler, &AtSign, "Address cannot be taken.");
         return (VarLocation) { 0 };
-
-
-    while (ConsumeIfNextTokenIs(Compiler, TOKEN_DOT))
-    {
-        PASCAL_UNREACHABLE("TODO: addr of record field");
     }
 
-    if (NULL == Variable->Location)
-        goto CannotTakeAddress;
 
-    VarType Pointer = VarTypePtr(CompilerCopyType(Compiler, Variable->Type));
-    VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), Pointer);
-
-    /* address of subroutine */
-    if (VAR_SUBROUTINE == Variable->Location->LocationType)
+    VarType PtrType = VarTypePtr(CompilerCopyType(Compiler, Variable.Type));
+    VarLocation Ptr = PVMAllocateRegisterLocation(EMITTER(), PtrType);
+    if (Variable.LocationType == VAR_MEM)
     {
+        PVMEmitLoadAddr(EMITTER(), Ptr.As.Register, Variable.As.Memory);
+    }
+    else if (Variable.LocationType == VAR_SUBROUTINE)
+    {
+        Ptr.Type = VarTypePtr(CompilerCopyType(Compiler, Variable.Type));
         U32 CallSite = PVMEmitLoadSubroutineAddr(EMITTER(), Ptr.As.Register, 0);
-        PushSubroutineReference(Compiler, 
-                &Variable->Location->As.SubroutineLocation, 
-                CallSite
-        );
-        return Ptr;
+        PushSubroutineReference(Compiler, Variable.As.SubroutineLocation, CallSite);
     }
-
-    /* address of memory */
-    if (VAR_MEM == Variable->Location->LocationType)
-    {
-        PASCAL_ASSERT(VarTypeEqual(&Variable->Type, &Variable->Location->Type), "Unreachable");
-        PVMEmitLoadAddr(EMITTER(), Ptr.As.Register, Variable->Location->As.Memory);
-        return Ptr;
-    }
-
-CannotTakeAddress:
-    ErrorAt(Compiler, &AtSign, "Cannot take the address this type of variable.");
     return Ptr;
 }
 
@@ -797,11 +799,14 @@ static VarLocation NotLiteral(PascalCompiler *Compiler,
 }
 
 
-static VarLocation ExprUnary(PascalCompiler *Compiler)
+static VarLocation ExprUnary(PascalCompiler *Compiler, bool ShouldCallFunction)
 {
+    UNUSED(ShouldCallFunction);
+    PASCAL_NONNULL(Compiler);
+
     TokenType Operator = Compiler->Curr.Type;
     Token OpToken = Compiler->Curr;
-    VarLocation Value = ParsePrecedence(Compiler, PREC_FACTOR);
+    VarLocation Value = ParsePrecedence(Compiler, PREC_FACTOR, true);
 
     if (VAR_INVALID == Value.LocationType)
     {
@@ -1280,8 +1285,12 @@ static VarLocation RuntimeExprBinary(PascalCompiler *Compiler,
 }
 
 
-static VarLocation ExprBinary(PascalCompiler *Compiler, VarLocation *Left)
+static VarLocation ExprBinary(PascalCompiler *Compiler, VarLocation *Left, bool ShouldCallFunction)
 {
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(Left);
+    UNUSED(ShouldCallFunction); /* all binary ops call their functions */
+
     Token OpToken = Compiler->Curr;
     const PrecedenceRule *OperatorRule = GetPrecedenceRule(OpToken.Type);
 
@@ -1290,7 +1299,7 @@ static VarLocation ExprBinary(PascalCompiler *Compiler, VarLocation *Left)
      *      as      ((1 + 2) + 3)
      *      not     (1 + (2 + 3)) 
      */
-    VarLocation Right = ParsePrecedence(Compiler, OperatorRule->Prec + 1);
+    VarLocation Right = ParsePrecedence(Compiler, OperatorRule->Prec + 1, true);
     bool LeftInvalid = VAR_INVALID == Left->LocationType;
     bool RightInvalid = VAR_INVALID == Right.LocationType;
 
@@ -1320,8 +1329,9 @@ static VarLocation ExprBinary(PascalCompiler *Compiler, VarLocation *Left)
 }
 
 
-static VarLocation ExprAnd(PascalCompiler *Compiler, VarLocation *Left)
+static VarLocation ExprAnd(PascalCompiler *Compiler, VarLocation *Left, bool ShouldCallFunction)
 {
+    UNUSED(ShouldCallFunction);
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Left);
 
@@ -1338,7 +1348,7 @@ static VarLocation ExprAnd(PascalCompiler *Compiler, VarLocation *Left)
 
         U32 FromLeft = PVMEmitBranchIfFalse(EMITTER(), Left);
 
-        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
+        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1, true);
         IntegralType ResultType = CoerceTypes(Left->Type.Integral, Right.Type.Integral);
         if (TYPE_INVALID == ResultType)
             goto InvalidOperands;
@@ -1351,7 +1361,7 @@ static VarLocation ExprAnd(PascalCompiler *Compiler, VarLocation *Left)
     }
     else if (IntegralTypeIsInteger(Left->Type.Integral))
     {
-        return ExprBinary(Compiler, Left);
+        return ExprBinary(Compiler, Left, false);
     }
     else 
     {
@@ -1366,8 +1376,9 @@ InvalidOperands:
     return *Left;
 }
 
-static VarLocation ExprOr(PascalCompiler *Compiler, VarLocation *Left)
+static VarLocation ExprOr(PascalCompiler *Compiler, VarLocation *Left, bool ShouldCallFunction)
 {
+    UNUSED(ShouldCallFunction);
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Left);
 
@@ -1385,7 +1396,7 @@ static VarLocation ExprOr(PascalCompiler *Compiler, VarLocation *Left)
 
         U32 FromTrue = PVMEmitBranchIfTrue(EMITTER(), Left);
 
-        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1);
+        Right = ParsePrecedence(Compiler, GetPrecedenceRule(OpToken.Type)->Prec + 1, true);
         IntegralType ResultType = CoerceTypes(Left->Type.Integral, Right.Type.Integral);
         if (TYPE_INVALID == ResultType)
             goto InvalidOperands;
@@ -1398,7 +1409,7 @@ static VarLocation ExprOr(PascalCompiler *Compiler, VarLocation *Left)
     }
     else if (IntegralTypeIsInteger(Left->Type.Integral))
     {
-        return ExprBinary(Compiler, Left);
+        return ExprBinary(Compiler, Left, true);
     }
     else 
     {
@@ -1425,13 +1436,13 @@ static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] =
     [TOKEN_TRUE]            = { FactorLiteral,      NULL,           PREC_SINGLE },
     [TOKEN_FALSE]           = { FactorLiteral,      NULL,           PREC_SINGLE },
     [TOKEN_IDENTIFIER]      = { FactorVariable,     NULL,           PREC_SINGLE },
+    [TOKEN_AT]              = { VariableAddrOf,     NULL,           PREC_SINGLE },
 
     [TOKEN_CARET]           = { NULL,               VariableDeref,  PREC_VARIABLE },
     [TOKEN_DOT]             = { NULL,               VariableAccess, PREC_VARIABLE },
-    [TOKEN_AT]              = { VariableAddrOf,     NULL,           PREC_SINGLE },
     [TOKEN_LEFT_BRACKET]    = { NULL,               ArrayAccess,    PREC_VARIABLE },
-
     [TOKEN_LEFT_PAREN]      = { FactorGrouping,     FactorCall,     PREC_VARIABLE },
+
     [TOKEN_NOT]             = { ExprUnary,          NULL,           PREC_FACTOR },
 
     [TOKEN_STAR]            = { NULL,               ExprBinary,     PREC_TERM },
@@ -1464,7 +1475,7 @@ static const PrecedenceRule *GetPrecedenceRule(TokenType CurrentTokenType)
     return &sPrecedenceRuleLut[CurrentTokenType];
 }
 
-static VarLocation ParseAssignmentLhs(PascalCompiler *Compiler, Precedence Prec)
+static VarLocation ParseAssignmentLhs(PascalCompiler *Compiler, Precedence Prec, bool ShouldCallFunction)
 {
     const PrefixParseRoutine PrefixRoutine = 
         GetPrecedenceRule(Compiler->Curr.Type)->PrefixRoutine;
@@ -1475,7 +1486,7 @@ static VarLocation ParseAssignmentLhs(PascalCompiler *Compiler, Precedence Prec)
     }
 
 
-    VarLocation Left = PrefixRoutine(Compiler);
+    VarLocation Left = PrefixRoutine(Compiler, ShouldCallFunction);
 
 
     /* only parse next op if they have the same or lower precedence */
@@ -1490,15 +1501,16 @@ static VarLocation ParseAssignmentLhs(PascalCompiler *Compiler, Precedence Prec)
         }
         ConsumeToken(Compiler); /* the operator */
         PASCAL_NONNULL(InfixRoutine);
-        Left = InfixRoutine(Compiler, &Left);
+        Left = InfixRoutine(Compiler, &Left, ShouldCallFunction);
     }
     return Left;
 }
 
-static VarLocation ParsePrecedence(PascalCompiler *Compiler, Precedence Prec)
+static VarLocation ParsePrecedence(PascalCompiler *Compiler, Precedence Prec, bool ShouldCallFunction)
 {
+    PASCAL_NONNULL(Compiler);
     ConsumeToken(Compiler);
-    return ParseAssignmentLhs(Compiler, Prec);
+    return ParseAssignmentLhs(Compiler, Prec, ShouldCallFunction);
 }
 
 
@@ -1525,6 +1537,8 @@ IntegralType CoerceTypes(IntegralType Left, IntegralType Right)
 bool ConvertRegisterTypeImplicitly(PVMEmitter *Emitter, 
         IntegralType To, VarRegister *From, IntegralType FromType)
 {
+    PASCAL_NONNULL(Emitter);
+    PASCAL_NONNULL(From);
     if (To == FromType)
         return true;
 
@@ -1557,6 +1571,9 @@ bool ConvertRegisterTypeImplicitly(PVMEmitter *Emitter,
 
 bool ConvertTypeImplicitly(PascalCompiler *Compiler, IntegralType To, VarLocation *From)
 {
+    PASCAL_NONNULL(Compiler);
+    PASCAL_NONNULL(From);
+
     IntegralType FromType = From->Type.Integral;
     if (To == FromType)
     {

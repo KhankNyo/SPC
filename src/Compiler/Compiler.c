@@ -972,8 +972,11 @@ static SubroutineInformation ConsumeSubroutineName(PascalCompiler *Compiler,
         VarLocation *Location = CompilerAllocateVarLocation(Compiler);
         PASCAL_NONNULL(Location);
         Location->Type = VarTypeInit(TYPE_FUNCTION, sizeof(void*));
-        Location->As.SubroutineLocation = SUBROUTINE_INVALID_LOCATION;
         Location->LocationType = VAR_SUBROUTINE;
+
+        U32 *SubroutineLocation = ArenaAllocate(&Compiler->InternalArena, sizeof *SubroutineLocation);
+        *SubroutineLocation = SUBROUTINE_INVALID_LOCATION;
+        Location->As.SubroutineLocation = SubroutineLocation;
 
         Identifier = DefineIdentifier(Compiler, Name, Location->Type, Location);
         PASCAL_NONNULL(Identifier);
@@ -981,7 +984,7 @@ static SubroutineInformation ConsumeSubroutineName(PascalCompiler *Compiler,
         return (SubroutineInformation) {
             .Info = &Location->Type.As.Subroutine,
             .Type = &Location->Type,
-            .Location = &Location->As.SubroutineLocation,
+            .Location = SubroutineLocation,
             .Name = *Identifier,
             .NameToken = *Name,
             .FirstDeclaration = true,
@@ -992,7 +995,7 @@ static SubroutineInformation ConsumeSubroutineName(PascalCompiler *Compiler,
     SubroutineInformation Subroutine = { 
         .Info = &Identifier->Location->Type.As.Subroutine,
         .Type = &Identifier->Location->Type,
-        .Location = &Identifier->Location->As.SubroutineLocation,
+        .Location = Identifier->Location->As.SubroutineLocation,
         .Name = *Identifier,
         .NameToken = *Name,
         .FirstDeclaration = false,
@@ -1117,7 +1120,7 @@ static SubroutineInformation CompileSubroutineDeclaration(PascalCompiler *Compil
     /* consumes return type */
     const char *BeforeSemicolon;
     const VarType *ReturnType = NULL;
-    if (IsFunction)
+    if (IsFunction) /* then consume function return type */
     {
         BeforeSemicolon = "type name";
         ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' after parameter list.");
@@ -1128,10 +1131,10 @@ static SubroutineInformation CompileSubroutineDeclaration(PascalCompiler *Compil
             ReturnType = CompilerCopyType(Compiler, ReturnTypeName->Type);
         }
     }
-    else
+    else /* procedure */
     {
+        /* for good error messages, consume the return type like a function */
         BeforeSemicolon = "parameter list";
-        /* for good error message */
         if (ConsumeIfNextTokenIs(Compiler, TOKEN_COLON))
         {
             if (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))

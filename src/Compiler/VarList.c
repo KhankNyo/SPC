@@ -485,7 +485,7 @@ void CompilerEmitCall(PascalCompiler *Compiler, const VarLocation *Location, Sav
     {
         /* call regular function */
         U32 CallSite = PVMEmitCall(EMITTER(), 0);
-        PushSubroutineReference(Compiler, &Location->As.SubroutineLocation, CallSite);
+        PushSubroutineReference(Compiler, Location->As.SubroutineLocation, CallSite);
     }
 }
 

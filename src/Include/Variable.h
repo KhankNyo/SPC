@@ -109,7 +109,9 @@ struct VarLocation
         VarRegister Register;
         VarLiteral Literal;
         VarBuiltinRoutine BuiltinSubroutine;
-        U32 SubroutineLocation;
+        U32 *SubroutineLocation; 
+        /* owned by the compiler, 
+            points to a single U32 holding the location of the function */
     } As;
 };
 
