@@ -26,10 +26,11 @@
 
 # TODO:
 ### Critical:
+- Unable to take the address of array and record field, fix this
 - 1-character long string literals are automatically treated as char, fix this
 - add goto, label, and with statement
-- add array, set, and union (record case) types
-- reconsider string as 'array[0..255] of char' (after adding array)
+- add set, and union (record case) types
+- reconsider string as 'array[0..255] of char'
 - file, text type
 
 ### Features:
