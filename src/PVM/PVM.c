@@ -301,11 +301,6 @@ do {\
 
 
 
-
-
-
-
-
     U16 *IP = Chunk->Code + Chunk->EntryPoint;
     FP().Ptr = PVM->Stack.Start;
     SP().Ptr.Byte = PVM->Stack.Start.Byte - sizeof(PVMGPR);
@@ -483,19 +478,19 @@ do {\
         {
             PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
             PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
-            PVM->R[PVM_GET_RD(Opcode)].Ptr.UInt = PStrIsLess(Dst, Src);
+            PVM->Condition = PStrIsLess(Dst, Src);
         } break;
         case OP_STRGT:
         {
             PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
             PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
-            PVM->R[PVM_GET_RD(Opcode)].Ptr.UInt = PStrIsLess(Src, Dst);
+            PVM->Condition = PStrIsLess(Src, Dst);
         } break;
         case OP_STREQU:
         {
             PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
             PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
-            PVM->R[PVM_GET_RD(Opcode)].Ptr.UInt = PStrEqu(Dst, Src);
+            PVM->Condition = PStrEqu(Dst, Src);
         } break;
         case OP_SETEZ: 
         {

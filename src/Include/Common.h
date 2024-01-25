@@ -272,7 +272,7 @@ static inline UInt BitCount(U64 n)
 }
 
 /* return 0 if no bit is set */
-/* TODO: compiler does not optimize this out into '64 - bsr' in x86.
+/* TODO: compiler does not optimize this out to use bsr on x86.
  *      At least on Compiler Explorer with gcc 13.2 and clang 17.0.1
  * but it shouldn't matter since this function is not used in any critical path yet. */
 static inline UInt IndexOfTopSetBit(U64 n)

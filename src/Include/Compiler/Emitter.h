@@ -78,6 +78,7 @@ void PVMPatchBranchToCurrent(PVMEmitter *Emitter, U32 From);
 
 
 /* move and load */
+void PVMEmitMoveImm(PVMEmitter *Emitter, VarRegister Reg, I64 Immediate);
 void PVMEmitMove(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 /* returns true if the caller owns OutTarget, false otherwise, 

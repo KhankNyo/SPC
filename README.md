@@ -21,12 +21,11 @@
 
 # Supported functions:
 - write, writeln (no file parameter)
-- sizeof
+- sizeof, ord
 
 
 # TODO:
 ### Critical:
-- calling function pointers with writeln reverses the value and type???
 - 1-character long string literals are automatically treated as char, fix this
 - add goto, label, and with statement
 - add set, and union (record case) types

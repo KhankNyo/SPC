@@ -78,21 +78,17 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
 
 
     /* arg count reg */
-    VarLocation ArgCountReg = {
-        .Type = VarTypeInit(TYPE_U32, 4),
-        .LocationType = VAR_REG,
-        .As.Register.ID = 0,
+    VarRegister ArgCountReg = {
+        .ID = 0
     };
-    PVMEmitMove(EMITTER(), &ArgCountReg, &VAR_LOCATION_LIT(.Int = ArgCount, ArgCountReg.Type.Integral));
+    PVMEmitMoveImm(EMITTER(), ArgCountReg, ArgCount);
 
-    /* file ptr reg */
-    VarLocation File = VAR_LOCATION_LIT(.Ptr.As.Raw = stdout, TYPE_POINTER);
-    VarLocation FilePtrReg = {
-        .Type = VarTypeInit(TYPE_POINTER, sizeof(void*)),
-        .LocationType = VAR_REG,
-        .As.Register.ID = 1,
+    /* file ptr reg, 
+     * TODO: define this as a constant in memory instead */
+    VarRegister FilePtr = {
+        .ID = 1,
     };
-    PVMEmitMove(EMITTER(), &FilePtrReg, &File);
+    PVMEmitMoveImm(EMITTER(), FilePtr, (I64)stdout);
 
     /* syscall */
     PVMEmitWrite(EMITTER());

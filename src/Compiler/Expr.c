@@ -471,6 +471,7 @@ static VarLocation ArrayAccess(PascalCompiler *Compiler, VarLocation *Left, bool
     VarLocation Element = { 0 };
     if (VariableType == TYPE_STATIC_ARRAY)
     {
+        /* TODO: range check */
         if (Left->LocationType == VAR_TYPENAME)
         {
             /* FPC allowed array name to be indexable for sizeof:
@@ -491,9 +492,16 @@ static VarLocation ArrayAccess(PascalCompiler *Compiler, VarLocation *Left, bool
             Element = PVMEmitLoadArrayElement(EMITTER(), Left, &Index);
         }
     }
-    else if (VariableType == TYPE_STRING)
+    else if (VariableType == TYPE_STRING && Left->LocationType == VAR_MEM)
     {
-        PASCAL_UNREACHABLE("");
+        VarType ElementType = VarTypeInit(TYPE_CHAR, 1);
+        VarType FauxArrayType = VarTypeStaticArray((RangeIndex){.Low = 0, .High = 255}, &ElementType);
+        const VarLocation FauxArray = {
+            .Type = FauxArrayType,
+            .LocationType = VAR_MEM,
+            .As.Memory = Left->As.Memory,
+        };
+        Element = PVMEmitLoadArrayElement(EMITTER(), &FauxArray, &Index);
     }
     else 
     {

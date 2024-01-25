@@ -135,7 +135,7 @@ static U32 Write32(PVMEmitter *Emitter, U32 DWord)
     return WriteOp32(Emitter, DWord, DWord >> 16);
 }
 
-static void PVMMovImm(PVMEmitter *Emitter, VarRegister Reg, I64 Imm)
+void PVMEmitMoveImm(PVMEmitter *Emitter, VarRegister Reg, I64 Imm)
 {
     if (Emitter->ShouldEmit)
     {
@@ -436,7 +436,7 @@ static void MoveLiteralToReg(PVMEmitter *Emitter,
     CASE_PTR32(:)
     CASE_PTR64(:)
     {
-        PVMMovImm(Emitter, Reg, Literal->Int);
+        PVMEmitMoveImm(Emitter, Reg, Literal->Int);
     } break;
     case TYPE_F32:
     {
@@ -1544,9 +1544,13 @@ void PVMEmitIMulConst(PVMEmitter *Emitter, const VarLocation *Dst, I64 Const)
     }
     else if (Const == 0)
     {
-        PVMMovImm(Emitter, Dst->As.Register, 0);
+        PVMEmitMoveImm(Emitter, Dst->As.Register, 0);
     }
-    else if (Const > 0 && IS_POW2(Const))
+    else if (Const == 1)
+    {
+        return;
+    }
+    else if (Const > 1 && IS_POW2(Const))
     {
         unsigned ShiftAmount = BitCount(Const - 1);
         if (ShiftAmount > 16) /* poor design of the PVM */
@@ -1637,7 +1641,7 @@ void PVMEmitDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *
                 {
                     /* load the constant into a reg and shift dst by it */
                     VarRegister Tmp = PVMAllocateRegister(Emitter, Dst->Type.Integral);
-                    PVMMovImm(Emitter, Tmp, ShiftAmount);
+                    PVMEmitMoveImm(Emitter, Tmp, ShiftAmount);
                     OP32_OR_OP64(Emitter, VASR, OperandIs64, Dst, Tmp.ID);
                     PVMFreeRegister(Emitter, Tmp);
                 }
@@ -1670,7 +1674,7 @@ void PVMEmitDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *
                 {
                     /* load the constant into a reg and shift dst by it */
                     VarRegister Tmp = PVMAllocateRegister(Emitter, Dst->Type.Integral);
-                    PVMMovImm(Emitter, Tmp, ShiftAmount);
+                    PVMEmitMoveImm(Emitter, Tmp, ShiftAmount);
                     OP32_OR_OP64(Emitter, VSHR, OperandIs64, Dst, Tmp.ID);
                     PVMFreeRegister(Emitter, Tmp);
                 }
