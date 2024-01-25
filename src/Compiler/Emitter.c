@@ -1979,9 +1979,24 @@ void PVMQueuePushMultiple(PVMEmitter *Emitter, SaveRegInfo *RegList, const VarLo
     PASCAL_NONNULL(RegList);
     PASCAL_NONNULL(Location);
 
-    VarRegister Reg;
-    PVMEmitIntoReg(Emitter, &Reg, true, Location);
-    RegList->Regs |= 1 << Reg.ID;
+
+    VarLocation Reg = {
+        .LocationType = VAR_REG,
+        .Type = Location->Type,
+    };
+    UInt RegIndex;
+    if (IntegralTypeIsFloat(Location->Type.Integral))
+    {
+        RegIndex = IndexOfTopSetBit(Emitter->Reglist >> 16);
+    }
+    else
+    {
+        RegIndex = IndexOfTopSetBit(Emitter->Reglist & ~EMPTY_REGLIST);
+    }
+    PVMMarkRegisterAsAllocated(Emitter, RegIndex);
+    Reg.As.Register.ID = RegIndex;
+    PVMEmitMove(Emitter, &Reg, Location);
+    RegList->Regs |= 1 << RegIndex;
 }
 
 

@@ -271,6 +271,48 @@ static inline UInt BitCount(U64 n)
     return i;
 }
 
+/* return 0 if no bit is set */
+/* TODO: compiler does not optimize this out into '64 - bsr' in x86.
+ *      At least on Compiler Explorer with gcc 13.2 and clang 17.0.1
+ * but it shouldn't matter since this function is not used in any critical path yet. */
+static inline UInt IndexOfTopSetBit(U64 n)
+{
+    if (0 == n) 
+        return 0;
+
+    UInt Count = 64;
+    if (0 == (n & 0xFFFFFFFF00000000))
+    {
+        Count -= 32;
+        n <<= 32;
+    }
+    if (0 == (n & 0xFFFF000000000000))
+    {
+        Count -= 16;
+        n <<= 16;
+    }
+    if (0 == (n & 0xFF00000000000000))
+    {
+        Count -= 8;
+        n <<= 8;
+    }
+    if (0 == (n & 0xF000000000000000))
+    {
+        Count -= 4;
+        n <<= 4;
+    }
+    if (0 == (n & 0xC000000000000000))
+    {
+        Count -= 2;
+        n <<= 2;
+    }
+    if (0 == (n & 0x8000000000000000))
+    {
+        Count -= 1;
+    }
+    return Count;
+}
+
 
 
 PASCAL_STATIC_ASSERT(sizeof(F64) == sizeof(U64), "Unsupported double size");
