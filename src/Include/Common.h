@@ -116,7 +116,7 @@ static inline I64 BitSex64(U64 Value, UInt SignIndex)
 
 
 #define STATIC_ARRAY_SIZE(Array) (sizeof(Array) / sizeof((Array)[0]))
-#define DIE() ((*(volatile char *)NULL) = 0)
+#define DIE() ((*(char *)0) = 0)
 #define PASCAL_UNREACHABLE(...) \
     do {\
         fprintf(stderr, "Invalid code path reached on line "\

@@ -827,6 +827,23 @@ static void CompileBreakStmt(PascalCompiler *Compiler)
     CompilerEmitDebugInfo(Compiler, Keyword);
 }
 
+static void CompileGotoStmt(PascalCompiler *Compiler)
+{
+    PASCAL_NONNULL(Compiler);
+
+    Token Goto = Compiler->Curr;
+    CompilerInitDebugInfo(Compiler, &Goto);
+
+    ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected label name.");
+    StringView Label = Compiler->Curr.Lexeme;
+    if (!LabelIsDefined(Compiler, Label))
+    {
+        ErrorAt(Compiler, &Compiler->Curr, "Undefined label.");
+    }
+    PVMEmitBranch(EMITTER(), 0);
+    CompilerEmitDebugInfo(Compiler, &Goto);
+}
+
 static void CompileStmt(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
@@ -835,7 +852,7 @@ static void CompileStmt(PascalCompiler *Compiler)
     case TOKEN_GOTO:
     {
         ConsumeToken(Compiler);
-        PASCAL_UNREACHABLE("TODO: goto");
+        CompileGotoStmt(Compiler);
     } break;
     case TOKEN_WITH:
     {
@@ -1383,6 +1400,15 @@ static void CompileConstBlock(PascalCompiler *Compiler)
     }
 }
 
+static void CompileLabelDeclaration(PascalCompiler *Compiler)
+{
+    do {
+        ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected label name.");
+        PushGotoLabel(Compiler, Compiler->Curr.Lexeme);
+    } while (ConsumeIfNextTokenIs(Compiler, TOKEN_COMMA));
+    ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after label(s).");
+}
+
 
 
 
@@ -1427,7 +1453,7 @@ static bool CompileHeadlessBlock(PascalCompiler *Compiler)
         case TOKEN_LABEL:
         {
             ConsumeToken(Compiler);
-            PASCAL_UNREACHABLE("TODO: label");
+            CompileLabelDeclaration(Compiler);
         } break;
         default: 
         {

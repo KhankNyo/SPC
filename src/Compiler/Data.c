@@ -152,6 +152,35 @@ void ResolveSubroutineReferences(PascalCompiler *Compiler)
     memset(&Compiler->SubroutineReferences, 0, sizeof(Compiler->SubroutineReferences));
 }
 
+void ResetGotoLabel(PascalCompiler *Compiler)
+{
+    Compiler->LabelCount = 0;
+}
+
+void PushGotoLabel(PascalCompiler *Compiler, StringView Label)
+{
+    if (Compiler->LabelCount >= Compiler->LabelCapacity)
+    {
+        Compiler->LabelCapacity = Compiler->LabelCount*2 + 8;
+        Compiler->Labels = GPAAllocate(&Compiler->InternalAlloc, sizeof(Compiler->Labels[0]));
+    }
+    Compiler->Labels[Compiler->LabelCount++] = Label;
+}
+
+bool LabelIsDefined(PascalCompiler *Compiler, StringView Label)
+{
+    for (UInt i = 0; i < Compiler->LabelCount; i++)
+    {
+        const StringView *Current = &Compiler->Labels[i];
+        if (Current->Len == Label.Len 
+        && TokenEqualNoCase(Current->Str, Label.Str, Label.Len))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 
 
 
