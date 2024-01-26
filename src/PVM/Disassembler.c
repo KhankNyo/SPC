@@ -476,7 +476,6 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
 
 
     case OP_STRLT: DisasmRdRs(f, "strlt", sIntReg, Opcode); break;
-    case OP_STRGT: DisasmRdRs(f, "strgt", sIntReg, Opcode); break;
     case OP_STREQ: DisasmRdRs(f, "streq", sIntReg, Opcode); break;
     case OP_STRCPY: DisasmRdRs(f, "strcpy", sIntReg, Opcode); break;
     case OP_MEMCPY: return DisasmRdRsImm32(f, "memcpy", Opcode, Chunk, Addr);

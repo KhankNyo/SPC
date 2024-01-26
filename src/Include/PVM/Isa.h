@@ -34,7 +34,6 @@ typedef enum PVMOp
     OP_VASR,
 
     OP_STRLT,
-    OP_STRGT,
     OP_STREQ,
     OP_STRCPY,
     OP_SEQ,

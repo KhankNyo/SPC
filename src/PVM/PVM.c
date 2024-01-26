@@ -496,12 +496,6 @@ do {\
             PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
             PVM->Condition = PStrIsLess(Dst, Src);
         } break;
-        case OP_STRGT:
-        {
-            PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
-            PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
-            PVM->Condition = PStrIsLess(Src, Dst);
-        } break;
         case OP_STREQ:
         {
             PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;

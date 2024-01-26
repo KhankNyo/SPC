@@ -891,42 +891,6 @@ Unreachable:
 
 
 
-
-static bool CompareStringOrder(TokenType CompareType, const PascalStr *s1, const PascalStr *s2)
-{
-    switch (CompareType)
-    {
-    case TOKEN_EQUAL:
-    {
-        return PStrEqu(s1, s2);
-    } break;
-    case TOKEN_LESS_GREATER:
-    {
-        return !PStrEqu(s1, s2);
-    } break;
-
-    case TOKEN_LESS:
-    {
-        return PStrIsLess(s1, s2);
-    } break;
-    case TOKEN_GREATER:
-    {
-        return PStrIsLess(s2, s1);
-    } break;
-    case TOKEN_LESS_EQUAL:
-    {
-        return !PStrIsLess(s2, s1);
-    } break;
-    case TOKEN_GREATER_EQUAL:
-    {
-        return !PStrIsLess(s1, s2);
-    } break;
-    default: PASCAL_UNREACHABLE("Unreachable in: %s: %s", __func__, TokenTypeToStr(CompareType));
-    }
-    return false;
-}
-
-
 static IntegralType TryCoercingTypes(TokenType Operation, IntegralType Left, IntegralType Right)
 {
     switch (Operation)
