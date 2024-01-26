@@ -62,9 +62,6 @@ VarLocation *CompilerAllocateVarLocation(PascalCompiler *Compiler);
 
 void PushSubroutineReference(PascalCompiler *Compiler, const U32 *SubroutineLocation, U32 CallSite);
 void ResolveSubroutineReferences(PascalCompiler *Compiler);
-void ResetGotoLabels(PascalCompiler *Compiler);
-void PushGotoLabel(PascalCompiler *Compiler, StringView Label);
-bool LabelIsDefined(PascalCompiler *Compiler, StringView Label);
 
 void CompilerResetTmp(PascalCompiler *Compiler);
 void CompilerPushTmp(PascalCompiler *Compiler, Token Identifier);

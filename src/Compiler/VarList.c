@@ -38,7 +38,7 @@ static PascalVar *FindTypename(PascalCompiler *Compiler, const Token *Name)
     if (NULL != Type->Location)
     {
         ErrorAt(Compiler, Name, "'"STRVIEW_FMT"' is not a type name.",
-                STRVIEW_FMT_ARG(&Name->Lexeme)
+            STRVIEW_FMT_ARG(Name->Lexeme)
         );
         return NULL;
     }
@@ -206,7 +206,7 @@ static bool ParseAndDefineTypenameInternal(PascalCompiler *Compiler, const Token
         if (NULL != Typename->Location)
         {
             ErrorAt(Compiler, &Compiler->Curr, "'"STRVIEW_FMT"' is not a type name in this scope.", 
-                    STRVIEW_FMT_ARG(&Compiler->Curr.Lexeme)
+                STRVIEW_FMT_ARG(Compiler->Curr.Lexeme)
             );
             return false;
         }
@@ -222,7 +222,7 @@ static bool ParseAndDefineTypenameInternal(PascalCompiler *Compiler, const Token
     else 
     {
         Error(Compiler, "Expected type name after '"STRVIEW_FMT"'.",
-                STRVIEW_FMT_ARG(&Compiler->Curr.Lexeme)
+            STRVIEW_FMT_ARG(Compiler->Curr.Lexeme)
         );
         return false;
     }

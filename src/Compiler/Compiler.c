@@ -301,10 +301,11 @@ static void CompileForStmt(PascalCompiler *Compiler)
     if (NULL == Counter)
         return;
     PASCAL_NONNULL(Counter->Location);
+    StringView CounterType = VarTypeToStringView(Counter->Type);
     if (!IntegralTypeIsOrdinal(Counter->Type.Integral))
     {
-        ErrorAt(Compiler, &Compiler->Curr, "Variable of type %s cannot be used as a counter.",
-                VarTypeToStr(Counter->Type)
+        ErrorAt(Compiler, &Compiler->Curr, "Variable of type "STRVIEW_FMT" cannot be used as a counter.",
+            STRVIEW_FMT_ARG(CounterType)
         );
         return;
     }
@@ -337,10 +338,13 @@ static void CompileForStmt(PascalCompiler *Compiler)
     VarLocation StopCondition = CompileExprIntoReg(Compiler); 
     if (TYPE_INVALID == CoerceTypes(i->Type.Integral, StopCondition.Type.Integral))
     {
-        ErrorAt(Compiler, &OpToken, "Incompatible types for 'for' loop: from %s "STRVIEW_FMT" %s.", 
-                VarTypeToStr(i->Type),
-                STRVIEW_FMT_ARG(&OpToken.Lexeme),
-                VarTypeToStr(StopCondition.Type)
+        StringView StopConditionType = VarTypeToStringView(StopCondition.Type);
+        ErrorAt(Compiler, &OpToken, 
+            "Incompatible types for iterator and stop condition: from "
+            STRVIEW_FMT" "STRVIEW_FMT" "STRVIEW_FMT".", 
+            STRVIEW_FMT_ARG(CounterType),
+            STRVIEW_FMT_ARG(OpToken.Lexeme),
+            STRVIEW_FMT_ARG(StopConditionType)
         );
     }
     else
@@ -506,14 +510,14 @@ static void CompileCallWithoutReturnValue(PascalCompiler *Compiler,
     PASCAL_NONNULL(Location);
     PASCAL_NONNULL(Callee);
 
-
     const VarType *Type = &Location->Type;
     if (TYPE_POINTER == Type->Integral)
     {
         Type = Type->As.Pointee;
         if (NULL == Type || TYPE_FUNCTION != Type->Integral)
         {
-            ErrorAt(Compiler, Callee, "Cannot call %s.", VarTypeToStr(Location->Type));
+            StringView Type = VarTypeToStringView(Location->Type);
+            ErrorAt(Compiler, Callee, "Cannot call "STRVIEW_FMT".", STRVIEW_FMT_ARG(Type));
             return;
         }
     }
@@ -598,8 +602,11 @@ static void CompilerEmitAssignment(PascalCompiler *Compiler, const Token *Assign
         }
         else 
         {
-            ErrorAt(Compiler, Assignment, "Cannot perform modulo between %s and %s.",
-                    VarTypeToStr(Left->Type), VarTypeToStr(Right->Type)
+            StringView LeftType = VarTypeToStringView(Left->Type),
+                       RightType = VarTypeToStringView(Right->Type);
+            ErrorAt(Compiler, Assignment, 
+                "Cannot perform modulo between "STRVIEW_FMT" and "STRVIEW_FMT".",
+                STRVIEW_FMT_ARG(LeftType), STRVIEW_FMT_ARG(RightType)
             );
         }
     } break;
@@ -624,10 +631,16 @@ static void CompileAssignStmt(PascalCompiler *Compiler, const Token Identifier)
 
     CompilerInitDebugInfo(Compiler, &Identifier);
 
+    /* compile the lhs */
     VarLocation Dst = CompileVariableExpr(Compiler);
+
+    /* assignment operator */
     ConsumeToken(Compiler);
     const Token Assignment = Compiler->Curr;
+    /* lhs for when function returns the same record type */
     Compiler->Lhs = &Dst;
+
+    /* compile the rhs expression */
     VarLocation Right = CompileExpr(Compiler);
 
 
@@ -639,20 +652,21 @@ static void CompileAssignStmt(PascalCompiler *Compiler, const Token Identifier)
         }
         if (!VarTypeEqual(&Dst.Type, &Right.Type))
         {
-            ErrorAt(Compiler, &Assignment, "Cannot assign %s to %s.",
-                    VarTypeToStr(Right.Type), VarTypeToStr(Dst.Type)
-            );
+            ErrorCannotAssign(Compiler, &Assignment, Dst.Type, Right.Type);
         }
         /* CompileExpr handled record return value already */
+    }
+    else if (TYPE_STATIC_ARRAY == Dst.Type.Integral)
+    {
+        PASCAL_UNREACHABLE("TODO: assignment to array");
     }
     else
     {
         if (!ConvertTypeImplicitly(Compiler, Dst.Type.Integral, &Right))
         {
-            ErrorAt(Compiler, &Assignment, "Cannot assign expression of type %s to %s.", 
-                    VarTypeToStr(Right.Type), VarTypeToStr(Dst.Type)
-            );
+            ErrorCannotAssign(Compiler, &Assignment, Dst.Type, Right.Type);
         }
+        /* assign rhs to lhs */
         if (!Compiler->Panic)
         {
             CompilerEmitAssignment(Compiler, &Assignment, &Dst, &Right);
@@ -669,10 +683,9 @@ static void CompileAssignStmt(PascalCompiler *Compiler, const Token Identifier)
 static void CompileIdenStmt(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
+
     /* iden consumed */
-    PascalVar *IdentifierInfo = GetIdenInfo(Compiler, &Compiler->Curr,
-            "Undefined identifier."
-    );
+    PascalVar *IdentifierInfo = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined identifier.");
     if (NULL == IdentifierInfo)
         return;
     
@@ -741,8 +754,10 @@ static void CompileCaseStmt(PascalCompiler *Compiler)
             }
             if (!ConvertTypeImplicitly(Compiler, Expr.Type.Integral, &Constant))
             {
-                Error(Compiler, "Cannot convert from %s to %s in case expression.", 
-                        VarTypeToStr(Constant.Type), VarTypeToStr(Expr.Type)
+                StringView ConstantType = VarTypeToStringView(Constant.Type),
+                           ExprType = VarTypeToStringView(Expr.Type);
+                Error(Compiler, "Cannot convert from "STRVIEW_FMT" to "STRVIEW_FMT" in case expression.", 
+                    STRVIEW_FMT_ARG(ConstantType), STRVIEW_FMT_ARG(ExprType)
                 );
                 Expr.Type = Constant.Type;
             }
@@ -779,6 +794,7 @@ static void CompileCaseStmt(PascalCompiler *Compiler)
         } while (!IsAtEnd(Compiler) && !NextTokenIs(Compiler, TOKEN_END) && !NextTokenIs(Compiler, TOKEN_ELSE));
     }
 
+    /* else clause of case stmt */
     if (ConsumeIfNextTokenIs(Compiler, TOKEN_ELSE))
     {
         if (ExprIsConstant && Emitted)
@@ -827,23 +843,6 @@ static void CompileBreakStmt(PascalCompiler *Compiler)
     CompilerEmitDebugInfo(Compiler, Keyword);
 }
 
-static void CompileGotoStmt(PascalCompiler *Compiler)
-{
-    PASCAL_NONNULL(Compiler);
-
-    Token Goto = Compiler->Curr;
-    CompilerInitDebugInfo(Compiler, &Goto);
-
-    ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected label name.");
-    StringView Label = Compiler->Curr.Lexeme;
-    if (!LabelIsDefined(Compiler, Label))
-    {
-        ErrorAt(Compiler, &Compiler->Curr, "Undefined label.");
-    }
-    PVMEmitBranch(EMITTER(), 0);
-    CompilerEmitDebugInfo(Compiler, &Goto);
-}
-
 static void CompileStmt(PascalCompiler *Compiler)
 {
     PASCAL_NONNULL(Compiler);
@@ -852,7 +851,7 @@ static void CompileStmt(PascalCompiler *Compiler)
     case TOKEN_GOTO:
     {
         ConsumeToken(Compiler);
-        CompileGotoStmt(Compiler);
+        PASCAL_UNREACHABLE("TODO: goto");
     } break;
     case TOKEN_WITH:
     {
@@ -918,9 +917,9 @@ static void CompileStmt(PascalCompiler *Compiler)
         ConsumeToken(Compiler);
         CompileIdenStmt(Compiler);
     } break;
-            /* for good error message */
     case TOKEN_ELSE:
     {
+        /* for good error message */
         if (TOKEN_SEMICOLON == Compiler->Curr.Type)
         {
             ErrorAt(Compiler, &Compiler->Curr, "Semicolon is not allowed before 'else'.");
@@ -1008,6 +1007,7 @@ static SubroutineInformation ConsumeSubroutineName(PascalCompiler *Compiler,
         };
     }
 
+    /* name is already defined */
     PASCAL_NONNULL(Identifier->Location);
     SubroutineInformation Subroutine = { 
         .Info = &Identifier->Location->Type.As.Subroutine,
@@ -1018,7 +1018,6 @@ static SubroutineInformation ConsumeSubroutineName(PascalCompiler *Compiler,
         .FirstDeclaration = false,
     };
 
-    /* name is already defined */
     /* redefinition in repl? */
     if (PASCAL_COMPMODE_REPL == Compiler->Flags.CompMode)
         return Subroutine; /* redefinition is fine in repl */
@@ -1026,16 +1025,17 @@ static SubroutineInformation ConsumeSubroutineName(PascalCompiler *Compiler,
     /* not a function? */
     if (TYPE_FUNCTION != Identifier->Type.Integral)
     {
-
-        ErrorAt(Compiler, &Subroutine.NameToken, "Redefinition of '"STRVIEW_FMT"' from %s to %s",
-                STRVIEW_FMT_ARG(&Name->Lexeme), 
-                VarTypeToStr(Identifier->Type), IsFunction? "function" : "procedure"
+        StringView IdentifierType = VarTypeToStringView(Identifier->Type);
+        ErrorAt(Compiler, &Subroutine.NameToken, "Redefinition of '"STRVIEW_FMT"' from "STRVIEW_FMT" to %s",
+            STRVIEW_FMT_ARG(Name->Lexeme), 
+            STRVIEW_FMT_ARG(IdentifierType),
+            IsFunction? "function" : "procedure"
         );
         return Subroutine;
     }
 
 
-    /* is subroutined DEFINED? */
+    /* is subroutined define? */
     if (SUBROUTINE_INVALID_LOCATION != *Subroutine.Location)
     {
         PASCAL_UNREACHABLE("TODO: function overload");
@@ -1044,9 +1044,10 @@ static SubroutineInformation ConsumeSubroutineName(PascalCompiler *Compiler,
     if (IsFunction != (NULL == Subroutine.Info->ReturnType))
     {
         ErrorAt(Compiler, &Subroutine.NameToken, 
-                "Definition of %s '"STRVIEW_FMT"' does not match declaration on line %d.",
-                SubroutineType, STRVIEW_FMT_ARG(&Subroutine.NameToken.Lexeme), 
-                Identifier->Line
+            "Definition of %s '"STRVIEW_FMT"' does not match declaration on line %d.",
+            SubroutineType, 
+            STRVIEW_FMT_ARG(Subroutine.NameToken.Lexeme), 
+            Identifier->Line
         );
     }
     return Subroutine;
@@ -1280,19 +1281,17 @@ static void CompileVarBlock(PascalCompiler *Compiler)
                 if (VAR_LIT != Constant.LocationType)
                 {
                     ErrorAt(Compiler, &EqualSign, 
-                            "Can only initialize global variable with constant expression."
+                        "Can only initialize global variable with constant expression."
                     );
                 }
                 if (TYPE_INVALID == CoerceTypes(Variable->Type.Integral, Constant.Type.Integral))
                 {
-                    ErrorAt(Compiler, &EqualSign, "Invalid type combination: %s and %s", 
-                            VarTypeToStr(Variable->Type), VarTypeToStr(Constant.Type)
-                    );
+                    ErrorCannotAssign(Compiler, &EqualSign, Variable->Type, Constant.Type);
                     continue;
                 }
 
                 PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, Variable->Type.Integral, &Constant), 
-                        "Unreachable"
+                    "Unreachable"
                 );
 
                 /* flushes global variable so initialization can be done */
@@ -1400,14 +1399,6 @@ static void CompileConstBlock(PascalCompiler *Compiler)
     }
 }
 
-static void CompileLabelDeclaration(PascalCompiler *Compiler)
-{
-    do {
-        ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected label name.");
-        PushGotoLabel(Compiler, Compiler->Curr.Lexeme);
-    } while (ConsumeIfNextTokenIs(Compiler, TOKEN_COMMA));
-    ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after label(s).");
-}
 
 
 
@@ -1453,14 +1444,14 @@ static bool CompileHeadlessBlock(PascalCompiler *Compiler)
         case TOKEN_LABEL:
         {
             ConsumeToken(Compiler);
-            CompileLabelDeclaration(Compiler);
+            PASCAL_UNREACHABLE("TODO: label");
         } break;
         default: 
         {
             if (PASCAL_COMPMODE_REPL != Compiler->Flags.CompMode)
             {
                 Error(Compiler, "A block cannot start with '"STRVIEW_FMT"'.", 
-                        STRVIEW_FMT_ARG(&Compiler->Next.Lexeme)
+                    STRVIEW_FMT_ARG(Compiler->Next.Lexeme)
                 );
             }
             return false;
@@ -1502,10 +1493,7 @@ static bool CompileProgram(PascalCompiler *Compiler)
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected identifier.");
     if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_PAREN))
     {
-        /* TODO: what are these idens for:
-         * program hello(identifier1, iden2, hi);
-         *               ^^^^^^^^^^^  ^^^^^  ^^
-         */
+        /* program (iden, ...); */
         do {
             ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected identifier.");
         } while (ConsumeIfNextTokenIs(Compiler, TOKEN_COMMA));
@@ -1521,7 +1509,6 @@ static bool CompileProgram(PascalCompiler *Compiler)
             ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected identifier");
             Token Unit = Compiler->Curr;
 
-            /* TODO: other libraries */
             /* including crt */
             if (Unit.Lexeme.Len == Compiler->Builtins.Crt.Len
             && TokenEqualNoCase(Unit.Lexeme.Str, Compiler->Builtins.Crt.Str, Unit.Lexeme.Len))

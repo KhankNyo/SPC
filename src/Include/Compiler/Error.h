@@ -9,6 +9,7 @@ void ErrorAt(PascalCompiler *Compiler, const Token *Tok, const char *Fmt, ...);
 void ErrorTypeMismatch(PascalCompiler *Compiler, 
         const Token *At, const char *Place, const char *ExpectedType, IntegralType Got
 );
+void ErrorCannotAssign(PascalCompiler *Compiler, const Token *AssignmentOperator, VarType Dst, VarType Src);
 bool ConsumeOrError(PascalCompiler *Compiler, TokenType Expected, const char *ErrFmt, ...);
 #define Error(pCompiler, ...) ErrorAt(pCompiler, &(pCompiler)->Next, __VA_ARGS__)
 

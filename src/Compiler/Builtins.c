@@ -49,7 +49,11 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
                 if (TYPE_RECORD == Arg.Type.Integral || TYPE_FUNCTION == Arg.Type.Integral)
                 {
                     const char *FnName = Newline? "Writeln" : "Write";
-                    Error(Compiler, "%s does accept value of type %s.", FnName, VarTypeToStr(Arg.Type));
+                    StringView ArgumentType = VarTypeToStringView(Arg.Type);
+                    Error(Compiler, "%s does accept value of type "STRVIEW_FMT".", 
+                        FnName, 
+                        STRVIEW_FMT_ARG(ArgumentType)
+                    );
                 }
                 VarLocation ArgType = VAR_LOCATION_LIT(.Int = Arg.Type.Integral, TYPE_U32);
                 PVMQueueAndCommitOnFull(EMITTER(), &RegList, &Arg);
@@ -138,7 +142,10 @@ PASCAL_BUILTIN(Ord, Compiler, FnName)
     VarLocation *RetVal = &Opt.ReturnValue;
     if (!IntegralTypeIsOrdinal(RetVal->Type.Integral))
     {
-        ErrorAt(Compiler, FnName, "Cannot convert %s to integer.", VarTypeToStr(RetVal->Type));
+        StringView Type = VarTypeToStringView(RetVal->Type);
+        ErrorAt(Compiler, FnName, "Cannot convert "STRVIEW_FMT" to integer.", 
+            STRVIEW_FMT_ARG(Type)
+        );
         return Opt;
     }
 

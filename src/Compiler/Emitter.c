@@ -360,9 +360,13 @@ static void MoveRegToReg(PVMEmitter *Emitter,
     case TYPE_INVALID:
     case TYPE_COUNT:
     {
+        StringView DstStr, SrcStr;
 Unreachable:
-        PASCAL_UNREACHABLE("Move %s %s is invalid in function %s", __func__,
-                VarTypeToStr(DstType), VarTypeToStr(SrcType)
+        DstStr = VarTypeToStringView(DstType);
+        SrcStr = VarTypeToStringView(SrcType);
+        PASCAL_UNREACHABLE("Move "STRVIEW_FMT", "STRVIEW_FMT" is invalid in function %s",
+            STRVIEW_FMT_ARG(DstStr), STRVIEW_FMT_ARG(SrcStr),
+            __func__
         );
     } break;
     }
@@ -999,8 +1003,8 @@ void PVMEmitCopy(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation 
 
     PASCAL_ASSERT(Dst->Type.Integral == Src->Type.Integral, "Unreachable");
     PASCAL_ASSERT(Dst->Type.Size == Src->Type.Size, "Unreachable");
-    PASCAL_ASSERT(!VarTypeIsTriviallyCopiable(Dst->Type), "Unhandled case: %s", 
-            VarTypeToStr(Dst->Type)
+    PASCAL_ASSERT(!VarTypeIsTriviallyCopiable(Dst->Type), "Unhandled case: "STRVIEW_FMT, 
+            STRVIEW_FMT_ARG(VarTypeToStringView(Dst->Type))
     );
     PASCAL_ASSERT(Dst->Type.Size <= UINT32_MAX, "record too big");
 
@@ -1874,10 +1878,10 @@ VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op,
     }
     else 
     {
-        PASCAL_UNREACHABLE("EmitSetCC: %s %s %s\n", 
-                VarTypeToStr(Left->Type),
-                TokenTypeToStr(Op),
-                VarTypeToStr(Right->Type)
+        PASCAL_UNREACHABLE("EmitSetCC: "STRVIEW_FMT" %s "STRVIEW_FMT"\n", 
+            STRVIEW_FMT_ARG(VarTypeToStringView(Left->Type)),
+            TokenTypeToStr(Op),
+            STRVIEW_FMT_ARG(VarTypeToStringView(Right->Type))
         );
     }
 

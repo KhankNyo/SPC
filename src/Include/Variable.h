@@ -185,13 +185,15 @@ static inline I64 OrdinalLiteralToI64(VarLiteral Literal, IntegralType Type)
 }
 
 
-static inline const char *VarTypeToStr(VarType Type)
+static inline StringView VarTypeToStringView(VarType Type)
 {
-    if (TYPE_POINTER == Type.Integral && NULL != Type.As.Pointee)
+    if (TYPE_RECORD == Type.Integral)
     {
-        return VarTypeToStr(*Type.As.Pointee);
+        return Type.As.Record.Name;
     }
-    return IntegralTypeToStr(Type.Integral);
+
+    const char *IntegralTypeStr = IntegralTypeToStr(Type.Integral);
+    return STRVIEW_INIT_CSTR(IntegralTypeStr, strlen(IntegralTypeStr));
 }
 
 static inline bool VarTypeIsTriviallyCopiable(VarType Type)

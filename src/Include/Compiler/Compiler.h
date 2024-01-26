@@ -85,9 +85,6 @@ struct PascalCompiler
         U32 Count, Cap;
     } SubroutineReferences;
 
-    StringView *Labels;
-    UInt LabelCount, LabelCapacity;
-
     U32 Line;
     U32 EntryPoint;
     FILE *LogFile;

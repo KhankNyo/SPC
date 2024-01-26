@@ -58,16 +58,16 @@ typedef VarLocation (*PrefixParseRoutine)(PascalCompiler *, bool);
 
 #define INVALID_BINARY_OP(pOp, LType, RType) \
     ErrorAt(Compiler, pOp, "Invalid operand for binary operator '"STRVIEW_FMT"': %s and %s", \
-            STRVIEW_FMT_ARG(&(pOp)->Lexeme), \
-            IntegralTypeToStr(LType), IntegralTypeToStr(RType)\
+        STRVIEW_FMT_ARG((pOp)->Lexeme), \
+        IntegralTypeToStr(LType), IntegralTypeToStr(RType)\
     )
 #define INVALID_PREFIX_OP(pOp, Type) \
     ErrorAt(Compiler, pOp, "Invalid operand for prefix operator '"STRVIEW_FMT"': %s", \
-            STRVIEW_FMT_ARG(&(pOp)->Lexeme), IntegralTypeToStr(Type)\
+        STRVIEW_FMT_ARG((pOp)->Lexeme), IntegralTypeToStr(Type)\
     )
 #define INVALID_POSTFIX_OP(pOp, Type) \
     ErrorAt(Compiler, pOp, "Invalid operand for postfix operator '"STRVIEW_FMT"': %s", \
-            STRVIEW_FMT_ARG(&(pOp)->Lexeme), IntegralTypeToStr(Type)\
+        STRVIEW_FMT_ARG((pOp)->Lexeme), IntegralTypeToStr(Type)\
     )
 
 typedef struct PrecedenceRule
@@ -153,17 +153,20 @@ void CompileExprInto(PascalCompiler *Compiler, const Token *ErrorSpot, VarLocati
     FreeExpr(Compiler, Expr);
     return;
 
+    StringView LocType, ExprType;
 InvalidTypeCombination:
+    LocType = VarTypeToStringView(Location->Type);
+    ExprType = VarTypeToStringView(Expr.Type);
     if (NULL == ErrorSpot)
     {
-        Error(Compiler, "Invalid type combination: %s and %s.",
-            VarTypeToStr(Location->Type), VarTypeToStr(Expr.Type)
+        Error(Compiler, "Invalid type combination: "STRVIEW_FMT" and "STRVIEW_FMT".",
+            STRVIEW_FMT_ARG(LocType), STRVIEW_FMT_ARG(ExprType)
         );
     }
     else
     {
-        ErrorAt(Compiler, ErrorSpot, "Invalid type combination: %s and %s.",
-            VarTypeToStr(Location->Type), VarTypeToStr(Expr.Type)
+        ErrorAt(Compiler, ErrorSpot, "Invalid type combination: "STRVIEW_FMT" and "STRVIEW_FMT".",
+            STRVIEW_FMT_ARG(LocType), STRVIEW_FMT_ARG(ExprType)
         );
     }
 }
@@ -188,13 +191,14 @@ static VarType TypeOfUIntLit(U64 UInt)
 
 static VarLocation FactorLiteral(PascalCompiler *Compiler, bool ShouldCallFunction)
 {
+    PASCAL_NONNULL(Compiler);
+
     /* literals are not functions */
     UNUSED(ShouldCallFunction);
 
     VarLocation Location = {
         .LocationType = VAR_LIT,
     };
-    PASCAL_NONNULL(Compiler);
 
     switch (Compiler->Curr.Type)
     {
@@ -242,13 +246,15 @@ static VarLocation CompileCallWithReturnValue(PascalCompiler *Compiler,
     PASCAL_NONNULL(Location);
     PASCAL_NONNULL(Callee);
 
+    /* get function type */
     const VarType *Type = &Location->Type;
     if (TYPE_POINTER == Type->Integral)
     {
         Type = Type->As.Pointee;
         if (NULL == Type || TYPE_FUNCTION != Type->Integral)
         {
-            ErrorAt(Compiler, Callee, "Cannot call %s.", VarTypeToStr(Location->Type));
+            StringView Type = VarTypeToStringView(Location->Type);
+            ErrorAt(Compiler, Callee, "Cannot call "STRVIEW_FMT".", STRVIEW_FMT_ARG(Type));
             return (VarLocation) { 0 };
         }
     }
@@ -258,7 +264,7 @@ static VarLocation CompileCallWithReturnValue(PascalCompiler *Compiler,
     {
         /* no return value, but in expression */
         ErrorAt(Compiler, Callee, "Procedure '"STRVIEW_FMT"' does not have a return value.",
-                STRVIEW_FMT_ARG(&Callee->Lexeme)
+                STRVIEW_FMT_ARG(Callee->Lexeme)
         );
         return (VarLocation) { 0 };
     }
@@ -310,12 +316,12 @@ static VarLocation CompileCallWithReturnValue(PascalCompiler *Compiler,
     }
 
 
-    /* did we allocate stack space for arguments? */
     /* 
      * TODO: this is calling convention dependent, 
      * in cdecl we can allocate stack space once for all function call and forget about it, 
      * but in stdcall, the callee cleans up the stack 
      */
+    /* did we allocate stack space for arguments? */
     if (Subroutine->StackArgSize)
     {
         /* deallocate stack space */
@@ -342,7 +348,7 @@ static VarLocation FactorCall(PascalCompiler *Compiler, VarLocation *Location, b
         if (!Opt.HasReturnValue)
         {
             ErrorAt(Compiler, &Callee, "Builtin procedure '"STRVIEW_FMT"' does not have a return value.",
-                    STRVIEW_FMT_ARG(&Callee.Lexeme)
+                STRVIEW_FMT_ARG(Callee.Lexeme)
             );
             return (VarLocation) { 0 };
         }
@@ -365,8 +371,9 @@ static VarLocation VariableDeref(PascalCompiler *Compiler, VarLocation *Variable
     Token Caret = Compiler->Curr;
     if (TYPE_POINTER != Variable->Type.Integral)
     {
-        ErrorAt(Compiler, &Caret, "%s is not dereferenceable.", 
-                VarTypeToStr(Variable->Type)
+        StringView Type = VarTypeToStringView(Variable->Type);
+        ErrorAt(Compiler, &Caret, STRVIEW_FMT" is not dereferenceable.", 
+            STRVIEW_FMT_ARG(Type)
         );
         return *Variable;
     }
@@ -376,21 +383,18 @@ static VarLocation VariableDeref(PascalCompiler *Compiler, VarLocation *Variable
         return *Variable;
     }
 
-
-    VarType Pointee = *Variable->Type.As.Pointee;
+    /* 
+     * to dereference, 
+     * we create a new var location that represents the pointee in memory 
+     */
+    VarType PointeeType = *Variable->Type.As.Pointee;
     VarLocation Ptr;
     PVMEmitIntoRegLocation(EMITTER(), &Ptr, true, Variable);
-    FreeExpr(Compiler, *Variable);
-
-    VarLocation Memory = {
-        .LocationType = VAR_MEM,
-        .Type = Pointee,
-        .As.Memory = {
-            .RegPtr = Ptr.As.Register,
-            .Location = 0,
-        },
-    };
-    return Memory;
+    return VAR_LOCATION_MEM(
+        .RegPtr = Ptr.As.Register, 
+        0, 
+        PointeeType
+    );
 }
 
 static VarLocation *FindRecordMember(PascalVartab *Record, const Token *MemberName)
@@ -416,12 +420,8 @@ static VarLocation VariableAccess(PascalCompiler *Compiler, VarLocation *Left, b
     ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected member name.");
     if (TYPE_RECORD != Left->Type.Integral)
     {
-        ErrorAt(Compiler, &Dot, "%s does not have a member.", VarTypeToStr(Left->Type));
-        return *Left;
-    }
-    else if (VAR_INVALID == Left->LocationType)
-    {
-        ErrorAt(Compiler, &Dot, "Left expression of '.' does not have a location.");
+        StringView Type = VarTypeToStringView(Left->Type);
+        ErrorAt(Compiler, &Dot, STRVIEW_FMT" does not have a member.", STRVIEW_FMT_ARG(Type));
         return *Left;
     }
 
@@ -430,29 +430,48 @@ static VarLocation VariableAccess(PascalCompiler *Compiler, VarLocation *Left, b
     if (NULL == Member)
     {
         ErrorAt(Compiler, &Name, "'"STRVIEW_FMT"' is not a member of record '"STRVIEW_FMT"'.", 
-                STRVIEW_FMT_ARG(&Name.Lexeme), STRVIEW_FMT_ARG(&Left->Type.As.Record.Name)
+            STRVIEW_FMT_ARG(Name.Lexeme), STRVIEW_FMT_ARG(Left->Type.As.Record.Name)
         );
         return *Left;
     }
 
     /* member offset + record offset = location */
-    VarLocation Location = *Member;
-    if (VAR_MEM == Left->LocationType)
+    if (VAR_MEM == Left->LocationType)              /* regular record */
     {
-        VarLocation Value = *Member;
-        Value.As.Memory.Location += Left->As.Memory.Location;
-        Value.As.Memory.RegPtr = Left->As.Memory.RegPtr;
-        return Value;
+        /* location: 
+         *      reg: ptr of left 
+         *      loc: offset of left + offset of member 
+         */
+        return VAR_LOCATION_MEM(
+            .RegPtr = Left->As.Memory.RegPtr, 
+            Left->As.Memory.Location + Member->As.Memory.Location,
+            Member->Type
+        );
     }
-    else if (VAR_REG == Left->LocationType)
+    else if (VAR_REG == Left->LocationType)         /* return register holding the addr of the record */
     {
-        Location.As.Memory.RegPtr = Left->As.Register;
+        /* location: 
+         *      reg: left (left is the pointer register)
+         *      loc: offset of member 
+         * */
+        return VAR_LOCATION_MEM(
+            .RegPtr = Left->As.Register,
+            Member->As.Memory.Location,
+            Member->Type
+        );
+    }
+    else if (VAR_TYPENAME == Left->LocationType)    /* returns the member type for sizeof */
+    {
+        return (VarLocation) {
+            .Type = Member->Type,
+            .LocationType = VAR_TYPENAME
+        };
     }
     else 
     {
-        PASCAL_UNREACHABLE("Invalid location type: %d\n", Left->LocationType);
+        ErrorAt(Compiler, &Dot, "Left side of '.' does not have a valid location.");
     }
-    return Location;
+    return *Left;
 }
 
 static VarLocation ArrayAccess(PascalCompiler *Compiler, VarLocation *Left, bool ShouldCallFunction)
@@ -505,8 +524,9 @@ static VarLocation ArrayAccess(PascalCompiler *Compiler, VarLocation *Left, bool
     }
     else 
     {
-        ErrorAt(Compiler, &LeftBracket, "Cannot index expression of type %s.", 
-            VarTypeToStr(Left->Type)
+        StringView Type = VarTypeToStringView(Left->Type);
+        ErrorAt(Compiler, &LeftBracket, "Cannot index "STRVIEW_FMT".", 
+            STRVIEW_FMT_ARG(Type)
         );
     }
     FreeExpr(Compiler, Index);
@@ -819,8 +839,8 @@ static VarLocation ExprUnary(PascalCompiler *Compiler, bool ShouldCallFunction)
     if (VAR_INVALID == Value.LocationType)
     {
         ErrorAt(Compiler, &OpToken, 
-                "unary operator '"STRVIEW_FMT"' cannot be applied to expression with no storage.",
-                STRVIEW_FMT_ARG(&OpToken.Lexeme)
+            "unary operator '"STRVIEW_FMT"' cannot be applied to expression with no storage.",
+            STRVIEW_FMT_ARG(OpToken.Lexeme)
         );
     }
     else if (VAR_LIT == Value.LocationType)
@@ -1250,13 +1270,18 @@ static VarLocation RuntimeExprBinary(PascalCompiler *Compiler,
         /* flag will be set instead of register */
         PVMEmitIntoRegLocation(EMITTER(), &Dst, true, &Tmp);
 
+        /* if the left and right type differ in signness */
         if (IntegralTypeIsInteger(Dst.Type.Integral) 
-        && VAR_LIT != Left->LocationType && VAR_LIT != Right->LocationType
+        && VAR_LIT != Left->LocationType 
+        && VAR_LIT != Right->LocationType
         && (IntegralTypeIsSigned(Left->Type.Integral) != IntegralTypeIsSigned(Right->Type.Integral)))
         {
+            StringView LeftType = VarTypeToStringView(Left->Type),
+                       RightType = VarTypeToStringView(Right->Type);
             ErrorAt(Compiler, OpToken, 
-                    "Comparison between integers of different sign (%s and %s) is not allowed.",
-                    VarTypeToStr(Left->Type), VarTypeToStr(Right->Type)
+                "Comparison between integers of different sign "
+                "("STRVIEW_FMT" and "STRVIEW_FMT") is not allowed.",
+                STRVIEW_FMT_ARG(LeftType), STRVIEW_FMT_ARG(RightType)
             );
             return *Left;
         }
@@ -1283,7 +1308,7 @@ static VarLocation RuntimeExprBinary(PascalCompiler *Compiler,
 
     default: 
     {
-        PASCAL_UNREACHABLE("Unhandled binary op: "STRVIEW_FMT, STRVIEW_FMT_ARG(&OpToken->Lexeme));
+        PASCAL_UNREACHABLE("Unhandled binary op: "STRVIEW_FMT, STRVIEW_FMT_ARG(OpToken->Lexeme));
         return Src;
     } break;
     }
@@ -1319,7 +1344,7 @@ static VarLocation ExprBinary(PascalCompiler *Compiler, VarLocation *Left, bool 
         else if (!LeftInvalid && RightInvalid)
             Msg = "Expression on the right of '"STRVIEW_FMT"' does not have a storage class.";
 
-        ErrorAt(Compiler, &OpToken, Msg, STRVIEW_FMT_ARG(&OpToken.Lexeme));
+        ErrorAt(Compiler, &OpToken, Msg, STRVIEW_FMT_ARG(OpToken.Lexeme));
     }
     else if (TYPE_RECORD == Left->Type.Integral)
     {
@@ -1373,8 +1398,9 @@ static VarLocation ExprAnd(PascalCompiler *Compiler, VarLocation *Left, bool Sho
     }
     else 
     {
-        ErrorAt(Compiler, &OpToken, "Invalid left operand for 'and': %s",
-                VarTypeToStr(Left->Type)
+        StringView LeftType = VarTypeToStringView(Left->Type);
+        ErrorAt(Compiler, &OpToken, "Invalid left operand for 'and': "STRVIEW_FMT,
+            STRVIEW_FMT_ARG(LeftType)
         );
     }
 
@@ -1421,8 +1447,9 @@ static VarLocation ExprOr(PascalCompiler *Compiler, VarLocation *Left, bool Shou
     }
     else 
     {
-        ErrorAt(Compiler, &OpToken, "Invalid left operand for 'or': %s",
-                VarTypeToStr(Left->Type)
+        StringView LeftType = VarTypeToStringView(Left->Type);
+        ErrorAt(Compiler, &OpToken, "Invalid left operand for 'or': "STRVIEW_FMT".",
+            STRVIEW_FMT_ARG(LeftType)
         );
     }
 
@@ -1640,8 +1667,14 @@ bool ConvertTypeImplicitly(PascalCompiler *Compiler, IntegralType To, VarLocatio
 
     From->Type = VarTypeInit(To, IntegralTypeSize(To));
     return true;
+    StringView FromTypeStr;
 InvalidTypeConversion:
-    Error(Compiler, "Cannot convert from %s to %s.", VarTypeToStr(From->Type), IntegralTypeToStr(To));
+    FromTypeStr = VarTypeToStringView(From->Type);
+    Error(Compiler, 
+        "Cannot convert from "STRVIEW_FMT" to %s.", 
+        STRVIEW_FMT_ARG(FromTypeStr),  
+        IntegralTypeToStr(To)
+    );
     return false;
 }
 

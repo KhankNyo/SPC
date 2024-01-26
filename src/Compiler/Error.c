@@ -94,6 +94,15 @@ void ErrorTypeMismatch(PascalCompiler *Compiler,
 
 }
 
+void ErrorCannotAssign(PascalCompiler *Compiler, const Token *AssignmentOperator, VarType Dst, VarType Src)
+{
+    StringView DstType = VarTypeToStringView(Dst),
+               SrcType = VarTypeToStringView(Src);
+    ErrorAt(Compiler, AssignmentOperator, "Cannot assign "STRVIEW_FMT" to "STRVIEW_FMT".",
+        STRVIEW_FMT_ARG(SrcType), STRVIEW_FMT_ARG(DstType)
+    );
+}
+
 
 
 
