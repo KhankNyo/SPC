@@ -1048,7 +1048,6 @@ static VarLocation LiteralExprBinary(PascalCompiler *Compiler,
 
     TokenType Operator = OpToken->Type;
     VarLocation Dst = VAR_LOCATION_LIT(.Int = 0, ResultingType);
-    printf("%s\n", IntegralTypeToStr(ResultingType));
     switch (Operator)
     {
     case TOKEN_GREATER:         SET_IF(Left,    Greater,        Right); break;

@@ -26,6 +26,8 @@
 
 # TODO:
 ### Critical:
+- float does not work in va arg functions like writeln
+- refactor refactor refactor
 - 1-character long string literals are automatically treated as char, fix this
 - add goto, label, and with statement
 - add set, and union (record case) types

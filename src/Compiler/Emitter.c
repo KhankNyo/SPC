@@ -2005,11 +2005,11 @@ void PVMQueuePushMultiple(PVMEmitter *Emitter, SaveRegInfo *RegList, const VarLo
     UInt RegIndex;
     if (IntegralTypeIsFloat(Location->Type.Integral))
     {
-        RegIndex = IndexOfTopSetBit(Emitter->Reglist >> 16);
+        RegIndex = IndexOfTopSetBit(Emitter->Reglist >> 16) + PVM_REG_COUNT;
     }
     else
     {
-        RegIndex = IndexOfTopSetBit(Emitter->Reglist & ~EMPTY_REGLIST);
+        RegIndex = IndexOfTopSetBit((Emitter->Reglist & ~EMPTY_REGLIST & 0xFFFF));
     }
     PVMMarkRegisterAsAllocated(Emitter, RegIndex);
     Reg.As.Register.ID = RegIndex;
@@ -2043,8 +2043,7 @@ void PVMQueueCommit(PVMEmitter *Emitter, SaveRegInfo *RegList)
     *RegList = PVMEmitPushRegList(Emitter, RegList->Regs);
 }
 
-void PVMQueueRefresh(PVMEmitter *Emitter, SaveRegInfo *RegList)
-{
+void PVMQueueRefresh(PVMEmitter *Emitter, SaveRegInfo *RegList) {
     PASCAL_NONNULL(RegList);
 
     UInt RegCount = BitCount(RegList->Regs);
