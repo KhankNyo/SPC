@@ -107,7 +107,7 @@ void PVMEmitIntToFltTypeConversion(PVMEmitter *Emitter,
 
 /* arith instructions */
 void PVMEmitAddImm(PVMEmitter *Emitter, const VarLocation *Dst, I64 Imm);
-void PVMEmitIMulConst(PVMEmitter *Emitter, const VarLocation *Dst, I64 Constant);
+void PVMEmitIMulConst(PVMEmitter *Emitter, VarRegister Dst, IntegralType DstType, I64 Constant);
 
 void PVMEmitAdd(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitSub(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
@@ -123,7 +123,25 @@ void PVMEmitShl(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *
 void PVMEmitShr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 void PVMEmitAsr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
 /* returns flag */
-VarLocation PVMEmitSetFlag(PVMEmitter *Emitter, TokenType Op, const VarLocation *Left, const VarLocation *Right);
+VarLocation PVMEmitSetIfLessOrEqual(PVMEmitter *Emitter, 
+        VarRegister A, VarRegister B, IntegralType CommonType
+);
+VarLocation PVMEmitSetIfGreaterOrEqual(PVMEmitter *Emitter, 
+        VarRegister A, VarRegister B, IntegralType CommonType
+);
+VarLocation PVMEmitSetIfLess(PVMEmitter *Emitter, 
+        VarRegister A, VarRegister B, IntegralType CommonType
+);
+VarLocation PVMEmitSetIfGreater(PVMEmitter *Emitter, 
+        VarRegister A, VarRegister B, IntegralType CommonType
+);
+VarLocation PVMEmitSetIfEqual(PVMEmitter *Emitter, 
+        VarRegister A, VarRegister B, IntegralType CommonType
+);
+VarLocation PVMEmitSetIfNotEqual(PVMEmitter *Emitter, 
+        VarRegister A, VarRegister B, IntegralType CommonType
+);
+VarLocation PVMEmitMemEqu(PVMEmitter *Emitter, VarRegister PtrA, VarRegister PtrB, VarRegister Size);
 
 
 

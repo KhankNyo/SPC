@@ -310,7 +310,8 @@ static void CompileForStmt(PascalCompiler *Compiler)
         return;
     }
 
-    /* FPC does not allow the address of a counter variable to be taken */
+    /* FPC does not allow the address of a counter variable to be taken,
+     * neither does SPC, so it's ok to use a register for the counter variable */
     VarLocation CounterSave = *Counter->Location;
     VarLocation *i = Counter->Location;
     *i = PVMAllocateRegisterLocation(EMITTER(), CounterSave.Type);
@@ -321,18 +322,16 @@ static void CompileForStmt(PascalCompiler *Compiler)
     Token Assignment = Compiler->Curr;
     CompileExprInto(Compiler, &Assignment, i);
 
-
     /* for loop inc/dec */
     U32 LoopHead = 0;
-    TokenType Op = TOKEN_GREATER_EQUAL;
     Token OpToken = Compiler->Next;
     int Inc = 1;
     if (!ConsumeIfNextTokenIs(Compiler, TOKEN_TO))
     {
         ConsumeOrError(Compiler, TOKEN_DOWNTO, "Expected 'to' or 'downto' after expression.");
-        Op = TOKEN_LESS_EQUAL;
         Inc = -1;
     }
+
     /* stop condition expr */
     U32 LoopExit = 0;
     VarLocation StopCondition = CompileExprIntoReg(Compiler); 
@@ -352,16 +351,17 @@ static void CompileForStmt(PascalCompiler *Compiler)
         PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, i->Type.Integral, &StopCondition), "");
 
         LoopHead = PVMMarkBranchTarget(EMITTER());
-        PVMEmitSetFlag(EMITTER(), Op, &StopCondition, i);
-        LoopExit = PVMEmitBranchOnFalseFlag(EMITTER());
+        VarLocation Flag = (TOKEN_TO == OpToken.Type) 
+            ? PVMEmitSetIfLessOrEqual(EMITTER(), i->As.Register, StopCondition.As.Register, i->Type.Integral)
+            : PVMEmitSetIfGreaterOrEqual(EMITTER(), i->As.Register, StopCondition.As.Register, i->Type.Integral);
+        LoopExit = PVMEmitBranchIfFalse(EMITTER(), &Flag);
     }
     /* do */
     ConsumeOrError(Compiler, TOKEN_DO, "Expected 'do' after expression.");
     CompilerEmitDebugInfo(Compiler, &Keyword);
 
-
     /* loop body */
-    /* NOTE: writing to the loop counter variable is legal here but not FreePascal */
+    /* NOTE: writing to the loop counter variable is ok here but not FPC */
     UInt BreakCountBeforeBody = CompileLoopBody(Compiler);
 
     /* loop increment */
@@ -766,8 +766,20 @@ static void CompileCaseStmt(PascalCompiler *Compiler)
                 EMITTER()->ShouldEmit = false;
 
             ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' after case entry.");
-            PVMEmitSetFlag(EMITTER(), TOKEN_EQUAL, &Expr, &Constant);
-            U32 NextCase = PVMEmitBranchOnFalseFlag(EMITTER());
+            U32 NextCase;
+            {
+                VarRegister Literal, Case;
+                PVMEmitIntoReg(EMITTER(), &Literal, true, &Constant); /* definitely owned here because it's a constant */
+                bool OwningCase = PVMEmitIntoReg(EMITTER(), &Case, true, &Expr);
+
+                /* test if the case is equal to the constant expression */
+                VarLocation Flag = PVMEmitSetIfNotEqual(EMITTER(), Case, Literal, Constant.Type.Integral);
+                NextCase = PVMEmitBranchIfTrue(EMITTER(), &Flag);
+
+                PVMFreeRegister(EMITTER(), Literal);
+                if (OwningCase)
+                    PVMFreeRegister(EMITTER(), Case);
+            }
             CompilerEmitDebugInfo(Compiler, &CaseConstant);           
 
             if (ExprIsConstant)

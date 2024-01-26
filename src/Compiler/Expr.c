@@ -1,6 +1,7 @@
 
 
 #include <inttypes.h>
+#include <stdio.h>
 
 #include "Compiler/Compiler.h"
 #include "Compiler/Data.h"
@@ -177,17 +178,11 @@ InvalidTypeCombination:
 
 static VarType TypeOfIntLit(U64 Int)
 {
-    if (IN_I32(Int))
+    if (IN_I32((I64)Int))
         return VarTypeInit(TYPE_I32, 4);
     return VarTypeInit(TYPE_I64, 8);
 }
 
-static VarType TypeOfUIntLit(U64 UInt)
-{
-    if (IN_U32(UInt))
-        return VarTypeInit(TYPE_U32, 4);
-    return VarTypeInit(TYPE_U64, 8);
-}
 
 static VarLocation FactorLiteral(PascalCompiler *Compiler, bool ShouldCallFunction)
 {
@@ -515,11 +510,11 @@ static VarLocation ArrayAccess(PascalCompiler *Compiler, VarLocation *Left, bool
     {
         VarType ElementType = VarTypeInit(TYPE_CHAR, 1);
         VarType FauxArrayType = VarTypeStaticArray((RangeIndex){.Low = 0, .High = 255}, &ElementType);
-        const VarLocation FauxArray = {
-            .Type = FauxArrayType,
-            .LocationType = VAR_MEM,
-            .As.Memory = Left->As.Memory,
-        };
+        const VarLocation FauxArray = VAR_LOCATION_MEM(
+            Left->As.Memory.RegPtr, 
+            Left->As.Memory.Location, 
+            FauxArrayType
+        );
         Element = PVMEmitLoadArrayElement(EMITTER(), &FauxArray, &Index);
     }
     else 
@@ -932,389 +927,303 @@ static bool CompareStringOrder(TokenType CompareType, const PascalStr *s1, const
 }
 
 
-
-
-bool LiteralEqual(VarLiteral A, VarLiteral B, IntegralType Type)
+static IntegralType TryCoercingTypes(TokenType Operation, IntegralType Left, IntegralType Right)
 {
-    if (IntegralTypeIsFloat(Type)) 
-        return A.Flt == B.Flt;
-    if (IntegralTypeIsInteger(Type))
-        return A.Flt == B.Flt;
-    if (TYPE_POINTER == Type)
-        return A.Ptr.As.Raw == B.Ptr.As.Raw;
-    if (TYPE_STRING == Type) 
-        return CompareStringOrder(TOKEN_EQUAL, &A.Str, &B.Str);
-    if (Type == TYPE_BOOLEAN) 
-        return A.Bool == B.Bool;
-    return false;
-}
-
-
-static VarLocation LiteralExprBinary(PascalCompiler *Compiler, const Token *OpToken, 
-        VarLocation *Left, VarLocation *Right)
-{
-#define COMMON_BIN_OP(Operator)\
-    do {\
-        if (IntegralTypeIsFloat(Both)) {\
-            Result.As.Literal.Flt = Left->As.Literal.Flt Operator Right->As.Literal.Flt;\
-            Result.Type = VarTypeInit(Both, IntegralTypeSize(Both));\
-        } else if (IntegralTypeIsInteger(Both)) {\
-            Result.As.Literal.Int = Left->As.Literal.Int Operator Right->As.Literal.Int;\
-            Result.Type = TypeOfIntLit(Result.As.Literal.Int);\
-        } else break;\
-    } while (0)
-
-#define COMPARE_OP(Operator) \
-    do {\
-        if (IntegralTypeIsFloat(Both)) {\
-            Result.As.Literal.Bool = Left->As.Literal.Flt Operator Right->As.Literal.Flt;\
-        } else if (IntegralTypeIsInteger(Both)) {\
-            Result.As.Literal.Bool = Left->As.Literal.Int Operator Right->As.Literal.Int;\
-        } else if (TYPE_POINTER == Both) {\
-            Result.As.Literal.Bool = Left->As.Literal.Ptr.As.UInt Operator Right->As.Literal.Ptr.As.UInt;\
-        } else if (TYPE_STRING == Both) {\
-            Result.As.Literal.Bool = CompareStringOrder(OpToken->Type, &Left->As.Literal.Str, &Right->As.Literal.Str);\
-        }\
-        Result.Type = VarTypeInit(TYPE_BOOLEAN, 1);\
-    } while (0)
-
-    PASCAL_NONNULL(Compiler);
-    PASCAL_NONNULL(OpToken);
-    PASCAL_NONNULL(Left);
-    PASCAL_NONNULL(Right);
-    PASCAL_ASSERT(VAR_LIT == Left->LocationType, "left is not a literal in %s", __func__);
-    PASCAL_ASSERT(VAR_LIT == Right->LocationType, "right is not a literal in %s", __func__);
-
-    IntegralType Both = CoerceTypes(Left->Type.Integral, Right->Type.Integral);
-    bool ConversionOk = ConvertTypeImplicitly(Compiler, Both, Left);
-    ConversionOk = ConversionOk && ConvertTypeImplicitly(Compiler, Both, Right);
-    if (!ConversionOk)
-    {
-        goto InvalidTypeConversion;
-    }
-
-    VarLocation Result = {
-        .LocationType = VAR_LIT,
-        .Type = VarTypeInit(Both, IntegralTypeSize(Both)),
-    };
-
-    switch (OpToken->Type)
+    switch (Operation)
     {
     case TOKEN_PLUS:
-    { 
-        COMMON_BIN_OP(+);
-        if (TYPE_STRING == Both) 
+    {
+        if (Left == TYPE_STRING 
+        || IntegralTypeIsInteger(Left) 
+        || IntegralTypeIsFloat(Left))
         {
-            /* shallow copy, Result now owns the string */
-            Result.As.Literal.Str = Left->As.Literal.Str;
-            PascalStr RightStr = Right->As.Literal.Str;
-            PStrAppendStr(&Result.As.Literal.Str, PStrGetPtr(&RightStr), PStrGetLen(&RightStr));
-
-            /* free the right string since it is a tmp literal */
-            PStrDeinit(&RightStr);
+            return CoerceTypes(Left, Right);
         }
-    } break;
-    case TOKEN_MINUS: 
-    {
-        if (!IntegralTypeIsInteger(Both) || !IntegralTypeIsFloat(Both))
-            goto InvalidTypeConversion;
-
-        COMMON_BIN_OP(-);
-    } break;
-    case TOKEN_STAR:
-    {
-        if (IntegralTypeIsInteger(Both))
-        {
-            if (IntegralTypeIsSigned(Both))
-            {
-                Result.As.Literal.Int = (I64)Left->As.Literal.Int * (I64)Right->As.Literal.Int;
-                Result.Type = TypeOfIntLit(Result.As.Literal.Int);
-            }
-            else 
-            {
-                Result.As.Literal.Int = Left->As.Literal.Int * Right->As.Literal.Int;
-                Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
-            }
-        }
-        else if (IntegralTypeIsFloat(Both))
-        {
-            Result.As.Literal.Flt = Left->As.Literal.Flt * Right->As.Literal.Flt;
-        } 
-        else goto InvalidTypeConversion;
-    } break;
-    case TOKEN_DIV:
-    case TOKEN_SLASH:
-    {
-        if (IntegralTypeIsInteger(Both))
-        {
-            if (0 == Right->As.Literal.Int)
-            {
-                ErrorAt(Compiler, OpToken, "Integer division by 0");
-                break;
-            }
-
-            if (IntegralTypeIsSigned(Both))
-            {
-                Result.As.Literal.Int = (I64)Left->As.Literal.Int / (I64)Right->As.Literal.Int;
-                Result.Type = TypeOfIntLit(Result.As.Literal.Int);
-            }
-            else 
-            {
-                Result.As.Literal.Int = Left->As.Literal.Int / Right->As.Literal.Int;
-                Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
-            }
-        }
-        else if (IntegralTypeIsFloat(Both))
-        {
-            Result.As.Literal.Flt = Left->As.Literal.Flt / Right->As.Literal.Flt;
-        } 
-        else goto InvalidTypeConversion;
-    } break;
-    case TOKEN_MOD:
-    {
-        if (IntegralTypeIsInteger(Both))
-        {
-            if (0 == Right->As.Literal.Int)
-            {
-                ErrorAt(Compiler, OpToken, "Integer modulo by 0");
-                break;
-            }
-
-            if (IntegralTypeIsSigned(Both))
-            {
-                Result.As.Literal.Int = (I64)Left->As.Literal.Int % (I64)Right->As.Literal.Int;
-                Result.Type = TypeOfIntLit(Result.As.Literal.Int);
-            }
-            else 
-            {
-                Result.As.Literal.Int = Left->As.Literal.Int % Right->As.Literal.Int;
-                Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
-            }
-        }
-        else goto InvalidTypeConversion;
-    } break;
-
-    case TOKEN_EQUAL:           
-    {
-        Result.As.Literal.Bool = LiteralEqual(Left->As.Literal, Right->As.Literal, Both);
-        Result.Type = VarTypeInit(TYPE_BOOLEAN, 1);
-    } break;
-    case TOKEN_LESS_GREATER:
-    {
-        Result.As.Literal.Bool = !LiteralEqual(Left->As.Literal, Right->As.Literal, Both);
-        Result.Type = VarTypeInit(TYPE_BOOLEAN, 1);
-    } break;
-    case TOKEN_LESS:            COMPARE_OP(<); break;
-    case TOKEN_GREATER:         COMPARE_OP(>); break;
-    case TOKEN_LESS_EQUAL:      COMPARE_OP(<=); break;
-    case TOKEN_GREATER_EQUAL:   COMPARE_OP(>=); break;
-
-    /* TODO: issue a warning if shift amount > integer width */
-    case TOKEN_SHL:
-    case TOKEN_LESS_LESS:
-    {
-        if (IntegralTypeIsInteger(Both))
-        {
-            Result.As.Literal.Int = Left->As.Literal.Int << Right->As.Literal.Int;
-            Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
-        }
-        else goto InvalidTypeConversion;
-    } break;
-    case TOKEN_SHR:
-    case TOKEN_GREATER_GREATER:
-    {
-        if (IntegralTypeIsInteger(Both))
-        {
-            /* sign bit */
-            if (Left->As.Literal.Int >> 63)
-            {
-                Result.As.Literal.Int = ArithmeticShiftRight(Left->As.Literal.Int, Right->As.Literal.Int);
-                Result.Type = TypeOfIntLit(Result.As.Literal.Int);
-            }
-            else
-            {
-                Result.As.Literal.Int = Left->As.Literal.Int >> Right->As.Literal.Int;
-                Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
-            }
-        }
-        else goto InvalidTypeConversion;
-    } break;
-
-    case TOKEN_AND:
-    {
-        PASCAL_ASSERT(TYPE_BOOLEAN != Both, "Unreachable");
-        if (IntegralTypeIsInteger(Both))
-        {
-            Result.As.Literal.Int = Left->As.Literal.Int & Right->As.Literal.Int;
-            Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
-        }
-        else goto InvalidTypeConversion;
-    } break;
-    case TOKEN_OR:
-    {
-        PASCAL_ASSERT(TYPE_BOOLEAN != Both, "Unreachable");
-        if (IntegralTypeIsInteger(Both))
-        {
-            Result.As.Literal.Int = Left->As.Literal.Int | Right->As.Literal.Int;
-            Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
-        }
-        else goto InvalidTypeConversion;
-    } break;
-    case TOKEN_XOR:
-    {
-        if (IntegralTypeIsInteger(Both))
-        {
-            Result.As.Literal.Int = Left->As.Literal.Int ^ Right->As.Literal.Int;
-            Result.Type = TypeOfUIntLit(Result.As.Literal.Int);
-        }
-        else goto InvalidTypeConversion;
-    } break;
-    default:
-    {
-        PASCAL_UNREACHABLE("Unreachable operator in %s: %s", __func__, TokenTypeToStr(OpToken->Type));
-    } break;
-    }
-
-    if (TYPE_INVALID != Result.Type.Integral)
-    {
-        return Result;
-    }
-
-InvalidTypeConversion:
-    INVALID_BINARY_OP(OpToken, Left->Type.Integral, Right->Type.Integral);
-    return *Left;
-#undef COMMON_BIN_OP
-#undef COMPARE_OP
-}
-
-
-static VarLocation RuntimeExprBinary(PascalCompiler *Compiler, 
-        const Token *OpToken, VarLocation *Left, VarLocation *Right)
-{
-    PASCAL_NONNULL(Compiler);
-    PASCAL_NONNULL(OpToken);
-    PASCAL_NONNULL(Left);
-    PASCAL_NONNULL(Right);
-    PASCAL_ASSERT(VAR_INVALID != Left->LocationType, "Unreachable");
-    PASCAL_ASSERT(VAR_INVALID != Right->LocationType, "Unreachable");
-
-    VarLocation Tmp = *Left;
-    VarLocation Src = *Right;
-    if (VAR_LIT == Left->LocationType)
-    {
-        Tmp = *Right;
-        Src = *Left;
-    }
-
-    /* typecheck */
-    IntegralType Type = CoerceTypes(Left->Type.Integral, Right->Type.Integral);
-    bool ConversionOk = ConvertTypeImplicitly(Compiler, Type, &Tmp) 
-        && ConvertTypeImplicitly(Compiler, Type, &Src);
-    if (!ConversionOk) 
-    {
-        INVALID_BINARY_OP(OpToken, Tmp.Type.Integral, Src.Type.Integral);
-        return *Left;
-    }
-
-    VarLocation Dst;
-    switch (OpToken->Type)
-    {
-    case TOKEN_PLUS: 
-    {
-        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
-        PVMEmitAdd(EMITTER(), &Dst, &Src);
     } break;
     case TOKEN_MINUS:
     {
-        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
-        PVMEmitSub(EMITTER(), &Dst, &Src);
+        if (IntegralTypeIsInteger(Left) 
+        || IntegralTypeIsFloat(Left))
+        {
+            return CoerceTypes(Left, Right);
+        }
     } break;
     case TOKEN_STAR:
+    case TOKEN_DIV: case TOKEN_SLASH:
     {
-        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
-        PVMEmitMul(EMITTER(), &Dst, &Src);
+        if (IntegralTypeIsInteger(Left) 
+        || IntegralTypeIsFloat(Left))
+        {
+            return CoerceTypes(Left, Right);
+        }
     } break;
-    case TOKEN_DIV:
-    case TOKEN_SLASH:
+    case TOKEN_GREATER:
+    case TOKEN_LESS:
+    case TOKEN_EQUAL:
+    case TOKEN_LESS_GREATER: /* <> */
+    case TOKEN_GREATER_EQUAL:
+    case TOKEN_LESS_EQUAL:
     {
-        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
-        PVMEmitDiv(EMITTER(), &Dst, &Src);
+        if (Left == TYPE_RECORD 
+        || Left == TYPE_STATIC_ARRAY 
+        || Left == TYPE_FUNCTION 
+        )
+        {
+            return TYPE_INVALID;
+        }
+
+        /* comparing integers of different signs */
+        if (IntegralTypeIsInteger(Left) && IntegralTypeIsInteger(Right)
+        && IntegralTypeIsSigned(Left) != IntegralTypeIsSigned(Right))
+        {
+            return TYPE_INVALID;
+        }
+
+        /* returns the common type for comparison */
+        return CoerceTypes(Left, Right);
     } break;
+    case TOKEN_SHL:
+    case TOKEN_SHR:
+    case TOKEN_ASR:
+    case TOKEN_LESS_LESS: /* << */
+    case TOKEN_GREATER_GREATER: /* >> */
     case TOKEN_MOD:
     {
-        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
-        PVMEmitMod(EMITTER(), &Dst, &Src);
-    } break;
-
-    case TOKEN_SHL:
-    case TOKEN_LESS_LESS:
-    {
-        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
-        PVMEmitShl(EMITTER(), &Dst, &Src);
-    } break;
-
-    case TOKEN_GREATER_GREATER:
-    case TOKEN_SHR:
-    {
-        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
-        PVMEmitShr(EMITTER(), &Dst, &Src);
-    } break;
-
-    case TOKEN_LESS:
-    case TOKEN_GREATER:
-    case TOKEN_LESS_EQUAL:
-    case TOKEN_GREATER_EQUAL:
-    case TOKEN_LESS_GREATER:
-    case TOKEN_EQUAL:
-    {
-        /* flag will be set instead of register */
-        PVMEmitIntoRegLocation(EMITTER(), &Dst, true, &Tmp);
-
-        /* if the left and right type differ in signness */
-        if (IntegralTypeIsInteger(Dst.Type.Integral) 
-        && VAR_LIT != Left->LocationType 
-        && VAR_LIT != Right->LocationType
-        && (IntegralTypeIsSigned(Left->Type.Integral) != IntegralTypeIsSigned(Right->Type.Integral)))
+        if (IntegralTypeIsInteger(Left) && IntegralTypeIsInteger(Right))
         {
-            StringView LeftType = VarTypeToStringView(Left->Type),
-                       RightType = VarTypeToStringView(Right->Type);
-            ErrorAt(Compiler, OpToken, 
-                "Comparison between integers of different sign "
-                "("STRVIEW_FMT" and "STRVIEW_FMT") is not allowed.",
-                STRVIEW_FMT_ARG(LeftType), STRVIEW_FMT_ARG(RightType)
-            );
-            return *Left;
+            return Left;
         }
-        VarLocation Cond = PVMEmitSetFlag(EMITTER(), OpToken->Type, &Dst, &Src);
-        FreeExpr(Compiler, Dst);
-        FreeExpr(Compiler, Src);
-        return Cond;
     } break;
     case TOKEN_AND:
-    {
-        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
-        PVMEmitAnd(EMITTER(), &Dst, &Src);
-    } break;
     case TOKEN_OR:
     {
-        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
-        PVMEmitOr(EMITTER(), &Dst, &Src);
+        if (IntegralTypeIsInteger(Left) && IntegralTypeIsInteger(Right))
+        {
+            return CoerceTypes(Left, Right);
+        }
+        if (TYPE_BOOLEAN == Left && TYPE_BOOLEAN == Right)
+        {
+            return TYPE_BOOLEAN;
+        }
     } break;
     case TOKEN_XOR:
     {
-        PVMEmitIntoRegLocation(EMITTER(), &Dst, false, &Tmp);
-        PVMEmitXor(EMITTER(), &Dst, &Src);
+        if (IntegralTypeIsInteger(Left) && IntegralTypeIsInteger(Right))
+        {
+            return CoerceTypes(Left, Right);
+        }
     } break;
+    default: break;
+    }
+    return TYPE_INVALID;
+}
 
-    default: 
+
+
+
+bool LiteralEqual(VarLiteral A, VarLiteral B, IntegralType CommonType)
+{
+    bool Result = false;
+    if (IntegralTypeIsFloat(CommonType))
+        Result = A.Flt == B.Flt;
+    else if (IntegralTypeIsInteger(CommonType))
+        Result = A.Int == B.Int;
+    else if (TYPE_BOOLEAN == CommonType)
+        Result = 0 == (1 & (A.Bool ^ B.Bool));
+    else if (TYPE_POINTER == CommonType)
+        Result = A.Ptr.As.Raw == B.Ptr.As.Raw;
+    else if (TYPE_STRING == CommonType)
+        Result = PStrEqu(&A.Str, &B.Str);
+    else if (TYPE_CHAR == CommonType)
+        Result = A.Chr == B.Chr;
+    return Result;
+}
+
+static bool LiteralLess(VarLiteral A, VarLiteral B, IntegralType CommonType)
+{
+    bool Result = false;
+    if (IntegralTypeIsFloat(CommonType))
+        Result = A.Flt < B.Flt;
+    else if (IntegralTypeIsInteger(CommonType))
+        Result = A.Int < B.Int;
+    else if (TYPE_POINTER == CommonType)
+        Result = A.Ptr.As.UInt < B.Ptr.As.UInt;
+    else if (TYPE_STRING == CommonType)
+        Result = PStrIsLess(&A.Str, &B.Str);
+    else if (TYPE_CHAR == CommonType)
+        Result = A.Chr < B.Chr;
+    return Result;
+}
+
+#define LiteralNotEqual(A, B, T)        !LiteralEqual(A, B, T)
+#define LiteralGreater(A, B, T)         LiteralLess(B, A, T)
+#define LiteralLessOrEqual(A, B, T)     !LiteralGreater(A, B, T)
+#define LiteralGreaterOrEqual(A, B, T)  !LiteralLess(A, B, T)
+
+
+
+static VarLocation LiteralExprBinary(PascalCompiler *Compiler,
+    const Token *OpToken, IntegralType ResultingType,
+    const VarLiteral *Left, IntegralType LeftType, 
+    const VarLiteral *Right, IntegralType RightType)
+{
+#define SET_IF(Operand1, Comparison, Operand2) do {\
+    return VAR_LOCATION_LIT(\
+        .Bool = Literal ## Comparison(*Operand1, *Operand2, ResultingType), \
+        TYPE_BOOLEAN\
+    );\
+} while (0)
+
+#define INT_AND_FLT_OP(Op, A, B) do {\
+    if (IntegralTypeIsFloat(LeftType)) {\
+        Dst.As.Literal.Flt = Left->Flt + Right->Flt;\
+    } else if (IntegralTypeIsSigned(LeftType)) {\
+        Dst.As.Literal.Int = Left->Int + Right->Int;\
+    }\
+} while (0)
+
+    TokenType Operator = OpToken->Type;
+    VarLocation Dst = VAR_LOCATION_LIT(.Int = 0, ResultingType);
+    printf("%s\n", IntegralTypeToStr(ResultingType));
+    switch (Operator)
     {
-        PASCAL_UNREACHABLE("Unhandled binary op: "STRVIEW_FMT, STRVIEW_FMT_ARG(OpToken->Lexeme));
-        return Src;
+    case TOKEN_GREATER:         SET_IF(Left,    Greater,        Right); break;
+    case TOKEN_LESS:            SET_IF(Left,    Less,           Right); break;
+    case TOKEN_EQUAL:           SET_IF(Left,    Equal,          Right); break;
+    case TOKEN_LESS_GREATER:    SET_IF(Left,    NotEqual,       Right); break; 
+    case TOKEN_GREATER_EQUAL:   SET_IF(Left,    GreaterOrEqual, Right); break; 
+    case TOKEN_LESS_EQUAL:      SET_IF(Left,    LessOrEqual,    Right); break;
+
+    case TOKEN_MINUS:           INT_AND_FLT_OP(-, Left, Right); break;
+    case TOKEN_STAR:            INT_AND_FLT_OP(*, Left, Right); break;
+    case TOKEN_PLUS:
+    {
+        if (TYPE_STRING == ResultingType)
+        {
+            Dst.As.Literal.Str = Left->Str;
+            PStrConcat(&Dst.As.Literal.Str, &Right->Str);
+        }
+        else INT_AND_FLT_OP(+, Left, Right);
+    } break;
+    case TOKEN_SLASH:
+    case TOKEN_DIV:
+    {
+        if ((IntegralTypeIsFloat(RightType) && Right->Flt == 0) 
+        || (IntegralTypeIsInteger(RightType) && Right->Int == 0))
+        {
+            ErrorAt(Compiler, OpToken, "Division by 0.");
+        }
+        else INT_AND_FLT_OP(/, Left, Right);
+    } break;
+    case TOKEN_MOD: 
+    {
+        if (0 == Right->Int)
+            ErrorAt(Compiler, OpToken, "Modulo by 0.");
+        Dst.As.Literal.Int = Left->Int % Right->Int;
+    } break;
+    case TOKEN_SHL:
+    case TOKEN_LESS_LESS:
+    {
+        Dst.As.Literal.Int = Left->Int << (Right->Int % 64);
+        Dst.Type = TypeOfIntLit(Dst.As.Literal.Int);
+    } break;
+    case TOKEN_SHR:
+    case TOKEN_GREATER_GREATER: 
+    {
+        Dst.As.Literal.Int = Left->Int << (Right->Int % 64);
+        Dst.Type = TypeOfIntLit(Dst.As.Literal.Int);
+    } break;
+    case TOKEN_ASR: 
+    {
+        Dst.As.Literal.Int = ArithmeticShiftRight(Dst.As.Literal.Int, (Right->Int % 64));
+        Dst.Type = TypeOfIntLit(Dst.As.Literal.Int);
+    } break;
+    case TOKEN_AND:
+    {
+        if (TYPE_BOOLEAN == ResultingType)
+            Dst.As.Literal.Bool = Left->Bool && Right->Bool;
+        else Dst.As.Literal.Int = Left->Int & Right->Int;
+    } break;
+    case TOKEN_OR:
+    {
+        if (TYPE_BOOLEAN == ResultingType)
+            Dst.As.Literal.Bool = Left->Bool || Right->Bool;
+        else Dst.As.Literal.Int = Left->Int | Right->Int;
+    } break;
+    case TOKEN_XOR:
+    {
+        Dst.As.Literal.Int = Left->Int ^ Right->Int;
+    } break;
+    default:
+    {
+        PASCAL_UNREACHABLE("Unhandled binary op: %s\n", TokenTypeToStr(Operator));
     } break;
     }
-
-    FreeExpr(Compiler, Src);
     return Dst;
+
+#undef SET_IF
+#undef INT_AND_FLT_OP
+}
+
+
+
+
+static VarLocation RuntimeExprBinary(PascalCompiler *Compiler,
+    const Token *OpToken, IntegralType ResultingType,
+    /* although this function does not actually modify Dst physically,
+     * the content of which will be modified in the code emitted by the emitter */
+    VarLocation *Left, VarLocation *Right)
+{
+#define SET_IF(Operand1, IfWhat, Operand2) do {\
+    VarRegister A, B;\
+    bool OwningA = PVMEmitIntoReg(EMITTER(), &A, true, Operand1);\
+    bool OwningB = PVMEmitIntoReg(EMITTER(), &B, true, Operand2);\
+    VarLocation ConditionalCode = PVMEmitSetIf ## IfWhat (EMITTER(), A, B, ResultingType);\
+    if (OwningA) PVMFreeRegister(EMITTER(), A);\
+    if (OwningB) PVMFreeRegister(EMITTER(), B);\
+    return ConditionalCode;\
+} while (0)
+
+#define BIN_OP(OpName, Operand1, Operand2) do {\
+    PVMEmitIntoRegLocation(EMITTER(), &Dst, false, Operand1);\
+    PVMEmit ## OpName (EMITTER(), &Dst, Operand2);\
+} while (0)
+
+    TokenType Operator = OpToken->Type;
+    VarLocation Dst = { 0 };
+    switch (Operator)
+    {
+    case TOKEN_GREATER:         SET_IF(Left,    Greater,        Right); break;
+    case TOKEN_LESS:            SET_IF(Left,    Less,           Right); break;
+    case TOKEN_EQUAL:           SET_IF(Left,    Equal,          Right); break;
+    case TOKEN_LESS_GREATER:    SET_IF(Left,    NotEqual,       Right); break; 
+    case TOKEN_GREATER_EQUAL:   SET_IF(Left,    GreaterOrEqual, Right); break;
+    case TOKEN_LESS_EQUAL:      SET_IF(Left,    LessOrEqual,    Right); break;
+
+    case TOKEN_PLUS:            BIN_OP(Add, Left, Right); break;
+    case TOKEN_MINUS:           BIN_OP(Sub, Left, Right); break;
+    case TOKEN_STAR:            BIN_OP(Mul, Left, Right); break;
+    case TOKEN_SLASH:
+    case TOKEN_DIV:             BIN_OP(Div, Left, Right); break;
+    case TOKEN_MOD:             BIN_OP(Mod, Left, Right); break;
+    case TOKEN_SHL:
+    case TOKEN_LESS_LESS:       BIN_OP(Shl, Left, Right); break;
+    case TOKEN_SHR:
+    case TOKEN_GREATER_GREATER: BIN_OP(Shr, Left, Right); break;
+    case TOKEN_ASR:             BIN_OP(Asr, Left, Right); break;
+    case TOKEN_AND:             BIN_OP(And, Left, Right); break;
+    case TOKEN_OR:              BIN_OP(Or,  Left, Right); break;
+    case TOKEN_XOR:             BIN_OP(Xor, Left, Right); break;
+    default:
+    {
+        PASCAL_UNREACHABLE("Unhandled binary op: %s\n", TokenTypeToStr(Operator));
+    } break;
+    }
+    FreeExpr(Compiler, *Right);
+    return Dst;
+
+#undef SET_IF
+#undef BIN_OP
 }
 
 
@@ -1322,45 +1231,86 @@ static VarLocation ExprBinary(PascalCompiler *Compiler, VarLocation *Left, bool 
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Left);
-    UNUSED(ShouldCallFunction); /* all binary ops call their functions */
+    UNUSED(ShouldCallFunction);
+
+    /* Left OpToken Right 
+     * ^^^^ we are here so far 
+     */
 
     Token OpToken = Compiler->Curr;
-    const PrecedenceRule *OperatorRule = GetPrecedenceRule(OpToken.Type);
+    const Precedence Prec = GetPrecedenceRule(OpToken.Type)->Prec;
+    bool CallFunction = true; /* if the right expr evaluates to a function reference, call it */
+    VarLocation Right = ParsePrecedence(
+        Compiler, Prec + 1, CallFunction
+    );  /* +1 for left associative */
 
-    /* +1 to parse binary oper as left associative,
-     * ex:  parses  1 + 2 + 3 
-     *      as      ((1 + 2) + 3)
-     *      not     (1 + (2 + 3)) 
-     */
-    VarLocation Right = ParsePrecedence(Compiler, OperatorRule->Prec + 1, true);
-    bool LeftInvalid = VAR_INVALID == Left->LocationType;
-    bool RightInvalid = VAR_INVALID == Right.LocationType;
 
-    if (LeftInvalid || RightInvalid)
+    if (VAR_REG != Left->LocationType
+    && VAR_LIT != Left->LocationType
+    && VAR_MEM != Left->LocationType) 
     {
-        const char *Msg = "Expression on both sides of '"STRVIEW_FMT"' does not have a storage class.";
-        if (LeftInvalid && !RightInvalid)
-            Msg = "Expression on the left of '"STRVIEW_FMT"' does not have a storage class.";
-        else if (!LeftInvalid && RightInvalid)
-            Msg = "Expression on the right of '"STRVIEW_FMT"' does not have a storage class.";
+        ErrorAt(Compiler, &OpToken, 
+            "Expression to the left of '"STRVIEW_FMT"' does not have a storage class."
+        );
+        return *Left;
+    }
+    if (VAR_REG != Right.LocationType 
+    && VAR_LIT != Right.LocationType
+    && VAR_MEM != Right.LocationType)
+    {
+        ErrorAt(Compiler, &OpToken, 
+            "Expression to the right of '"STRVIEW_FMT"' does not have a storage class."
+        );
+        return Right;
+    }
 
-        ErrorAt(Compiler, &OpToken, Msg, STRVIEW_FMT_ARG(OpToken.Lexeme));
-    }
-    else if (TYPE_RECORD == Left->Type.Integral)
+
+    /* type conversion */
+    IntegralType ResultingType = TryCoercingTypes(OpToken.Type, 
+        Left->Type.Integral, Right.Type.Integral
+    );
+    if (ResultingType == TYPE_INVALID)
     {
-        PASCAL_UNREACHABLE("No binary op on record type.");
+        INVALID_BINARY_OP(&OpToken, Left->Type.Integral, Right.Type.Integral);
+        return Right;
     }
-    else if (VAR_LIT == Left->LocationType && VAR_LIT == Right.LocationType)
+    if (!ConvertTypeImplicitly(Compiler, ResultingType, Left))
     {
-        return LiteralExprBinary(Compiler, &OpToken, Left, &Right);
+        StringView LeftType = VarTypeToStringView(Left->Type);
+        ErrorAt(Compiler, &OpToken, 
+            "Cannot convert from %s to "STRVIEW_FMT" implicitly on the left of the '"STRVIEW_FMT"' operator.",
+            IntegralTypeToStr(ResultingType), 
+            STRVIEW_FMT_ARG(LeftType), 
+            STRVIEW_FMT_ARG(OpToken.Lexeme)
+        );
+        return *Left;
     }
-    else 
+    if (!ConvertTypeImplicitly(Compiler, ResultingType, &Right))
     {
-        return RuntimeExprBinary(Compiler, &OpToken, Left, &Right);
+        StringView RightType = VarTypeToStringView(Right.Type);
+        ErrorAt(Compiler, &OpToken, 
+            "Cannot convert from %s to "STRVIEW_FMT" implicitly on the right of the '"STRVIEW_FMT"' operator.",
+            IntegralTypeToStr(ResultingType), 
+            STRVIEW_FMT_ARG(RightType), 
+            STRVIEW_FMT_ARG(OpToken.Lexeme)
+        );
+        return Right;
     }
-    return *Left;
+
+
+    if (VAR_LIT == Left->LocationType && VAR_LIT == Right.LocationType)
+    {
+        return LiteralExprBinary(Compiler, 
+            &OpToken, ResultingType, 
+            &Left->As.Literal, Left->Type.Integral, 
+            &Right.As.Literal, Right.Type.Integral
+        );
+    }
+    else
+    {
+        return RuntimeExprBinary(Compiler, &OpToken, ResultingType, Left, &Right);
+    }
 }
-
 
 static VarLocation ExprAnd(PascalCompiler *Compiler, VarLocation *Left, bool ShouldCallFunction)
 {
@@ -1484,6 +1434,7 @@ static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] =
     [TOKEN_DIV]             = { NULL,               ExprBinary,     PREC_TERM },
     [TOKEN_SLASH]           = { NULL,               ExprBinary,     PREC_TERM },
     [TOKEN_MOD]             = { NULL,               ExprBinary,     PREC_TERM },
+    [TOKEN_AND]             = { NULL,               ExprAnd,        PREC_TERM },
 
     [TOKEN_XOR]             = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_PLUS]            = { ExprUnary,          ExprBinary,     PREC_SIMPLE },
@@ -1492,8 +1443,6 @@ static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] =
     [TOKEN_SHL]             = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_LESS_LESS]       = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_GREATER_GREATER] = { NULL,               ExprBinary,     PREC_SIMPLE },
-
-    [TOKEN_AND]             = { NULL,               ExprAnd,        PREC_TERM },
     [TOKEN_OR]              = { NULL,               ExprOr,         PREC_SIMPLE },
 
     [TOKEN_LESS]            = { NULL,               ExprBinary,     PREC_EXPR },
@@ -1559,17 +1508,12 @@ IntegralType CoerceTypes(IntegralType Left, IntegralType Right)
     PASCAL_ASSERT(Left >= TYPE_INVALID && Right >= TYPE_INVALID, "");
     PASCAL_ASSERT(Left < TYPE_COUNT && Right < TYPE_COUNT, "Impossible");
 
-    IntegralType CommonType = sCoercionRules[Left][Right];
-    if (TYPE_INVALID != CommonType)
-    {
-        return CommonType;
-    }
-    return TYPE_INVALID;
+    return sCoercionRules[Left][Right];
 }
 
 
 
-bool ConvertRegisterTypeImplicitly(PVMEmitter *Emitter, 
+static bool ConvertRegisterTypeImplicitly(PVMEmitter *Emitter, 
         IntegralType To, VarRegister *From, IntegralType FromType)
 {
     PASCAL_NONNULL(Emitter);
@@ -1611,9 +1555,8 @@ bool ConvertTypeImplicitly(PascalCompiler *Compiler, IntegralType To, VarLocatio
 
     IntegralType FromType = From->Type.Integral;
     if (To == FromType)
-    {
         return true;
-    }
+
     switch (From->LocationType)
     {
     case VAR_LIT:
@@ -1625,9 +1568,13 @@ bool ConvertTypeImplicitly(PascalCompiler *Compiler, IntegralType To, VarLocatio
         {
             if (IntegralTypeIsFloat(FromType))
                 break;
+
             if (IntegralTypeIsInteger(FromType))
             {
-                From->As.Literal.Flt = From->As.Literal.Int;
+                if (IntegralTypeIsSigned(FromType))
+                    From->As.Literal.Flt = (F64)(I64)From->As.Literal.Int;
+                else
+                    From->As.Literal.Flt = From->As.Literal.Int;
                 break;
             }
         }
@@ -1667,6 +1614,7 @@ bool ConvertTypeImplicitly(PascalCompiler *Compiler, IntegralType To, VarLocatio
 
     From->Type = VarTypeInit(To, IntegralTypeSize(To));
     return true;
+
     StringView FromTypeStr;
 InvalidTypeConversion:
     FromTypeStr = VarTypeToStringView(From->Type);

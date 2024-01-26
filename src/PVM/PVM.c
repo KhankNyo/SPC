@@ -457,7 +457,7 @@ do {\
             }
             PStrConcat(TmpStr, Src);
         } break;
-        case OP_SCPY:
+        case OP_STRCPY:
         {
             PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
             const PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
@@ -474,6 +474,22 @@ do {\
             GET_SEX_IMM(Size, IMMTYPE_U32, IP);
             memcpy(Dst, Src, Size);
         } break;
+        case OP_VMEMCPY:
+        {
+            void *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
+            const void *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
+            U16 OtherHalf = *IP++;
+            U64 Size = PVM->R[PVM_GET_RD(OtherHalf)].DWord;
+            memcpy(Dst, Src, Size);
+        } break;
+        case OP_VMEMEQU:
+        {
+            void *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
+            const void *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
+            U16 OtherHalf = *IP++;
+            U64 Size = PVM->R[PVM_GET_RD(OtherHalf)].DWord;
+            PVM->Condition = 0 == memcmp(Dst, Src, Size);
+        } break;
         case OP_STRLT:
         {
             PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
@@ -486,26 +502,19 @@ do {\
             PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
             PVM->Condition = PStrIsLess(Src, Dst);
         } break;
-        case OP_STREQU:
+        case OP_STREQ:
         {
             PascalStr *Dst = PVM->R[PVM_GET_RD(Opcode)].Ptr.Raw;
             PascalStr *Src = PVM->R[PVM_GET_RS(Opcode)].Ptr.Raw;
-            PVM->Condition = PStrEqu(Dst, Src);
+            PVM->Condition = PStrEqu(Src, Dst);
         } break;
         case OP_SETEZ: 
         {
             PVM->R[PVM_GET_RD(Opcode)].Word.First = 0 == PVM->R[PVM_GET_RS(Opcode)].Word.First;
         } break;
         case OP_SEQ: INTEGER_SET_IF(==, Opcode, .Word.First); break;
-        case OP_SNE: INTEGER_SET_IF(!=, Opcode, .Word.First); break;
         case OP_SLT: INTEGER_SET_IF(<, Opcode, .Word.First); break;
-        case OP_SGT: INTEGER_SET_IF(>, Opcode, .Word.First); break;
         case OP_ISLT: INTEGER_SET_IF(<, Opcode, .SWord.First); break;
-        case OP_ISGT: INTEGER_SET_IF(>, Opcode, .SWord.First); break;
-        case OP_SLE: INTEGER_SET_IF(<=, Opcode, .Word.First); break;
-        case OP_SGE: INTEGER_SET_IF(>=, Opcode, .Word.First); break;
-        case OP_ISLE: INTEGER_SET_IF(<=, Opcode, .SWord.First); break;
-        case OP_ISGE: INTEGER_SET_IF(>=, Opcode, .SWord.First); break;
 
 
         case OP_BR:
@@ -615,9 +624,9 @@ do {\
             PVM->F[PVM_GET_RD(Opcode)].Single = -PVM->F[PVM_GET_RS(Opcode)].Single;
         } break;
         case OP_FSEQ: FLOAT_SET_IF(==, Opcode, .Single); break;
-        case OP_FSNE: FLOAT_SET_IF(!=, Opcode, .Single); break;
         case OP_FSLT: FLOAT_SET_IF(<, Opcode, .Single); break;
         case OP_FSGT: FLOAT_SET_IF(>, Opcode, .Single); break;
+        case OP_FSNE: FLOAT_SET_IF(!=, Opcode, .Single); break;
         case OP_FSLE: FLOAT_SET_IF(<=, Opcode, .Single); break;
         case OP_FSGE: FLOAT_SET_IF(>=, Opcode, .Single); break;
 
@@ -630,13 +639,14 @@ do {\
             PVM->F[PVM_GET_RD(Opcode)].Double = -PVM->F[PVM_GET_RS(Opcode)].Double;
         } break;
         case OP_FSEQ64: FLOAT_SET_IF(==, Opcode, .Double); break;
-        case OP_FSNE64: FLOAT_SET_IF(!=, Opcode, .Double); break;
         case OP_FSLT64: FLOAT_SET_IF(<, Opcode, .Double); break;
         case OP_FSGT64: FLOAT_SET_IF(>, Opcode, .Double); break;
+        case OP_FSNE64: FLOAT_SET_IF(!=, Opcode, .Double); break;
         case OP_FSLE64: FLOAT_SET_IF(<=, Opcode, .Double); break;
         case OP_FSGE64: FLOAT_SET_IF(>=, Opcode, .Double); break;
 
         case OP_GETFLAG: PVM->R[PVM_GET_RD(Opcode)].Word.First = PVM->Condition; break;
+        case OP_GETNFLAG: PVM->R[PVM_GET_RD(Opcode)].Word.First = PVM->Condition; break;
         case OP_SETFLAG: PVM->Condition = 0 != PVM->R[PVM_GET_RD(Opcode)].Word.First; break;
         case OP_SETNFLAG: PVM->Condition = 0 == PVM->R[PVM_GET_RD(Opcode)].Word.First; break;
         case OP_NEGFLAG: PVM->Condition = !PVM->Condition; break;
@@ -800,15 +810,8 @@ do {\
             PVM->R[PVM_GET_RD(Opcode)].DWord = 0 == PVM->R[PVM_GET_RS(Opcode)].DWord;
         } break;
         case OP_SEQ64: INTEGER_SET_IF(==, Opcode, .DWord); break;
-        case OP_SNE64: INTEGER_SET_IF(!=, Opcode, .DWord); break;
         case OP_SLT64: INTEGER_SET_IF(<, Opcode, .DWord); break;
-        case OP_SGT64: INTEGER_SET_IF(>, Opcode, .DWord); break;
         case OP_ISLT64: INTEGER_SET_IF(<, Opcode, .SDWord); break;
-        case OP_ISGT64: INTEGER_SET_IF(>, Opcode, .SDWord); break;
-        case OP_SLE64: INTEGER_SET_IF(<=, Opcode, .DWord); break;
-        case OP_SGE64: INTEGER_SET_IF(>=, Opcode, .DWord); break;
-        case OP_ISLE64: INTEGER_SET_IF(<=, Opcode, .SDWord); break;
-        case OP_ISGE64: INTEGER_SET_IF(>=, Opcode, .SDWord); break;
 
         default:
         {

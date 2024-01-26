@@ -211,7 +211,7 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_ERROR",
 
         /* keywords */
-        "TOKEN_AND", "TOKEN_ARRAY", "TOKEN_ASM",
+        "TOKEN_AND", "TOKEN_ARRAY", "TOKEN_ASR", "TOKEN_ASM",
         "TOKEN_BEGIN", "TOKEN_BREAK",
         "TOKEN_CASE", "TOKEN_CONST", "TOKEN_CONSTRUCTOR", "TOKEN_CONTINUE", 
         "TOKEN_DESTRUCTOR", "TOKEN_DIV", "TOKEN_DO", "TOKEN_DOWNTO",
@@ -252,7 +252,9 @@ const U8 *TokenTypeToStr(TokenType Type)
         "TOKEN_CHAR_LITERAL", 
         "TOKEN_IDENTIFIER"
     };
-    PASCAL_STATIC_ASSERT(STATIC_ARRAY_SIZE(TokenNameLut) == TOKEN_TYPE_COUNT, "Missing types in string lookup table");
+    PASCAL_STATIC_ASSERT(
+        STATIC_ARRAY_SIZE(TokenNameLut) == TOKEN_TYPE_COUNT, "Missing types in string lookup table"
+    );
     PASCAL_ASSERT(Type < (int)STATIC_ARRAY_SIZE(TokenNameLut), "Invalid token type: %d\n", Type);
     return (const U8*)TokenNameLut[Type];
 }
@@ -710,7 +712,8 @@ static TokenType GetLexemeType(PascalTokenizer *Lexer)
         ['A'] = {
             {.Str = (const U8 *)"ND",   .Len = 2, .Type = TOKEN_AND}, 
             {.Str = (const U8 *)"RRAY", .Len = 4, .Type = TOKEN_ARRAY}, 
-            {.Str = (const U8 *)"SM",   .Len = 2, .Type = TOKEN_ASM}
+            {.Str = (const U8 *)"SM",   .Len = 2, .Type = TOKEN_ASM},
+            {.Str = (const U8 *)"SR",   .Len = 2, .Type = TOKEN_ASR},
         },
         ['B'] = {
             {.Str = (const U8 *)"EGIN", .Len = 4, .Type = TOKEN_BEGIN},

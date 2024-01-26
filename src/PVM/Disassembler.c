@@ -378,6 +378,20 @@ static void DisasmSingleOperand(FILE *f, const char *Mnemonic, U16 Opcode)
     fprintf(f, "%s\n", Rd);
 }
 
+static U32 Disasm3Reg(FILE *f, const char *Mnemonic, U16 Opcode, const PVMChunk *Chunk, U32 Addr)
+{
+    U16 OtherHalf = Chunk->Code[Addr + 1];
+    const char *R0 = sIntReg[PVM_GET_RD(Opcode)];
+    const char *R1 = sIntReg[PVM_GET_RS(Opcode)];
+    const char *R2 = sIntReg[PVM_GET_RD(OtherHalf)];
+    int Pad = Print2Bytes(f, Opcode);
+    Pad += Print2Bytes(f, OtherHalf);
+
+    PrintPaddedMnemonic(f, Pad, Mnemonic);
+    fprintf(f, "%s, %s, %s\n", R0, R1, R2);
+    return Addr + 2;
+}
+
 
 static U32 DisasmSysOp(FILE *f, const PVMChunk *Chunk, U32 Addr, U16 Opcode)
 {
@@ -463,20 +477,15 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
 
     case OP_STRLT: DisasmRdRs(f, "strlt", sIntReg, Opcode); break;
     case OP_STRGT: DisasmRdRs(f, "strgt", sIntReg, Opcode); break;
-    case OP_STREQU:DisasmRdRs(f, "strequ", sIntReg, Opcode); break;
-    case OP_SCPY:  DisasmRdRs(f, "scpy", sIntReg, Opcode); break;
+    case OP_STREQ: DisasmRdRs(f, "streq", sIntReg, Opcode); break;
+    case OP_STRCPY: DisasmRdRs(f, "strcpy", sIntReg, Opcode); break;
     case OP_MEMCPY: return DisasmRdRsImm32(f, "memcpy", Opcode, Chunk, Addr);
+    case OP_VMEMCPY: return Disasm3Reg(f, "vmemcpy", Opcode, Chunk, Addr);
+    case OP_VMEMEQU: return Disasm3Reg(f, "vmemequ", Opcode, Chunk, Addr);
 
     case OP_SEQ: DisasmRdRs(f, "seq", sIntReg, Opcode); break;
-    case OP_SNE: DisasmRdRs(f, "sne", sIntReg, Opcode); break;
     case OP_SLT: DisasmRdRs(f, "slt", sIntReg, Opcode); break;
-    case OP_SGT: DisasmRdRs(f, "sgt", sIntReg, Opcode); break;
     case OP_ISLT: DisasmRdRs(f, "islt", sIntReg, Opcode); break;
-    case OP_ISGT: DisasmRdRs(f, "isgt", sIntReg, Opcode); break;
-    case OP_SLE: DisasmRdRs(f, "sle", sIntReg, Opcode); break;
-    case OP_SGE: DisasmRdRs(f, "sge", sIntReg, Opcode); break;
-    case OP_ISLE: DisasmRdRs(f, "isle", sIntReg, Opcode); break;
-    case OP_ISGE: DisasmRdRs(f, "isge", sIntReg, Opcode); break;
     case OP_SETEZ: DisasmRdRs(f, "setez", sIntReg, Opcode); break;
 
 
@@ -548,9 +557,9 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_FMUL: DisasmRdRs(f, "fmul", sFltReg, Opcode); break;
     case OP_FNEG: DisasmRdRs(f, "fneg", sFltReg, Opcode); break;
     case OP_FSEQ: DisasmFscc(f, "fseq", Opcode); break;
-    case OP_FSNE: DisasmFscc(f, "fsne", Opcode); break;
     case OP_FSLT: DisasmFscc(f, "fslt", Opcode); break;
     case OP_FSGT: DisasmFscc(f, "fsgt", Opcode); break;
+    case OP_FSNE: DisasmFscc(f, "fsne", Opcode); break;
     case OP_FSLE: DisasmFscc(f, "fsle", Opcode); break;
     case OP_FSGE: DisasmFscc(f, "fsge", Opcode); break;
 
@@ -560,13 +569,14 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_FMUL64: DisasmRdRs(f, "fmul64", sFltReg, Opcode); break;
     case OP_FNEG64: DisasmRdRs(f, "fneg64", sFltReg, Opcode); break;
     case OP_FSEQ64: DisasmFscc(f, "fseq64", Opcode); break;
-    case OP_FSNE64: DisasmFscc(f, "fsne64", Opcode); break;
     case OP_FSLT64: DisasmFscc(f, "fslt64", Opcode); break;
     case OP_FSGT64: DisasmFscc(f, "fsgt64", Opcode); break;
+    case OP_FSNE64: DisasmFscc(f, "fsne64", Opcode); break;
     case OP_FSLE64: DisasmFscc(f, "fsle64", Opcode); break;
     case OP_FSGE64: DisasmFscc(f, "fsge64", Opcode); break;
 
     case OP_GETFLAG: DisasmSingleOperand(f, "getflag", Opcode); break;
+    case OP_GETNFLAG: DisasmSingleOperand(f, "getnflag", Opcode); break;
     case OP_SETFLAG: DisasmSingleOperand(f, "setflag", Opcode); break;
     case OP_SETNFLAG: DisasmSingleOperand(f, "setnflag", Opcode); break;
     case OP_NEGFLAG: DisasmMnemonic(f, "negflag", Opcode); break;
@@ -622,15 +632,8 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_ADDQI64: DisasmRdSmallImm(f, "addqi64", Opcode, false); break;
 
     case OP_SEQ64: DisasmRdRs(f, "seq64", sIntReg, Opcode); break;
-    case OP_SNE64: DisasmRdRs(f, "sne64", sIntReg, Opcode); break;
     case OP_SLT64: DisasmRdRs(f, "slt64", sIntReg, Opcode); break;
-    case OP_SGT64: DisasmRdRs(f, "sgt64", sIntReg, Opcode); break;
     case OP_ISLT64: DisasmRdRs(f, "islt64", sIntReg, Opcode); break;
-    case OP_ISGT64: DisasmRdRs(f, "isgt64", sIntReg, Opcode); break;
-    case OP_SLE64: DisasmRdRs(f, "sle64", sIntReg, Opcode); break;
-    case OP_SGE64: DisasmRdRs(f, "sge64", sIntReg, Opcode); break;
-    case OP_ISLE64: DisasmRdRs(f, "isle64", sIntReg, Opcode); break;
-    case OP_ISGE64: DisasmRdRs(f, "isge64", sIntReg, Opcode); break;
     case OP_SETEZ64: DisasmRdRs(f, "setez64", sIntReg, Opcode); break;
     }
     return Addr + 1;

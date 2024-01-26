@@ -35,17 +35,11 @@ typedef enum PVMOp
 
     OP_STRLT,
     OP_STRGT,
-    OP_STREQU,
+    OP_STREQ,
+    OP_STRCPY,
     OP_SEQ,
-    OP_SNE,
-    OP_SGT,
     OP_SLT,
-    OP_SGE,
-    OP_SLE,
-    OP_ISGT,
     OP_ISLT,
-    OP_ISGE,
-    OP_ISLE,
     OP_SETEZ,
 
     OP_BEZ,
@@ -74,9 +68,9 @@ typedef enum PVMOp
     OP_FDIV,
     OP_FNEG,
     OP_FSEQ,
-    OP_FSNE,
     OP_FSGT,
     OP_FSLT,
+    OP_FSNE,
     OP_FSGE,
     OP_FSLE,
 
@@ -86,20 +80,22 @@ typedef enum PVMOp
     OP_FDIV64,
     OP_FNEG64,
     OP_FSEQ64,
-    OP_FSNE64,
     OP_FSGT64,
     OP_FSLT64,
+    OP_FSNE64,
     OP_FSGE64,
     OP_FSLE64,
 
     OP_GETFLAG,
+    OP_GETNFLAG,
     OP_SETFLAG,
     OP_SETNFLAG,
     OP_NEGFLAG,
 
 
-    OP_SCPY,
     OP_MEMCPY,
+    OP_VMEMCPY,
+    OP_VMEMEQU,
 
     OP_MOV32,
     OP_MOVZEX32_8,
@@ -203,15 +199,8 @@ typedef enum PVMOp
 
 
     OP_SEQ64,
-    OP_SNE64,
     OP_SLT64,
-    OP_SGT64,
-    OP_SLE64,
-    OP_SGE64,
     OP_ISLT64,
-    OP_ISGT64,
-    OP_ISLE64,
-    OP_ISGE64,
     OP_SETEZ64,
 } PVMOp;
 
@@ -243,6 +232,10 @@ typedef enum PVMImmType
     (BIT_POS32(OP_ ## Ins, 8, 8)\
     | BIT_POS32(Rd, 4, 4)\
     | BIT_POS32(Rs, 4, 0))
+#define PVM_OP_ALT(Ins, OperandIs64Bit, Rd, Rs)\
+    ((OperandIs64Bit)? \
+        PVM_OP(Ins ## 64, Rd, Rs) \
+        : PVM_OP(Ins, Rd, Rs))
 
 #define PVM_REGLIST(Ins, List)\
     (BIT_POS32(OP_ ## Ins, 8, 8)\
