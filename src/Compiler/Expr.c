@@ -811,7 +811,7 @@ static VarLocation NotLiteral(PascalCompiler *Compiler,
     else if (IntegralTypeIsInteger(LiteralType))
     {
         Literal.Int = ~Literal.Int;
-        Location.Type = TypeOfIntLit(Literal.Int);
+        Location.Type = VarTypeInit(LiteralType, IntegralTypeSize(LiteralType));
     }
     else
     {
@@ -830,64 +830,79 @@ static VarLocation ExprUnary(PascalCompiler *Compiler, bool ShouldCallFunction)
     TokenType Operator = Compiler->Curr.Type;
     Token OpToken = Compiler->Curr;
     VarLocation Value = ParsePrecedence(Compiler, PREC_FACTOR, true);
+    IntegralType Type = Value.Type.Integral;
 
-    if (VAR_INVALID == Value.LocationType)
+    VarLocation Ret;
+    switch (Operator)
     {
-        ErrorAt(Compiler, &OpToken, 
-            "unary operator '"STRVIEW_FMT"' cannot be applied to expression with no storage.",
-            STRVIEW_FMT_ARG(OpToken.Lexeme)
-        );
-    }
-    else if (VAR_LIT == Value.LocationType)
+    case TOKEN_PLUS:
     {
-        switch (Operator)
+        if (!IntegralTypeIsInteger(Type) && !IntegralTypeIsFloat(Type))
+            goto InvalidOperand;
+        if (VAR_LIT != Value.LocationType 
+        && VAR_MEM != Value.LocationType 
+        && VAR_REG != Value.LocationType)
+            goto InvalidStorage;
+
+        Ret = Value;
+    } break;
+    case TOKEN_MINUS:
+    {
+        if (!IntegralTypeIsInteger(Type) && !IntegralTypeIsFloat(Type))
+            goto InvalidOperand;
+
+        if (VAR_LIT == Value.LocationType)
         {
-        case TOKEN_PLUS: break;
-        case TOKEN_NOT:
-        {
-            Value = NotLiteral(Compiler, &OpToken, Value.As.Literal, Value.Type.Integral);
-        } break;
-        case TOKEN_MINUS:
-        {
-            Value = NegateLiteral(Compiler, &OpToken, Value.As.Literal, Value.Type.Integral);
-        } break;
-        default: goto Unreachable;
+            Ret = NegateLiteral(Compiler, &OpToken, Value.As.Literal, Type);
         }
-    }
-    else 
-    {
-        switch (Operator)
+        else if (VAR_MEM == Value.LocationType || VAR_REG == Value.LocationType)
         {
-        case TOKEN_PLUS: break;
-        case TOKEN_MINUS:
-        {
-            if (!IntegralTypeIsFloat(Value.Type.Integral) 
-            && !IntegralTypeIsInteger(Value.Type.Integral))
-                goto TypeMismatch;
-
-            PVMEmitNeg(EMITTER(), &Value, &Value);
-        } break;
-        case TOKEN_NOT:
-        {
-            if (!IntegralTypeIsInteger(Value.Type.Integral) 
-            && TYPE_BOOLEAN != Value.Type.Integral)
-                goto TypeMismatch;
-
-            PVMEmitNot(EMITTER(), &Value, &Value);
-        } break;
-        default: goto Unreachable;
+            PVMEmitIntoRegLocation(EMITTER(), &Ret, false, &Value);
+            PVMEmitNeg(EMITTER(), Ret.As.Register, Ret.As.Register, Value.Type.Integral);
         }
+        else goto InvalidStorage;
+    } break;
+    case TOKEN_NOT:
+    {
+        if (!IntegralTypeIsInteger(Type) && TYPE_BOOLEAN != Type)
+            goto InvalidOperand;
+
+        /* special boolean case */
+        if (VAR_FLAG == Value.LocationType)
+        {
+            PASCAL_ASSERT(Type == TYPE_BOOLEAN, "Unreachable");
+            Ret = Value;
+            Ret.As.FlagValueAsIs = !Ret.As.FlagValueAsIs;
+        }
+        else if (VAR_LIT == Value.LocationType)
+        {
+            Ret = NotLiteral(Compiler, &OpToken, Value.As.Literal, Type);
+        }
+        else if (VAR_MEM == Value.LocationType || VAR_REG == Value.LocationType)
+        {
+            PVMEmitIntoRegLocation(EMITTER(), &Ret, false, &Value);
+            PVMEmitNot(EMITTER(), Ret.As.Register, Ret.As.Register, Type);
+        }
+        else goto InvalidStorage;
+    } break;
+    default: 
+    {
+        Ret = (VarLocation){0};
+        PASCAL_UNREACHABLE("Unhandled unary case");
+    } break;
     }
-    return Value;
+    return Ret;
 
-TypeMismatch:
-    INVALID_PREFIX_OP(&OpToken, Value.Type.Integral);
+InvalidOperand:
+    INVALID_PREFIX_OP(&OpToken, Type);
     return Value;
-
-Unreachable: 
-    PASCAL_UNREACHABLE("%s is not handled in %s", TokenTypeToStr(Operator), __func__);
+InvalidStorage:
+    ErrorAt(Compiler, &OpToken, "Invalid storage class for unary '"STRVIEW_FMT"'.", 
+        STRVIEW_FMT_ARG(OpToken.Lexeme)
+    );
     return Value;
 }
+
 
 
 
@@ -1149,7 +1164,7 @@ static VarLocation RuntimeExprBinary(PascalCompiler *Compiler,
 
 #define BIN_OP(OpName, Operand1, Operand2) do {\
     PVMEmitIntoRegLocation(EMITTER(), &Dst, false, Operand1);\
-    PVMEmit ## OpName (EMITTER(), &Dst, Operand2);\
+    PVMEmit ## OpName (EMITTER(), Dst.As.Register, Operand2);\
 } while (0)
 
     TokenType Operator = OpToken->Type;
@@ -1404,6 +1419,7 @@ static const PrecedenceRule sPrecedenceRuleLut[TOKEN_TYPE_COUNT] =
     [TOKEN_MINUS]           = { ExprUnary,          ExprBinary,     PREC_SIMPLE },
     [TOKEN_SHR]             = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_SHL]             = { NULL,               ExprBinary,     PREC_SIMPLE },
+    [TOKEN_ASR]             = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_LESS_LESS]       = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_GREATER_GREATER] = { NULL,               ExprBinary,     PREC_SIMPLE },
     [TOKEN_OR]              = { NULL,               ExprOr,         PREC_SIMPLE },
@@ -1470,7 +1486,6 @@ IntegralType CoerceTypes(IntegralType Left, IntegralType Right)
 {
     PASCAL_ASSERT(Left >= TYPE_INVALID && Right >= TYPE_INVALID, "");
     PASCAL_ASSERT(Left < TYPE_COUNT && Right < TYPE_COUNT, "Impossible");
-
     return sCoercionRules[Left][Right];
 }
 
@@ -1571,7 +1586,7 @@ bool ConvertTypeImplicitly(PascalCompiler *Compiler, IntegralType To, VarLocatio
     case VAR_SUBROUTINE: 
     case VAR_BUILTIN:
     {
-        PASCAL_UNREACHABLE("");
+        return false;
     } break;
     }
 

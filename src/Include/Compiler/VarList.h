@@ -18,8 +18,13 @@ SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVar
 /* like the above function but expects '(' and not ')' to be the next token */
 SubroutineParameterList CompileParameterListWithParentheses(PascalCompiler *Compiler, PascalVartab *Scope);
 
-/* parses the type definition and define it with Identifier */
-void ParseAndDefineTypename(PascalCompiler *Compiler, const Token *Identifier);
+/* Parses type name, 
+ *      if Identifier is NULL: the returned type is in the Out parameter, 
+ *      else                 : in addition to returning the type via Out, 
+ *                              this fn also define the given identifier with 
+ *                              Out as its type
+ * returns true on success, false on failure */
+bool ParseAndDefineTypename(PascalCompiler *Compiler, const Token *Identifier, VarType *Out);
 
 
 /* returns the same addr passed in on error, else returns the next addr,

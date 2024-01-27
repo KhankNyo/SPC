@@ -585,27 +585,27 @@ static void CompilerEmitAssignment(PascalCompiler *Compiler, const Token *Assign
         return;
     }
 
-    VarLocation Dst;
-    bool OwningLeft = PVMEmitIntoRegLocation(EMITTER(), &Dst, true, Left);
+    VarRegister Dst;
+    bool OwningLeft = PVMEmitIntoReg(EMITTER(), &Dst, true, Left);
     switch (Assignment->Type)
     {
-    case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), &Dst, Right); break;
-    case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), &Dst, Right); break;
-    case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), &Dst, Right); break;
-    case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), &Dst, Right); break;
+    case TOKEN_PLUS_EQUAL:  PVMEmitAdd(EMITTER(), Dst, Right); break;
+    case TOKEN_MINUS_EQUAL: PVMEmitSub(EMITTER(), Dst, Right); break;
+    case TOKEN_STAR_EQUAL:  PVMEmitMul(EMITTER(), Dst, Right); break;
+    case TOKEN_SLASH_EQUAL: PVMEmitDiv(EMITTER(), Dst, Right); break;
     case TOKEN_PERCENT_EQUAL: 
     {
-        if (IntegralTypeIsInteger(Dst.Type.Integral) 
+        if (IntegralTypeIsInteger(Left->Type.Integral) 
         && IntegralTypeIsInteger(Right->Type.Integral))
         {
-            PVMEmitMod(EMITTER(), &Dst, Right);
+            PVMEmitMod(EMITTER(), Dst, Right);
         }
         else 
         {
             StringView LeftType = VarTypeToStringView(Left->Type),
                        RightType = VarTypeToStringView(Right->Type);
             ErrorAt(Compiler, Assignment, 
-                "Cannot perform modulo between "STRVIEW_FMT" and "STRVIEW_FMT".",
+                "Cannot perform modulo with "STRVIEW_FMT" and "STRVIEW_FMT".",
                 STRVIEW_FMT_ARG(LeftType), STRVIEW_FMT_ARG(RightType)
             );
         }
@@ -618,8 +618,10 @@ static void CompilerEmitAssignment(PascalCompiler *Compiler, const Token *Assign
 
     if (OwningLeft)
     {
-        PVMEmitMove(EMITTER(), Left, &Dst);
-        FreeExpr(Compiler, Dst);
+        PVMEmitMove(EMITTER(), Left, 
+            &VAR_LOCATION_REG(Dst.ID, Dst.Persistent, Left->Type)
+        );
+        PVMFreeRegister(EMITTER(), Dst);
     }
 }
 
@@ -1238,7 +1240,6 @@ static void CompileSubroutineBlock(PascalCompiler *Compiler, const char *Subrout
     PVMEmitterEndScope(EMITTER(), PrevScope);
 }
 
-
 static void CompileVarBlock(PascalCompiler *Compiler)
 {
     /* 
@@ -1246,6 +1247,8 @@ static void CompileVarBlock(PascalCompiler *Compiler)
      *      id1, id2: typename;
      *      id3: typename;
      */
+    /* var consumed */
+    PASCAL_NONNULL(Compiler);
     if (!NextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         Error(Compiler, "Expected variable name.");
@@ -1255,96 +1258,79 @@ static void CompileVarBlock(PascalCompiler *Compiler)
     U32 BaseRegister = PVM_REG_FP;
     U32 BaseAddr = Compiler->StackSize;
     UInt Alignment = PVM_STACK_ALIGNMENT;
-    bool AtGlobalScope = IsAtGlobalScope(Compiler);
-    if (AtGlobalScope)
+    if (IsAtGlobalScope(Compiler))
     {
         BaseRegister = PVM_REG_GP;
         BaseAddr = PVMGetGlobalOffset(EMITTER());
         Alignment = PVM_GLOBAL_ALIGNMENT;
     }
+
     U32 TotalSize = 0;
-
-    while (!IsAtEnd(Compiler) && NextTokenIs(Compiler, TOKEN_IDENTIFIER))
-    {
-        Token VariableName = Compiler->Next;
-        U32 Next = CompileVarList(Compiler, BaseRegister, BaseAddr + TotalSize, Alignment);
-        if (Next == TotalSize)
-        {
-            /* Error encountered */
+    do {
+        Token FirstVariableName = Compiler->Next;
+        U32 NextSize = CompileVarList(Compiler, BaseRegister, BaseAddr + TotalSize, Alignment);
+        if (NextSize == BaseAddr + TotalSize) /* fatal error encountered */
             return;
-        }
-        TotalSize = Next - BaseAddr;
+        TotalSize = NextSize - BaseAddr;
 
+        const char *ErrorMessage = "variable declaration";
         /* initialization */
         if (ConsumeIfNextTokenIs(Compiler, TOKEN_EQUAL))
         {
-            PascalVar *Variable = FindIdentifier(Compiler, &VariableName);
-            PASCAL_NONNULL(Variable);
+            ErrorMessage = "variable initialization";
             Token EqualSign = Compiler->Curr;
-            if (CompilerGetTmpCount(Compiler) > 1)
+            if (CompilerGetTmpCount(Compiler) != 1)
             {
-                ErrorAt(Compiler, &EqualSign, "Only one variable can be initialized at a time.");
+                ErrorAt(Compiler, &EqualSign, "Can only initialize one variable at a time."); 
             }
-            PASCAL_NONNULL(Variable->Location);
 
-            if (AtGlobalScope)
+            PascalVar *Variable = FindIdentifier(Compiler, &FirstVariableName);
+            PASCAL_NONNULL(Variable);
+            PASCAL_NONNULL(Variable->Location);
+            PASCAL_ASSERT(Variable->Location->LocationType == VAR_MEM, "unreachable");
+            if (IsAtGlobalScope(Compiler))
             {
                 VarLocation Constant = CompileExpr(Compiler);
                 if (VAR_LIT != Constant.LocationType)
                 {
                     ErrorAt(Compiler, &EqualSign, 
-                        "Can only initialize global variable with constant expression."
+                        "Can only initialize global variables with constant expression."
                     );
                 }
-                if (TYPE_INVALID == CoerceTypes(Variable->Type.Integral, Constant.Type.Integral))
+                /* convert type */
+                if (TYPE_INVALID == CoerceTypes(Variable->Type.Integral, Constant.Type.Integral) 
+                || !CoerceTypes(Variable->Type.Integral, Constant.Type.Integral))
                 {
                     ErrorCannotAssign(Compiler, &EqualSign, Variable->Type, Constant.Type);
-                    continue;
                 }
 
-                PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, Variable->Type.Integral, &Constant), 
-                    "Unreachable"
+                /* initialize global */
+                PVMEmitGlobalSpace(EMITTER(), Variable->Type.Size);
+                PVMInitializeGlobal(EMITTER(), 
+                    Variable->Location->As.Memory, &Constant.As.Literal, Variable->Type
                 );
 
-                /* flushes global variable so initialization can be done */
-                PVMEmitGlobalAllocation(EMITTER(), TotalSize);
+                /* update base addr */
                 BaseAddr += TotalSize;
                 TotalSize = 0;
-                PVMInitializeGlobal(EMITTER(), 
-                        Variable->Location, 
-                        &Constant.As.Literal, Constant.Type.Size, Constant.Type.Integral
-                );
             }
-            else /* stack variable */
+            else /* stack scope */
             {
                 CompileExprInto(Compiler, &EqualSign, Variable->Location);
             }
-            ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after expression.");
         }
-        else
-        {
-            ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after variable declaration.");
-        }
+        ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s.", ErrorMessage);
+    } while (NextTokenIs(Compiler, TOKEN_IDENTIFIER));
 
-        if (ConsumeIfNextTokenIs(Compiler, TOKEN_VAR) && !NextTokenIs(Compiler, TOKEN_IDENTIFIER))
-        {
-            Error(Compiler, "Expected variable name.");
-            return;
-        }
-    }
-
-    if (AtGlobalScope)
+    if (IsAtGlobalScope(Compiler)) /* flushes global space  */
     {
-        PVMEmitGlobalAllocation(EMITTER(), TotalSize);
+        PVMEmitGlobalSpace(EMITTER(), TotalSize);
     }
     else
     {
         Compiler->StackSize += TotalSize;
     }
 }
-
-
-
 
 
 static void CompileTypeBlock(PascalCompiler *Compiler)
@@ -1367,7 +1353,8 @@ static void CompileTypeBlock(PascalCompiler *Compiler)
     {
         Token Identifier = Compiler->Curr;
         ConsumeOrError(Compiler, TOKEN_EQUAL, "Expected '=' after identifier.");
-        ParseAndDefineTypename(Compiler, &Identifier);
+        VarType Tmp;
+        ParseAndDefineTypename(Compiler, &Identifier, &Tmp);
         ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after type definition.");
     }
 }

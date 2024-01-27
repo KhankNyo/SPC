@@ -790,7 +790,7 @@ do {\
         } break;
         case OP_ADDQI64:
         {
-            PVM->R[PVM_GET_RD(Opcode)].DWord += BIT_SEX32(PVM_GET_RS(Opcode), 3); 
+            PVM->R[PVM_GET_RD(Opcode)].SDWord += BitSex64(PVM_GET_RS(Opcode), 3); 
         } break;
         case OP_ADDI64:
         {

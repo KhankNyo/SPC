@@ -43,11 +43,8 @@ void PVMEmitterReset(PVMEmitter *Emitter, bool PreserveFunctions);
 
 void PVMSetEntryPoint(PVMEmitter *Emitter, U32 EntryPoint);
 SaveRegInfo PVMEmitterBeginScope(PVMEmitter *Emitter);
-void PVMEmitSaveFrame(PVMEmitter *Emitter);
 void PVMEmitterEndScope(PVMEmitter *Emitter, SaveRegInfo PrevScope);
-void PVMEmitDebugInfo(PVMEmitter *Emitter, 
-        const U8 *Src, U32 Len, U32 LineNum
-);
+void PVMEmitDebugInfo(PVMEmitter *Emitter, const U8 *Src, U32 Len, U32 LineNum);
 void PVMUpdateDebugInfo(PVMEmitter *Emitter, U32 LineLen, bool IsSubroutine);
 
 
@@ -68,8 +65,6 @@ bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt Reg);
 /* returns the offset of the branch instruction for later patching */
 U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition);
 U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition);
-U32 PVMEmitBranchOnFalseFlag(PVMEmitter *Emitter);
-U32 PVMEmitBranchOnTrueFlag(PVMEmitter *Emitter);
 U32 PVMEmitBranchAndInc(PVMEmitter *Emitter, VarRegister Reg, I8 By, U32 To);
 /* returns the offset of the branch instruction for patching if necessary */
 U32 PVMEmitBranch(PVMEmitter *Emitter, U32 To);
@@ -106,22 +101,19 @@ void PVMEmitIntToFltTypeConversion(PVMEmitter *Emitter,
 );
 
 /* arith instructions */
-void PVMEmitAddImm(PVMEmitter *Emitter, const VarLocation *Dst, I64 Imm);
-void PVMEmitIMulConst(PVMEmitter *Emitter, VarRegister Dst, IntegralType DstType, I64 Constant);
-
-void PVMEmitAdd(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitSub(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitNeg(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitNot(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitAnd(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitOr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitXor(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitMul(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitDiv(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitMod(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitShl(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitShr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
-void PVMEmitAsr(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation *Src);
+void PVMEmitNeg(PVMEmitter *Emitter, VarRegister Dst, VarRegister Src, IntegralType Type);
+void PVMEmitNot(PVMEmitter *Emitter, VarRegister Dst, VarRegister Src, IntegralType Type);
+void PVMEmitAdd(PVMEmitter *Emitter, VarRegister Dst, const VarLocation *Src);
+void PVMEmitSub(PVMEmitter *Emitter, VarRegister Dst, const VarLocation *Src);
+void PVMEmitAnd(PVMEmitter *Emitter, VarRegister Dst, const VarLocation *Src);
+void PVMEmitOr(PVMEmitter *Emitter, VarRegister Dst, const VarLocation *Src);
+void PVMEmitXor(PVMEmitter *Emitter, VarRegister Dst, const VarLocation *Src);
+void PVMEmitMul(PVMEmitter *Emitter, VarRegister Dst, const VarLocation *Src);
+void PVMEmitDiv(PVMEmitter *Emitter, VarRegister Dst, const VarLocation *Src);
+void PVMEmitMod(PVMEmitter *Emitter, VarRegister Dst, const VarLocation *Src);
+void PVMEmitShl(PVMEmitter *Emitter, VarRegister Dst, const VarLocation *Src);
+void PVMEmitShr(PVMEmitter *Emitter, VarRegister Dst, const VarLocation *Src);
+void PVMEmitAsr(PVMEmitter *Emitter, VarRegister Dst, const VarLocation *Src);
 /* returns flag */
 VarLocation PVMEmitSetIfLessOrEqual(PVMEmitter *Emitter, 
         VarRegister A, VarRegister B, IntegralType CommonType
@@ -149,30 +141,23 @@ VarLocation PVMEmitMemEqu(PVMEmitter *Emitter, VarRegister PtrA, VarRegister Ptr
 I32 PVMStartArg(PVMEmitter *Emitter, U32 ArgSize);
 VarLocation PVMSetArg(PVMEmitter *Emitter, UInt ArgNumber, VarType Type, I32 *Base);
 void PVMMarkArgAsOccupied(PVMEmitter *Emitter, const VarLocation *Arg);
-
 VarLocation PVMSetReturnType(PVMEmitter *Emitter, VarType Type);
-
-
-void PVMQueuePushMultiple(PVMEmitter *Emitter, SaveRegInfo *RegList, const VarLocation *Location);
-void PVMQueueAndCommitOnFull(PVMEmitter *Emitter, SaveRegInfo *RegList, const VarLocation *Location);
-void PVMQueueCommit(PVMEmitter *Emitter, SaveRegInfo *RegList);
-void PVMQueueRefresh(PVMEmitter *Emitter, SaveRegInfo *RegList);
-bool PVMQueueIsFull(const SaveRegInfo *RegList);
 
 
 /* stack instructions */
 void PVMEmitStackAllocation(PVMEmitter *Emitter, I32 Size);
+void PVMEmitPush(PVMEmitter *Emitter, const VarLocation *Src);
+void PVMEmitPop(PVMEmitter *Emitter, const VarLocation *Dst);
 /* NOTE: does not advance the stack pointer nor emit any instructions to do so */
 #define STACK_TOP -1 
 VarLocation PVMCreateStackLocation(PVMEmitter *Emitter, VarType Type, int FpOffset);
 
 /* global instructions */
 U32 PVMGetGlobalOffset(PVMEmitter *Emitter);
-/* note: data must've already been allocated */
-void PVMInitializeGlobal(PVMEmitter *Emitter, const VarLocation *Global, const VarLiteral *Data, USize Size, IntegralType Type);
 VarMemory PVMEmitGlobalData(PVMEmitter *Emitter, const void *Data, U32 Size);
 VarMemory PVMEmitGlobalSpace(PVMEmitter *Emitter, U32 Size);
-#define PVMEmitGlobalAllocation(pEmitter, U32Size) PVMEmitGlobalSpace(pEmitter, U32Size)
+/* note: data must've already been allocated */
+void PVMInitializeGlobal(PVMEmitter *Emitter, VarMemory GLobal, const VarLiteral *Data, VarType Type);
 
 
 /* call instructions */

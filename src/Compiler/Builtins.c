@@ -38,15 +38,18 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
     SaveRegInfo SaveRegs = PVMEmitSaveCallerRegs(EMITTER(), NO_RETURN_REG);
     UInt ArgCount = 0;
 
-    SaveRegInfo RegList = { 0 };
     if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_PAREN))
     {
         if (!NextTokenIs(Compiler, TOKEN_RIGHT_PAREN))
         {
             /* TODO: file argument */
             do {
-                VarLocation Arg =  CompileExpr(Compiler);
-                if (TYPE_RECORD == Arg.Type.Integral || TYPE_FUNCTION == Arg.Type.Integral)
+                VarLocation Arg = CompileExpr(Compiler);
+                VarLocation ArgType = VAR_LOCATION_LIT(.Int = Arg.Type.Integral, TYPE_U32);
+
+                if (!IntegralTypeIsOrdinal(Arg.Type.Integral)
+                && !IntegralTypeIsFloat(Arg.Type.Integral) 
+                && TYPE_STRING != Arg.Type.Integral)
                 {
                     const char *FnName = Newline? "Writeln" : "Write";
                     StringView ArgumentType = VarTypeToStringView(Arg.Type);
@@ -55,9 +58,10 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
                         STRVIEW_FMT_ARG(ArgumentType)
                     );
                 }
-                VarLocation ArgType = VAR_LOCATION_LIT(.Int = Arg.Type.Integral, TYPE_U32);
-                PVMQueueAndCommitOnFull(EMITTER(), &RegList, &Arg);
-                PVMQueueAndCommitOnFull(EMITTER(), &RegList, &ArgType);
+                PVMEmitPush(EMITTER(), &Arg);
+                PVMEmitPush(EMITTER(), &ArgType);
+                FreeExpr(Compiler, Arg);
+
                 ArgCount++;
             } while (ConsumeIfNextTokenIs(Compiler, TOKEN_COMMA));
         }
@@ -68,18 +72,13 @@ static void CompileSysWrite(PascalCompiler *Compiler, bool Newline)
     if (Newline)
     {
         PascalVar *NewlineLiteral = VartabFindWithHash(&Compiler->Global, 
-                sNewlineConstName, sizeof(sNewlineConstName) - 1, sNewlineConstHash
+            sNewlineConstName, sizeof(sNewlineConstName) - 1, sNewlineConstHash
         );
         PASCAL_NONNULL(NewlineLiteral);
-        PVMQueueAndCommitOnFull(EMITTER(), &RegList, NewlineLiteral->Location);
-        PVMQueueAndCommitOnFull(EMITTER(), &RegList, &VAR_LOCATION_LIT(.Int = TYPE_STRING, TYPE_U32));
+        PVMEmitPush(EMITTER(), NewlineLiteral->Location);
+        PVMEmitPush(EMITTER(), &VAR_LOCATION_LIT(.Int = TYPE_STRING, TYPE_U32));
         ArgCount++;
     }
-
-    /* pushes the queue */
-    PVMQueueCommit(EMITTER(), &RegList);
-    PVMQueueRefresh(EMITTER(), &RegList);
-
 
     /* arg count reg */
     VarRegister ArgCountReg = {

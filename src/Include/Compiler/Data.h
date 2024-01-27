@@ -6,7 +6,6 @@
 #include "Common.h"
 #include "Variable.h"
 #include "Tokenizer.h"
-//#include "Compiler.h"
 #include "Emitter.h"
 
 struct CompilerFrame 

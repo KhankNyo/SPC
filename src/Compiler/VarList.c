@@ -28,21 +28,21 @@ SubroutineParameterList CompileParameterListWithParentheses(PascalCompiler *Comp
     return ParameterList;
 }
 
-static PascalVar *FindTypename(PascalCompiler *Compiler, const Token *Name)
+static VarType *FindTypeName(PascalCompiler *Compiler, const Token *Name)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Name);
-    PascalVar *Type = GetIdenInfo(Compiler, Name, "Undefined type name.");
-    if (NULL == Type)
+    PascalVar *TypeName = GetIdenInfo(Compiler, Name, "Undefined type name.");
+    if (NULL == TypeName)
         return NULL;
-    if (NULL != Type->Location)
+    if (NULL != TypeName->Location)
     {
-        ErrorAt(Compiler, Name, "'"STRVIEW_FMT"' is not a type name.",
+        ErrorAt(Compiler, Name, "'"STRVIEW_FMT"' is not a type name in this scope.",
             STRVIEW_FMT_ARG(Name->Lexeme)
         );
         return NULL;
     }
-    return Type;
+    return &TypeName->Type;
 }
 
 
@@ -90,13 +90,13 @@ static RangeIndex ConsumeRange(PascalCompiler *Compiler)
             Error(Compiler, "Data element too large.");
         }
         static const RangeIndex Ranges[TYPE_COUNT] = {
-            [TYPE_BOOLEAN] = { .Low = 0, .High = 1 },
-            [TYPE_I8] = { .Low = INT8_MIN, .High = INT8_MAX },
-            [TYPE_CHAR] = { .Low = CHAR_MIN, .High = CHAR_MAX },
-            [TYPE_U8] = { .Low = 0, .High = UINT8_MAX },
+            [TYPE_BOOLEAN] =    { .Low = 0,         .High = 1 },
+            [TYPE_I8] =         { .Low = INT8_MIN,  .High = INT8_MAX },
+            [TYPE_CHAR] =       { .Low = CHAR_MIN,  .High = CHAR_MAX },
+            [TYPE_U8] =         { .Low = 0,         .High = UINT8_MAX },
 
-            [TYPE_I16] = { .Low = INT16_MIN, .High = INT16_MAX },
-            [TYPE_U16] = { .Low = 0, .High = UINT16_MAX },
+            [TYPE_I16] =        { .Low = INT16_MIN, .High = INT16_MAX },
+            [TYPE_U16] =        { .Low = 0,         .High = UINT16_MAX },
         };
         return Ranges[Type];
     }
@@ -109,8 +109,7 @@ static RangeIndex ConsumeRange(PascalCompiler *Compiler)
 
 
 
-#define ParseTypename(pCompiler, pVartype) ParseAndDefineTypenameInternal(pCompiler, NULL, pVartype)
-static bool ParseAndDefineTypenameInternal(PascalCompiler *Compiler, const Token *Identifier, VarType *Out)
+bool ParseAndDefineTypename(PascalCompiler *Compiler, const Token *Identifier, VarType *Out)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Out);
@@ -158,65 +157,63 @@ static bool ParseAndDefineTypenameInternal(PascalCompiler *Compiler, const Token
     }
     else if (ConsumeIfNextTokenIs(Compiler, TOKEN_ARRAY))
     {
-        if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_BRACKET))
+        if (ConsumeIfNextTokenIs(Compiler, TOKEN_LEFT_BRACKET)) /* array size */
         {
             RangeIndex Range = ConsumeRange(Compiler);
             ConsumeOrError(Compiler, TOKEN_RIGHT_BRACKET, "Expected ']' after expression.");
             ConsumeOrError(Compiler, TOKEN_OF, "Expected 'of'.");
             VarType Type;
-            ParseTypename(Compiler, &Type);
+            ParseAndDefineTypename(Compiler, NULL, &Type);
             *Out = VarTypeStaticArray(Range, CompilerCopyType(Compiler, Type));
         }
-        else
+        else /* no array size specified, assumes dynamic array */
         {
             PASCAL_UNREACHABLE("TODO: dynamic and open array");
         }
     }
     else if (ConsumeIfNextTokenIs(Compiler, TOKEN_FUNCTION))
     {
+        /* create the function scope */
         PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
         SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
 
-        ConsumeOrError(Compiler, TOKEN_COLON, "Expeccted ':' after function paramter list.");
+        /* return type */
+        ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' after function paramter list.");
         if (!ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected function return type."))
             return false;
-        PascalVar *Type = FindTypename(Compiler, &Compiler->Curr);
+        const VarType *Type = FindTypeName(Compiler, &Compiler->Curr);
         if (NULL == Type)
             return false;
 
-        VarType *ReturnType = CompilerCopyType(Compiler, Type->Type);
+        /* copy the return type and set it as the function's return type */
+        VarType *ReturnType = CompilerCopyType(Compiler, *Type);
         VarType Function = VarTypeSubroutine(ParameterList, Scope, ReturnType, 0);
         *Out = VarTypePtr(CompilerCopyType(Compiler, Function));
     }
     else if (ConsumeIfNextTokenIs(Compiler, TOKEN_PROCEDURE))
     {
+        /* create the scope */
         PascalVartab Scope = VartabInit(&Compiler->InternalAlloc, PVM_INITIAL_VAR_PER_SCOPE);
         SubroutineParameterList ParameterList = CompileParameterListWithParentheses(Compiler, &Scope);
+        /* create the type for procedure */
         VarType Procedure = VarTypeSubroutine(ParameterList, Scope, NULL, 0);
         *Out = VarTypePtr(CompilerCopyType(Compiler, Procedure));
     }
     else if (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
     {
         /* just copy the type */
-        PascalVar *Typename = GetIdenInfo(Compiler, &Compiler->Curr, "Undefined type name.");
-        if (NULL == Typename)
+        const VarType *Type = FindTypeName(Compiler, &Compiler->Curr);
+        if (NULL == Type)
             return false;
-
-        /* has a location, so not a type name */
-        if (NULL != Typename->Location)
-        {
-            ErrorAt(Compiler, &Compiler->Curr, "'"STRVIEW_FMT"' is not a type name in this scope.", 
-                STRVIEW_FMT_ARG(Compiler->Curr.Lexeme)
-            );
-            return false;
-        }
-        *Out = Typename->Type;
+        *Out = *Type;
     }
     else if (ConsumeIfNextTokenIs(Compiler, TOKEN_CARET))
     {
         VarType Pointee;
-        /* recursive call */
-        ParseTypename(Compiler, &Pointee);
+        /* recursive call,
+         * FPC does not allow for multiple pointer indirection, 
+         * but it would take more code to prevent that, so SPC allows it */
+        ParseAndDefineTypename(Compiler, NULL, &Pointee);
         *Out = VarTypePtr(CompilerCopyType(Compiler, Pointee));
     }
     else 
@@ -235,11 +232,6 @@ static bool ParseAndDefineTypenameInternal(PascalCompiler *Compiler, const Token
     return true;
 }
 
-void ParseAndDefineTypename(PascalCompiler *Compiler, const Token *Identifier)
-{
-    VarType Dummy;
-    ParseAndDefineTypenameInternal(Compiler, Identifier, &Dummy);
-}
 
 
 static bool ParseVarList(PascalCompiler *Compiler, VarType *Out)
@@ -271,7 +263,7 @@ static bool ParseVarList(PascalCompiler *Compiler, VarType *Out)
     }
 
     /* then parses typename */
-    return ParseTypename(Compiler, Out);
+    return ParseAndDefineTypename(Compiler, NULL, Out);
 }
 
 
@@ -338,6 +330,7 @@ SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVar
             PASCAL_UNREACHABLE("TODO: const parameter.");
         }
 
+
         /* parameter list is completely different from other variable declaration */
         /* so the code to parse it is unique from others */
         CompilerResetTmp(Compiler);
@@ -348,15 +341,11 @@ SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVar
         ConsumeOrError(Compiler, TOKEN_COLON, "Expected ':' or ',' after parameter name.");
 
 
-        if (NextTokenIs(Compiler, TOKEN_SEMICOLON))
-        {
-            PASCAL_UNREACHABLE("TODO: untyped parameters.");
-        }
-        else if (NextTokenIs(Compiler, TOKEN_ARRAY))
+        if (NextTokenIs(Compiler, TOKEN_ARRAY))
         {
             PASCAL_UNREACHABLE("TODO: array parameters.");
         }
-        else if (ConsumeOrError(Compiler, TOKEN_IDENTIFIER, "Expected type name."))
+        else if (ConsumeIfNextTokenIs(Compiler, TOKEN_IDENTIFIER))
         {
             Token Typename = Compiler->Curr;
             PascalVar *TypeInfo = GetIdenInfo(Compiler, &Typename, "Undefined type name.");
@@ -381,9 +370,9 @@ SubroutineParameterList CompileParameterList(PascalCompiler *Compiler, PascalVar
                 ParameterListPush(&ParameterList, &Compiler->InternalAlloc, Param);
             }
         }
-        else 
+        else
         {
-            /* Error from above */
+            Error(Compiler, "Expected type name.");
         }
     } while (ConsumeIfNextTokenIs(Compiler, TOKEN_SEMICOLON));
     return ParameterList;
