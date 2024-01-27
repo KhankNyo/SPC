@@ -160,7 +160,7 @@ PASCAL_BUILTIN(Ord, Compiler, FnName)
     case VAR_MEM: 
     {
         VarLocation Tmp = *RetVal;
-        (void)PVMEmitIntoRegLocation(EMITTER(), RetVal, true, &Tmp);
+        PVMEmitIntoRegLocation(EMITTER(), RetVal, true, &Tmp);
         FreeExpr(Compiler, Tmp);
     } FALLTHROUGH;
     case VAR_REG:

@@ -374,7 +374,7 @@ static VarLocation VariableDeref(PascalCompiler *Compiler, VarLocation *Variable
     }
     if (NULL == Variable->Type.As.Pointee)
     {
-        ErrorAt(Compiler, &Caret, "Cannot dereference an opque pointer.");
+        ErrorAt(Compiler, &Caret, "Cannot dereference an opaque pointer.");
         return *Variable;
     }
 
