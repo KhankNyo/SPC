@@ -90,13 +90,11 @@ void FreeExpr(PascalCompiler *Compiler, VarLocation Expr)
 
     if (VAR_REG == Expr.LocationType)
     {
-        if (!PVMRegisterIsFree(EMITTER(), Expr.As.Register.ID))
-            PVMFreeRegister(EMITTER(), Expr.As.Register);
+        PVMFreeRegister(EMITTER(), Expr.As.Register);
     }
     else if (VAR_MEM == Expr.LocationType && !Expr.As.Memory.RegPtr.Persistent)
     {
-        if (!PVMRegisterIsFree(EMITTER(), Expr.As.Memory.RegPtr.ID))
-            PVMFreeRegister(EMITTER(), Expr.As.Memory.RegPtr);
+        PVMFreeRegister(EMITTER(), Expr.As.Memory.RegPtr);
     }
 }
 
@@ -324,6 +322,7 @@ static VarLocation CompileCallWithReturnValue(PascalCompiler *Compiler,
     }
 
     /* restore caller regs */
+    Compiler->SaveRegSize = uMax(Compiler->SaveRegSize, SaveRegs.Size);
     PVMEmitUnsaveCallerRegs(EMITTER(), ReturnReg, SaveRegs);
     return ReturnValue;
 }
@@ -350,9 +349,7 @@ static VarLocation FactorCall(PascalCompiler *Compiler, VarLocation *Location, b
         return Opt.ReturnValue;
     }
 
-    VarLocation ReturnValue = CompileCallWithReturnValue(Compiler, Location, &Callee);
-    FreeExpr(Compiler, *Location);
-    return ReturnValue;
+    return CompileCallWithReturnValue(Compiler, Location, &Callee);
 }
 
 
@@ -743,11 +740,8 @@ static VarLocation VariableAddrOf(PascalCompiler *Compiler, bool ShouldCallFunct
     Token AtSign = Compiler->Curr;
     VarLocation Variable = ParsePrecedence(Compiler, PREC_VARIABLE, false);
 
-    if (Variable.LocationType == VAR_TYPENAME
-    || Variable.LocationType == VAR_LIT
-    || Variable.LocationType == VAR_REG
-    || Variable.LocationType == VAR_FLAG
-    || Variable.LocationType == VAR_BUILTIN)
+
+    if (Variable.LocationType != VAR_MEM)
     {
         ErrorAt(Compiler, &AtSign, "Address cannot be taken.");
         return (VarLocation) { 0 };
@@ -766,6 +760,7 @@ static VarLocation VariableAddrOf(PascalCompiler *Compiler, bool ShouldCallFunct
         U32 CallSite = PVMEmitLoadSubroutineAddr(EMITTER(), Ptr.As.Register, 0);
         PushSubroutineReference(Compiler, Variable.As.SubroutineLocation, CallSite);
     }
+    FreeExpr(Compiler, Variable);
     return Ptr;
 }
 
@@ -1197,7 +1192,6 @@ static VarLocation RuntimeExprBinary(PascalCompiler *Compiler,
         PASCAL_UNREACHABLE("Unhandled binary op: %s\n", TokenTypeToStr(Operator));
     } break;
     }
-    FreeExpr(Compiler, *Right);
     return Dst;
 
 #undef SET_IF
@@ -1464,7 +1458,10 @@ static VarLocation ParseAssignmentLhs(PascalCompiler *Compiler, Precedence Prec,
         }
         ConsumeToken(Compiler); /* the operator */
         PASCAL_NONNULL(InfixRoutine);
-        Left = InfixRoutine(Compiler, &Left, ShouldCallFunction);
+
+        VarLocation Result = InfixRoutine(Compiler, &Left, ShouldCallFunction);
+        FreeExpr(Compiler, Left);
+        Left = Result;
     }
     return Left;
 }

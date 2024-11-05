@@ -35,6 +35,7 @@ int PascalRunFile(const U8 *InFileName, const U8 *OutFileName)
     if (PascalCompileProgram(&Compiler, Source))
     {
         PascalVM PVM = PVMInit(1024, 128);
+        //PVM.SingleStepMode = true;
         PVM.Disassemble = true;
         PVMRun(&PVM, &Chunk);
     }

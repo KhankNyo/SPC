@@ -44,7 +44,8 @@ PVMEmitter PVMEmitterInit(PVMChunk *Chunk)
     PVMEmitter Emitter = {
         .Chunk = Chunk,
         .Reglist = EMPTY_REGLIST,
-        .SpilledRegCount = 0,
+        .SpilledIntRegs = 0,
+        .SpilledFltRegs = 0,
         .Reg = {
             .SP = VAR_LOCATION_REG(
                 PVM_REG_SP, true, 
@@ -92,10 +93,10 @@ void PVMEmitterReset(PVMEmitter *Emitter, bool PreserveFunctions)
     ChunkReset(PVMCurrentChunk(Emitter), PreserveFunctions);
     Emitter->Reglist = EMPTY_REGLIST;
     Emitter->StackSpace = 0;
-    Emitter->SpilledRegCount = 0;
+    Emitter->SpilledIntRegs = 0;
+    Emitter->SpilledFltRegs = 0;
+    Emitter->SpilledRegSpace = 0;
 }
-
-
 
 
 
@@ -138,7 +139,7 @@ bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt Reg)
     return ((Emitter->Reglist >> Reg) & 1) == 0;
 }
 
-void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, UInt Reg)
+static void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, UInt Reg)
 {
     PASCAL_NONNULL(Emitter);
     if (PVM_REG_COUNT + PVM_FREG_COUNT >= Reg)
@@ -147,7 +148,7 @@ void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, UInt Reg)
     }
 }
 
-void PVMMarkRegisterAsFreed(PVMEmitter *Emitter, UInt Reg)
+static void PVMMarkRegisterAsFreed(PVMEmitter *Emitter, UInt Reg)
 {
     PASCAL_NONNULL(Emitter);
     Emitter->Reglist &= ~((U32)1 << Reg);
@@ -158,12 +159,13 @@ static U32 PVMCreateRegListLocation(PVMEmitter *Emitter,
         SaveRegInfo Info, U32 Location[PVM_REG_COUNT + PVM_FREG_COUNT])
 {
     U32 Size = 0;
-    for (UInt i = 0; i < STATIC_ARRAY_SIZE(Info.RegLocation); i++)
+    for (int i = STATIC_ARRAY_SIZE(Info.RegLocation) - 1; i >= 0; i--)
     {
         if ((Info.Regs >> i) & 0x1)
         {
-            Location[i] = Emitter->StackSpace;
             /* free registers that are not in EMPTY_REGLIST */
+            /* freeing bc those regs now live on the stack */
+            Location[i] = Emitter->StackSpace;
             VarRegister Register = {
                 .ID = i,
                 .Persistent = EMPTY_REGLIST & ((U32)1 << i),
@@ -213,7 +215,7 @@ static void PVMEmitPushReg(PVMEmitter *Emitter, UInt Reg)
     {
         WriteOp16(Emitter, PVM_REGLIST(PSHL, RegIndex));
     }
-    else if ((RegIndex) & 0xFF)
+    else if ((RegIndex >> 8) & 0xFF)
     {
         WriteOp16(Emitter, PVM_REGLIST(PSHH, RegIndex >> 8));
     }
@@ -239,7 +241,7 @@ static void PVMEmitPopReg(PVMEmitter *Emitter, UInt Reg)
     }
     else if ((RegIndex >> 8) & 0xFF)
     {
-        WriteOp16(Emitter, PVM_REGLIST(POPH, RegIndex >> 16));
+        WriteOp16(Emitter, PVM_REGLIST(POPH, RegIndex >> 8));
     }
     /* floating point reg */
     else if ((RegIndex >> 16) & 0xFF)
@@ -674,23 +676,116 @@ void PVMUpdateDebugInfo(PVMEmitter *Emitter, U32 LineLen, bool IsSubroutine)
     Info->IsSubroutine = IsSubroutine;
 }
 
-
-
-
-
-
-
-
-
-
 U32 PVMGetCurrentLocation(PVMEmitter *Emitter)
 {
     PASCAL_NONNULL(Emitter);
     return PVMCurrentChunk(Emitter)->Count;
 }
 
+
+
+
+
+
+static UInt AllocateRegister(PVMEmitter *Emitter, UInt Base, I32 *SpilledCount, 
+    I32 *SpilledLocation, USize SpilledLocationSize)
+{
+    for (UInt i = Base; i < Base + PVM_REG_COUNT; i++)
+    {
+        if (PVMRegisterIsFree(Emitter, i))
+        {
+            PVMMarkRegisterAsAllocated(Emitter, i);
+            printf("Alloc  : %d, spill: %d, list: %04x\n", i, *SpilledCount, Emitter->Reglist);
+            return i;
+        }
+    }
+
+    I32 Offset = sizeof(PVMGPR)*(Emitter->SpilledIntRegs + Emitter->SpilledFltRegs + 1);
+    U32 Reg = *SpilledCount % PVM_REG_COUNT;
+
+    PASCAL_ASSERT(*SpilledCount < (int)SpilledLocationSize, "dynamic register spilling table?");
+
+    /* offset directly from SP, negative */
+    SpilledLocation[*SpilledCount] = -Offset;
+    (*SpilledCount) += 1;
+
+    /* update space for spilled registers */
+    Emitter->SpilledRegSpace = uMax(Offset, Emitter->SpilledRegSpace);
+
+    /* 'push' the content of the register being spilled onto the stack */
+    VarType Type = VarTypeInit(TYPE_U64, 8);
+    MoveRegToMem(Emitter, 
+        (VarMemory) { 
+            .RegPtr = Emitter->Reg.SP.As.Register, 
+            .Location = -Offset
+        }, Type,
+        (VarRegister) { 
+            .ID = Reg 
+        }, Type
+    );
+    printf("Alloc  : %d, spill: %d (spilling), list: %04x\n", Reg, *SpilledCount, Emitter->Reglist);
+    return Reg;
+}
+
+static void FreeRegister(PVMEmitter *Emitter, I32 *SpilledCount, I32 *SpilledLocation, int Reg)
+{
+    /* NOTE: registers are allocated linearly, so it's fine to check the topmost register */
+    if (*SpilledCount > 0 && Reg == ((*SpilledCount - 1) % PVM_REG_COUNT)) 
+    {
+        printf("dealloc: %d, spill: %d (unspilling), list: %04x\n", Reg, *SpilledCount, Emitter->Reglist);
+        /* freeing a spilled register, get its location first */
+        int Index = --(*SpilledCount);
+        PASCAL_ASSERT(Index > -1, "Unreachable");
+
+        /* load the old content of the freed register */
+        MoveMemToReg(Emitter, 
+            (VarRegister) { 
+                .ID = Reg 
+            }, (VarMemory) {   
+                .RegPtr = Emitter->Reg.SP.As.Register, 
+                .Location = SpilledLocation[Index]
+            }, VarTypeInit(TYPE_U64, 8)
+        );
+        /* TODO: what if the caller intended to use the old content? */
+        /* NOTE: the register is still marked as allocated because it now contains 
+         * whatever content it has before being spilled */
+    }
+
+    if (Reg - PVM_REG_COUNT < *SpilledCount)
+    {
+        printf("dealloc: %d, spill: %d, list: %04x\n", Reg, *SpilledCount, Emitter->Reglist);
+        PVMMarkRegisterAsFreed(Emitter, Reg);
+    }
+}
+
+VarRegister PVMAllocateIntReg(PVMEmitter *Emitter)
+{
+    PASCAL_NONNULL(Emitter);
+    VarRegister Reg = {
+        .ID = AllocateRegister(Emitter, 0, &Emitter->SpilledIntRegs, 
+            Emitter->SpilledIntRegLocation, STATIC_ARRAY_SIZE(Emitter->SpilledIntRegLocation)
+        ),
+        .Persistent = false,
+    };
+    return Reg;
+}
+
+VarRegister PVMAllocateFltReg(PVMEmitter *Emitter)
+{
+    PASCAL_NONNULL(Emitter);
+    VarRegister Reg = { 
+        .ID = AllocateRegister(Emitter, PVM_REG_COUNT, &Emitter->SpilledFltRegs, 
+            Emitter->SpilledFltRegLocation, STATIC_ARRAY_SIZE(Emitter->SpilledFltRegLocation)
+        ),
+        .Persistent = false,
+    };
+    return Reg;
+}
+
+
 VarLocation PVMAllocateRegisterLocation(PVMEmitter *Emitter, VarType Type)
 {
+    PASCAL_NONNULL(Emitter);
     VarRegister Reg = PVMAllocateRegister(Emitter, Type.Integral);
     return VAR_LOCATION_REG(
         Reg.ID, Reg.Persistent,
@@ -698,68 +793,21 @@ VarLocation PVMAllocateRegisterLocation(PVMEmitter *Emitter, VarType Type)
     );
 }
 
-VarRegister PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type)
-{
-    PASCAL_NONNULL(Emitter);
-    PASCAL_ASSERT(Type != TYPE_INVALID, "invalid type");
-    VarRegister Register = { 0 };
-
-    if (IntegralTypeIsFloat(Type))
-    {
-        for (UInt i = PVM_REG_COUNT; i < PVM_REG_COUNT*2; i++)
-        {
-            if (PVMRegisterIsFree(Emitter, i))
-            {
-                PVMMarkRegisterAsAllocated(Emitter, i);
-                Register.ID = i;
-                return Register;
-            }
-        }
-
-        PASCAL_UNREACHABLE("TODO: spilling floating point register");
-    }
-    for (UInt i = 0; i < PVM_REG_COUNT; i++)
-    {
-        /* found free reg */
-        if (PVMRegisterIsFree(Emitter, i))
-        {
-            /* mark reg as allocated */
-            PVMMarkRegisterAsAllocated(Emitter, i);
-            Register.ID = i;
-            return Register;
-        }
-    }
-
-
-    /* spill register */
-    UInt Reg = Emitter->SpilledRegCount % PVM_REG_COUNT;
-    Emitter->SpilledRegCount++;
-    PVMEmitPushReg(Emitter, Reg);
-
-    Register.ID = Reg;
-    return Register;
-}
-
 void PVMFreeRegister(PVMEmitter *Emitter, VarRegister Reg)
 {
     PASCAL_NONNULL(Emitter);
-    if (Reg.Persistent || Reg.ID == PVM_REG_FP
-    || Reg.ID == PVM_REG_GP || Reg.ID == PVM_REG_SP)
-        return;
-
-    PASCAL_ASSERT(!PVMRegisterIsFree(Emitter, Reg.ID), "double free register: %d", Reg.ID);
-
-    UInt SpilledReg = (Emitter->SpilledRegCount - 1) % PVM_REG_COUNT;
-    if (Emitter->SpilledRegCount > 0 && SpilledReg == Reg.ID)
+    if (Reg.ID < PVM_REG_COUNT) /* int reg */
     {
-        Emitter->SpilledRegCount--;
-        PVMEmitPopReg(Emitter, SpilledReg);
+        FreeRegister(Emitter, &Emitter->SpilledIntRegs, Emitter->SpilledIntRegLocation, Reg.ID);
     }
-    else
+    else /* float reg */
     {
-        PVMMarkRegisterAsFreed(Emitter, Reg.ID);
+        FreeRegister(Emitter, &Emitter->SpilledFltRegs, Emitter->SpilledFltRegLocation, Reg.ID - PVM_REG_COUNT);
     }
 }
+
+
+
 
 
 
@@ -907,47 +955,40 @@ void PVMEmitMove(PVMEmitter *Emitter, const VarLocation *Dst, const VarLocation 
     PASCAL_NONNULL(Emitter);
     PASCAL_NONNULL(Dst);
     PASCAL_NONNULL(Src);
-    PASCAL_ASSERT(VarTypeEqual(&Dst->Type, &Src->Type), "TODO: make type equal before Move");
-
+    PASCAL_ASSERT(VarTypeEqual(&Dst->Type, &Src->Type), "Types must be equal for Move");
     switch (Dst->LocationType)
     {
-    case VAR_LIT:
-    case VAR_INVALID:
-    case VAR_BUILTIN:
-    case VAR_SUBROUTINE:
-    {
-        PASCAL_UNREACHABLE("Are you crazy???");
-    } break;
     case VAR_REG:
     {
-        MoveLocationToReg(Emitter, Dst->As.Register, Dst->Type, Src);
-    } break;
-    case VAR_FLAG:
-    {
-        if (Src->LocationType == VAR_FLAG)
-            return;
-        PASCAL_ASSERT(Src->Type.Integral == TYPE_BOOLEAN, "Src must be boolean");
-
-        VarRegister Rs;
-        bool Owning = PVMEmitIntoReg(Emitter, &Rs, false, Src);
-        WriteOp16(Emitter, PVM_OP(SETFLAG, Rs.ID, 0));
-        if (Owning)
-        {
-            PVMFreeRegister(Emitter, Rs);
-        }
+        MoveLocationToReg(Emitter, Dst->As.Register, Src->Type, Src);
     } break;
     case VAR_MEM:
     {
         VarRegister Tmp;
         bool Owning = PVMEmitIntoReg(Emitter, &Tmp, true, Src);
-        MoveRegToMem(Emitter, 
-                Dst->As.Memory, Dst->Type, 
-                Tmp, Src->Type
-        );
-        if (Owning)
-        {
+        MoveRegToMem(Emitter, Dst->As.Memory, Dst->Type, Tmp, Src->Type);
+        if (Owning) 
             PVMFreeRegister(Emitter, Tmp);
+    } break;
+    case VAR_FLAG:
+    {
+        if (Src->LocationType == Dst->LocationType)
+        {
+            return;
         }
+
+        PASCAL_ASSERT(Src->Type.Integral == TYPE_BOOLEAN, "Src must be boolean");
+        VarRegister Tmp;
+        bool Owning = PVMEmitIntoReg(Emitter, &Tmp, false, Src);
+        WriteOp16(Emitter, PVM_OP(SETFLAG, Tmp.ID, 0));
+        if (Owning)
+            PVMFreeRegister(Emitter, Tmp);
+    } break;
+    case VAR_LIT:
+    case VAR_INVALID:
+    case VAR_BUILTIN:
+    case VAR_SUBROUTINE:
+    {
     } break;
     }
 }
@@ -2126,21 +2167,21 @@ void PVMEmitUnsaveCallerRegs(PVMEmitter *Emitter, UInt ReturnRegID, SaveRegInfo 
 {
     PASCAL_NONNULL(Emitter);
     U32 Restorelist = Save.Regs;
-    if (Restorelist >> 8)
-    {
-        WriteOp16(Emitter, PVM_REGLIST(POPH, Restorelist >> 8));
-    }
     if (Restorelist & 0xFF)
     {
         WriteOp16(Emitter, PVM_REGLIST(POPL, Restorelist & 0xFF));
     }
-    if ((Restorelist >> 24) & 0xFF) 
+    if ((Restorelist >> 8) & 0xFF)
     {
-        WriteOp16(Emitter, PVM_REGLIST(FPOPL, Restorelist >> 24));
+        WriteOp16(Emitter, PVM_REGLIST(POPH, Restorelist >> 8));
     }
-    if ((Restorelist >> 16) & 0xFF)
+    if ((Restorelist >> 16) & 0xFF) 
     {
         WriteOp16(Emitter, PVM_REGLIST(FPOPL, Restorelist >> 16));
+    }
+    if ((Restorelist >> 24) & 0xFF)
+    {
+        WriteOp16(Emitter, PVM_REGLIST(FPOPH, Restorelist >> 24));
     }
     Emitter->Reglist = Restorelist | EMPTY_REGLIST;
     Emitter->StackSpace -= Save.Size;
@@ -2168,6 +2209,11 @@ void PVMPatchEnter(PVMEmitter *Emitter, U32 Location, U32 StackSize)
 
     PVMChunk *Chunk = PVMCurrentChunk(Emitter);
     StackSize = uRoundUpToMultipleOfPow2(StackSize, PVM_STACK_ALIGNMENT);
+
+    /* cleanup reg space since we're going out of scope */
+    /* TODO: the compiler might need to take care of this instead because of nested functions */
+    StackSize += Emitter->SpilledRegSpace;
+    Emitter->SpilledRegSpace = 0;
 
     Chunk->Code[Location + 1] = StackSize;
     Chunk->Code[Location + 2] = StackSize >> 16;

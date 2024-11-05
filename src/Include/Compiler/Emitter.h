@@ -26,7 +26,13 @@ struct PVMEmitter
     PVMChunk *Chunk;
     U32 Reglist;
 
-    U32 SpilledRegCount;
+    I32 SpilledIntRegs, SpilledFltRegs;
+    /* offset directly from SP, 
+     * the offset is calculated from 
+     * adding SpilledIntRegs with SpilledFltRegs and multiply by the size of PVMGPR */
+    I32 SpilledIntRegLocation[PVM_REG_COUNT*4];
+    I32 SpilledFltRegLocation[PVM_FREG_COUNT*4];
+    U32 SpilledRegSpace;
     U32 StackSpace;
     struct {
         VarLocation SP, FP, GP;
@@ -46,22 +52,19 @@ SaveRegInfo PVMEmitterBeginScope(PVMEmitter *Emitter);
 void PVMEmitterEndScope(PVMEmitter *Emitter, SaveRegInfo PrevScope);
 void PVMEmitDebugInfo(PVMEmitter *Emitter, const U8 *Src, U32 Len, U32 LineNum);
 void PVMUpdateDebugInfo(PVMEmitter *Emitter, U32 LineLen, bool IsSubroutine);
-
-
 U32 PVMGetCurrentLocation(PVMEmitter *Emitter);
-/* TODO: weird semantics between these 2 functions */
-/* NOTE: FreeRegister does not free non-persistent registers, 
- * use PVMMarkRegisterAsFreed to free persistent registers (parameter regs for example) */
+
+
 void PVMFreeRegister(PVMEmitter *Emitter, VarRegister Reg);
-VarRegister PVMAllocateRegister(PVMEmitter *Emitter, IntegralType Type);
+VarRegister PVMAllocateIntReg(PVMEmitter *Emitter);
+VarRegister PVMAllocateFltReg(PVMEmitter *Emitter);
+#define PVMAllocateRegister(pEmitter, IntegralTyp) \
+    (IntegralTypeIsFloat(IntegralTyp) ? PVMAllocateFltReg(pEmitter) : PVMAllocateIntReg(pEmitter))
 VarLocation PVMAllocateRegisterLocation(PVMEmitter *Emitter, VarType Type);
-void PVMMarkRegisterAsAllocated(PVMEmitter *Emitter, U32 RegID);
-void PVMMarkRegisterAsFreed(PVMEmitter *Emitter, UInt Reg);
 bool PVMRegisterIsFree(PVMEmitter *Emitter, UInt Reg);
 
 
 /* Branching instructions */
-#define PVMMarkBranchTarget(pEmitter) PVMGetCurrentLocation(pEmitter)
 /* returns the offset of the branch instruction for later patching */
 U32 PVMEmitBranchIfFalse(PVMEmitter *Emitter, const VarLocation *Condition);
 U32 PVMEmitBranchIfTrue(PVMEmitter *Emitter, const VarLocation *Condition);

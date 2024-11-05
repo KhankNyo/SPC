@@ -58,7 +58,7 @@ static bool NoMoreToken(PascalCompiler *Compiler)
     {
         if (PASCAL_COMPMODE_REPL == Compiler->Flags.CompMode)
         {
-            return Compiler->Panic || !CompilerGetLinesFromCallback(Compiler);
+            return Compiler->Error || !CompilerGetLinesFromCallback(Compiler);
         }
         return true;
     }
@@ -252,7 +252,7 @@ static void CompilerPatchBreaks(PascalCompiler *Compiler, UInt PrevBreakCount)
 static void CompileRepeatUntilStmt(PascalCompiler *Compiler)
 {
     /* 'repeat' consumed */
-    U32 LoopHead = PVMMarkBranchTarget(EMITTER());
+    U32 LoopHead = PVMGetCurrentLocation(EMITTER());
     if (!NextTokenIs(Compiler, TOKEN_UNTIL))
     {
         do {
@@ -350,7 +350,7 @@ static void CompileForStmt(PascalCompiler *Compiler)
     {
         PASCAL_ASSERT(ConvertTypeImplicitly(Compiler, i->Type.Integral, &StopCondition), "");
 
-        LoopHead = PVMMarkBranchTarget(EMITTER());
+        LoopHead = PVMGetCurrentLocation(EMITTER());
         VarLocation Flag = (TOKEN_TO == OpToken.Type) 
             ? PVMEmitSetIfLessOrEqual(EMITTER(), i->As.Register, StopCondition.As.Register, i->Type.Integral)
             : PVMEmitSetIfGreaterOrEqual(EMITTER(), i->As.Register, StopCondition.As.Register, i->Type.Integral);
@@ -389,7 +389,7 @@ static void CompileWhileStmt(PascalCompiler *Compiler)
     CompilerInitDebugInfo(Compiler, &Keyword);
 
     /* condition expression */
-    U32 LoopHead = PVMMarkBranchTarget(EMITTER());
+    U32 LoopHead = PVMGetCurrentLocation(EMITTER());
     VarLocation Tmp = CompileExpr(Compiler);
     if (TYPE_BOOLEAN != Tmp.Type.Integral)
     {
@@ -572,7 +572,7 @@ static void CompileCallStmt(PascalCompiler *Compiler, const Token Name, VarLocat
 
 
 static void CompilerEmitAssignment(PascalCompiler *Compiler, const Token *Assignment, 
-        VarLocation *Left, const VarLocation *Right)
+        const VarLocation *Left, const VarLocation *Right)
 {
     PASCAL_NONNULL(Compiler);
     PASCAL_NONNULL(Assignment);
@@ -969,8 +969,15 @@ static bool CompileBlock(PascalCompiler *Compiler);
 static void CompileBeginBlock(PascalCompiler *Compiler)
 {
     if (IsAtGlobalScope(Compiler))
-        Compiler->EntryPoint = PVMGetCurrentLocation(EMITTER());
-    CompileBeginStmt(Compiler);
+    {
+        Compiler->EntryPoint = PVMEmitEnter(EMITTER());
+        CompileBeginStmt(Compiler);
+        PVMPatchEnter(EMITTER(), Compiler->EntryPoint, Compiler->StackSize);
+    }
+    else
+    {
+        CompileBeginStmt(Compiler);
+    }
 }
 
 
@@ -1084,9 +1091,10 @@ static U32 CompileLocalParameter(PascalCompiler *Compiler,
     /* hidden param */
     if (NULL != Subroutine->ReturnType && !VarTypeIsTriviallyCopiable(*Subroutine->ReturnType))
     {
-        PVMMarkRegisterAsAllocated(EMITTER(), 0);
+        PVMMarkArgAsOccupied(EMITTER(), &VAR_LOCATION_REG(0, false, *Subroutine->ReturnType));
     }
 
+    /* set up local parameters */
     if (ParameterList->Count)
     {
         PascalVar *Params = ParameterList->Params;
@@ -1096,6 +1104,7 @@ static U32 CompileLocalParameter(PascalCompiler *Compiler,
         for (UInt i = 0; i < ParameterList->Count; i++)
         {
             PASCAL_NONNULL(ParameterList->Params[i].Location);
+            /* register params */
             if (i + HiddenParamCount < PVM_ARGREG_COUNT)
             {
                 I32 Dummy = 0;
@@ -1116,7 +1125,7 @@ static U32 CompileLocalParameter(PascalCompiler *Compiler,
                 }
                 FreeExpr(Compiler, Arg);
             }
-            else
+            else /* memory params */
             {
                 ArgOffset -= Params[i].Type.Size;
                 *Params[i].Location = PVMCreateStackLocation(EMITTER(), 
@@ -1177,9 +1186,9 @@ static SubroutineInformation CompileSubroutineDeclaration(PascalCompiler *Compil
     }
     ConsumeOrError(Compiler, TOKEN_SEMICOLON, "Expected ';' after %s.", BeforeSemicolon);
 
-    /* sets parameter list for caller,
-     * callee's local copy of parameter list 
-     * will only be set up during compilation of subroutine's body */
+    /* sets parameter list for caller only,
+     * the callee's local copy of parameter list 
+     * will be set up during compilation of subroutine's body */
     U32 CalleeStackArgSize = 0;
     for (UInt i = PVM_ARGREG_COUNT; i < ParameterList.Count; i++)
     {
@@ -1222,10 +1231,16 @@ static void CompileSubroutineBlock(PascalCompiler *Compiler, const char *Subrout
 
         /* block */
         U32 PrevStackSize = Compiler->StackSize;
+        U32 PrevTempSize = Compiler->TemporarySize;
+        U32 PrevSaveSize = Compiler->SaveRegSize;
+
         *Subroutine.Location = CompileLocalParameter(Compiler, Subroutine.Info);
         CompileBlock(Compiler);
-        PVMPatchEnter(EMITTER(), *Subroutine.Location, Compiler->StackSize + Compiler->TemporarySize);
+        PVMPatchEnter(EMITTER(), *Subroutine.Location, Compiler->StackSize + Compiler->TemporarySize + Compiler->SaveRegSize);
+
+        Compiler->SaveRegSize = PrevSaveSize;
         Compiler->StackSize = PrevStackSize;
+        Compiler->TemporarySize = PrevTempSize;
 
 
         /* exit */
@@ -1326,7 +1341,7 @@ static void CompileVarBlock(PascalCompiler *Compiler)
     {
         PVMEmitGlobalSpace(EMITTER(), TotalSize);
     }
-    else
+    else /* update stack size */
     {
         Compiler->StackSize += TotalSize;
     }
@@ -1616,6 +1631,7 @@ bool PascalCompileRepl(
 
     Compiler->ReplCallback = Callback;
     Compiler->ReplUserData = Data;
+    Compiler->Error = false;
 
     U32 LastEntry = Compiler->EntryPoint;
     CompileBlock(Compiler);

@@ -56,7 +56,7 @@ struct PascalCompiler
     PascalVartab *Locals[PVM_MAX_SCOPE_COUNT];
     PascalVartab Global;
     I32 Scope;
-    U32 StackSize, TemporarySize;
+    U32 StackSize, TemporarySize, SaveRegSize;
 
     struct {
         StringView Crt;

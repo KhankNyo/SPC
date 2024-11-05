@@ -491,7 +491,7 @@ U32 PVMDisasmSingleInstruction(FILE *f, const PVMChunk *Chunk, U32 Addr)
     case OP_PSHL: DisasmRegList(f, "pshl", Opcode, sIntReg); break;
     case OP_PSHH: DisasmRegList(f, "pshh", Opcode, &sIntReg[PVM_REG_COUNT/2]); break;
     case OP_POPL: DisasmRegList(f, "popl", Opcode, sIntReg); break;
-    case OP_POPH: DisasmRegList(f, "pshh", Opcode, &sIntReg[PVM_REG_COUNT/2]); break;
+    case OP_POPH: DisasmRegList(f, "poph", Opcode, &sIntReg[PVM_REG_COUNT/2]); break;
     case OP_FPSHL: DisasmRegList(f, "fpshl", Opcode, sFltReg); break;
     case OP_FPSHH: DisasmRegList(f, "fpshh", Opcode, &sFltReg[PVM_FREG_COUNT/2]); break;
     case OP_FPOPL: DisasmRegList(f, "fpopl", Opcode, sFltReg); break;
